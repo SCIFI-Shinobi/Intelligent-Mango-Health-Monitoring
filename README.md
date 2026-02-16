@@ -1,98 +1,90 @@
-# Intelligent Plant Health Monitoring Using Embedded AI
+# Intelligent Plant Health Monitoring
 
-An intelligent plant health monitoring system for mango farming in Ethiopia. It combines TinyML and IoT to deliver real-time, offline disease diagnosis and environmental forecasting, supporting smallholder farmers against threats like Anthracnose and Powdery Mildew without constant connectivity.
+### *Edge AI for Resilient Agriculture in Ethiopia*
 
-## Quick Snapshot
+<p align="center">
+  <img src="https://img.shields.io/badge/TinyML-Edge%20Impulse-6A32C9?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Hardware-Arduino%20Nano%2033-00979D?style=for-the-badge&logo=arduino&logoColor=white" />
+  <img src="https://img.shields.io/badge/Gateway-ESP32-E7352C?style=for-the-badge&logo=espressif&logoColor=white" />
+  <img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
+  <img src="https://img.shields.io/badge/Frontend-React-61DAFB?style=for-the-badge&logo=react&logoColor=black" />
+</p>
 
-| Focus | Details |
-| --- | --- |
-| Use case | Mango disease detection and forecasting in low-connectivity regions |
-| Edge AI | MobileNetV1 TinyML on Arduino Nano 33 BLE Sense |
-| Connectivity | ESP32 gateway with BLE and Wi-Fi |
-| Sensors | DHT22 for temperature and humidity |
-| Outputs | Local alerts + optional cloud dashboard |
+---
 
-## Tech Stack
+**Intelligent Plant Health Monitoring** is an end-to-end TinyML solution designed for low-connectivity mango farms. By combining localized computer vision with environmental forecasting, it provides smallholder farmers with **real-time diagnostics** and **outbreak risk prediction** entirely at the edge.
 
-| Layer | Technology |
-| --- | --- |
-| Firmware | PlatformIO (C/C++) |
-| Backend | FastAPI (Python) |
-| Frontend | React |
+## ✨ Key Capabilities
 
-## Highlights
+### 🧠 Edge-Native Diagnostics
 
-- Real-time, on-device disease detection using a quantized MobileNetV1 model.
-- Dual-microcontroller design: Arduino for inference, ESP32 for networking and coordination.
-- Environmental monitoring to support outbreak risk forecasting.
-- Decision-support recommendations plus centralized dashboard visibility.
+- **On-device inference**: runs a quantized **MobileNetV1** model directly on the Arduino Nano 33 BLE Sense.
+- **Localized dataset**: trained on **5,210 high-resolution images** from the *Woramit Horticultural Research Center* in Ethiopia.
+- **Disease detection**: specialized in identifying **Anthracnose** and **Powdery Mildew** with a compact 160x160 input pipeline.
 
-## System Overview
+### 📡 Dual-Microcontroller Architecture
 
-```
-Leaf image + DHT22 data
-        |
-        v
-Arduino Nano 33 BLE Sense
-  - TinyML inference
-  - Local classification
-        |
-        v (BLE)
-ESP32 Gateway
-  - Recommendation logic
-  - Wi-Fi/BLE bridge
-        |
-        v
-Cloud + Web Dashboard
-```
+- **The brain (Arduino)**: handles sensor fusion and ML inference.
+- **The bridge (ESP32)**: manages the **BLE-to-Wi-Fi** handoff, local recommendation logic, and periodic cloud sync.
+- **Hybrid connectivity**: operates in offline mode during outages and syncs when a gateway connection is restored.
 
-## Key Features
+### 🌡️ Environmental Forecasting
 
-- Edge-side inference: real-time disease detection on Arduino Nano 33 BLE Sense using optimized MobileNetV1 models.
-- Dual-microcontroller architecture: Arduino for processing and ESP32 as the communication gateway.
-- Environmental monitoring: DHT22 sensors for temperature and humidity.
-- Disease forecasting: predicts high-risk periods for outbreaks using environmental trends.
-- Decision-support module: actionable treatment and prevention recommendations.
-- Web dashboard: centralized interface for real-time health data, historical trends, and alerts.
+- **Micro-climate tracking** with DHT22 sensors for temperature and humidity.
+- **Risk scoring** to flag high-risk periods for fungal outbreaks.
 
-## Hardware Stack
+### 🎨 Decision Support & UI
 
-| Component | Role |
-| --- | --- |
-| Arduino Nano 33 BLE Sense | Primary engine for TinyML model inference |
-| ESP32 | System-level tasks, BLE/Wi-Fi communication, and output peripherals |
-| DHT22 | Temperature and humidity measurements |
-| OLED display and buzzer | Immediate visual and audible feedback |
+- **Instant feedback**
+  - 🟢 `HEALTHY`: no action needed.
+  - 🟡 `WARNING`: preventive care recommended.
+  - 🔴 `INFECTED`: immediate isolation and treatment required.
+- **Visual indicators** via OLED display and buzzer alerts for field use.
 
-## Model and Optimization
+---
 
-The system uses a quantized MobileNetV1 model optimized through the Edge Impulse EON Compiler.
+## 🛠️ Hardware & Model Specs
 
-| Item | Details |
-| --- | --- |
-| Input size | 160x160 pixels |
-| Optimization | Post-training quantization (32-bit weights to 8-bit integers) |
-| Performance | 86.45% accuracy within the 256KB RAM limit of the Arduino Nano |
-| Dataset | 5,210 localized images of Ethiopian mango varieties collected from the Woramit Horticultural Research and Training Sub-Center |
+| Component | Role | Notes |
+| --- | --- | --- |
+| **Arduino Nano 33 BLE Sense** | Inference engine | Runs quantized MobileNetV1 |
+| **ESP32** | Communication gateway | BLE + Wi-Fi bridge |
+| **MobileNetV1** | Vision model | 8-bit quantized, 86.45% accuracy |
+| **DHT22** | Weather sensor | Temperature and humidity tracking |
+| **OLED + Buzzer** | Local feedback | Visual and audible alerts |
 
-## System Architecture
+## 🚀 Getting Started
 
-- Sensing and detection layer: Arduino captures leaf images and sensor data for local classification.
-- Processing and gateway layer: ESP32 receives results via BLE, runs recommendation logic, and forwards data to the cloud.
-- Visualization layer: web dashboard displays diagnostics and forecasts.
+### 📂 Repository Structure
 
-## Repository Layout
-
-```
-backend/                     Backend services (placeholder)
-firmware/
-  esp32_gateway/             ESP32 PlatformIO project
-  nano33ble_edge_ai/         Arduino Nano 33 BLE Sense PlatformIO project
-frontend/                    Web dashboard (placeholder)
+```bash
+├── firmware/
+│   ├── nano33ble_edge_ai/    # MobileNetV1 inference & camera drivers
+│   └── esp32_gateway/        # BLE logic & Wi-Fi backhaul
+├── backend/                  # FastAPI data ingestion (placeholder)
+├── frontend/                 # React analytics dashboard (placeholder)
 ```
 
-## Status
+### 🛠️ Build & Flash
 
-- Firmware is implemented in the PlatformIO projects under firmware/.
-- Backend will use FastAPI, and frontend will use React. These folders are placeholders until their code is added.
+1. Open the firmware folder in **PlatformIO**.
+2. Select your environment: `env:nano33ble` or `env:esp32`.
+3. Build and upload:
+
+```bash
+pio run --target upload
+```
+
+---
+
+## 📊 System Architecture
+
+1. **Sensing layer**: captures image + DHT22 data.
+2. **Detection layer**: runs TinyML inference on Arduino.
+3. **Gateway layer**: ESP32 runs recommendation logic and syncs to FastAPI.
+4. **Visualization layer**: React dashboard shows diagnostics and trends.
+
+---
+
+*Developed to bridge the gap between AI and smallholder agriculture.*
 
