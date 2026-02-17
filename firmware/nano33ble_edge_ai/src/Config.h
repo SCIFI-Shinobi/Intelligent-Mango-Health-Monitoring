@@ -25,7 +25,7 @@ const uint8_t BUZZER_PIN = 9;
 // ================= HARDWARE CONFIG =================
 // Camera Constants
 #define EI_CAMERA_RAW_FRAME_BUFFER_COLS     160
-#define EI_CAMERA_RAW_FRAME_BUFFER_ROWS     120
+#define EI_CAMERA_RAW_FRAME_BUFFER_ROWS     160
 #define EI_CAMERA_FRAME_BYTE_SIZE           3
 
 // OLED Config

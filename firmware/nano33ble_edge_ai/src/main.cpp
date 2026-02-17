@@ -1,26 +1,27 @@
-/*
- * Project: Intelligent Plant Health Monitoring Using Embedded AI
- * Team: Eyobel Zeleke, Abel Sisay, Helen Ayen, Hewan Solomon
- * Institution: Bahir Dar University, BIT – Computer Engineering
- * Date: 04/11/2025
- */
-
-/* Includes ---------------------------------------------------------------- */
-#include <Mango-Plant-Health-TinyML_inferencing.h>
 #include <Arduino.h>
 #include <cstring>
-
-// Modular Libraries
+#include <cstddef>
 #include "Config.h"
 #include "Camera_OV7675.h"
 #include "Image_Utils.h"
 
-// Optional Hardware
-#if ENABLE_OLED
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#endif
+// Edge Impulse includes
+#include "edge-impulse-sdk/classifier/ei_run_classifier.h"
+#include "edge-impulse-sdk/classifier/ei_classifier_types.h"
+#include "edge-impulse-sdk/dsp/numpy_types.h"
+#include "model-parameters/model_metadata.h"
+
+// Bluetooth Low Energy includes
+#include <ArduinoBLE.h>
+
+// DHT Sensor includes
+#include <DHT.h>
+
+// DHT Sensor Configuration
+#define DHT_PIN 2
+#define DHT_TYPE DHT22
+DHT dht(DHT_PIN, DHT_TYPE);
+
 
 // ================= GLOBAL STATE =================
 unsigned long lastScanTime = 0;
@@ -28,56 +29,51 @@ unsigned long lastScanTime = 0;
 // Hardware Objects
 static OV7675 Cam;
 
-#if ENABLE_OLED
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-#endif
 
-/* ----------- Storage for inference -------------*/
-static const char *last_label = "N/A";
-static float last_confidence = 0.0f;
-static int last_dsp_ms = 0;
-static int last_classification_ms = 0;
+// Image buffers
+static uint8_t rgb888_buffer[EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * 3];
 
-/* ----------- Static Memory Allocation (Crucial Fix) -------------*/
-// Buffer for the resized image [160 x 120 x 2 bytes] approx 38KB
-// Allocated statically to prevent heap fragmentation
-#define IMAGE_BUFFER_SIZE (EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * 2) // RGB565
-static uint8_t image_buffer[IMAGE_BUFFER_SIZE] __attribute__((aligned(4)));
+// BLE Service and Characteristics
+BLEService mangoHealthService("19B10000-E8F2-537E-4F6C-D104768A1214");
+BLEStringCharacteristic classificationCharacteristic("19B10001-E8F2-537E-4F6C-D104768A1214", BLERead | BLEWrite | BLENotify, 32);
+BLEFloatCharacteristic temperatureCharacteristic("19B10002-E8F2-537E-4F6C-D104768A1214", BLERead | BLEWrite | BLENotify);
+BLEFloatCharacteristic humidityCharacteristic("19B10003-E8F2-537E-4F6C-D104768A1214", BLERead | BLEWrite | BLENotify);
 
-// Global pointer for EI SDK (keep for compatibility)
-static uint8_t *ei_camera_capture_out = NULL;
-bool do_resize = false;
-bool do_crop = false;
+// ================= IMAGE CONVERSION =================
+// Convert RGB565 (16-bit) to RGB888 (24-bit)
+void convertRGB565toRGB888(const uint8_t* rgb565, uint8_t* rgb888, size_t pixelCount) {
+    for (size_t i = 0; i < pixelCount; i++) {
+        uint16_t pixel = (rgb565[i * 2] << 8) | rgb565[i * 2 + 1];
+        
+        // Extract RGB565 components
+        uint8_t r5 = (pixel >> 11) & 0x1F;
+        uint8_t g6 = (pixel >> 5) & 0x3F;
+        uint8_t b5 = pixel & 0x1F;
+        
+        // Convert to 8-bit (scale 5/6-bit to 8-bit)
+        rgb888[i * 3 + 0] = (r5 * 527 + 23) >> 6;  // Red
+        rgb888[i * 3 + 1] = (g6 * 259 + 33) >> 6;  // Green
+        rgb888[i * 3 + 2] = (b5 * 527 + 23) >> 6;  // Blue
+    }
+}
 
-// ================= RECOMMENDATION SYSTEM =================
-enum DiseaseType
-{
-    DISEASE_ANTHRACNOSE = 0,
-    DISEASE_POWDERY_MILDEW,
-    DISEASE_HEALTHY,
-};
-
-struct DiseaseAdvice
-{
-    const char *name;
-    const char *action;
-    const char *treatment;
-};
-
-const DiseaseAdvice diseaseDB[] PROGMEM = {
-    {"Anthracnose", "Prune infected leaves", "Copper fungicide"},
-    {"Powdery Mildew", "Remove infected shoots", "Sulfur / Neem oil"},
-    {"Healthy", "No action needed", "Maintain care"},
-};
-
-// ================= FUNCTION DECLARATIONS =================
-bool ei_camera_init(void);
-void ei_camera_deinit(void);
-bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf);
-void run_inference_once();
-int ei_camera_cutout_get_data(size_t offset, size_t length, float *out_ptr);
-DiseaseType classifyDisease(const char *label);
-void printRecommendation(DiseaseType disease, float confidence);
+// ================= CLASSIFIER CALLBACK =================
+int get_image_data(size_t offset, size_t length, float *out_ptr) {
+    // Calculate how many pixels we need
+    size_t numPixels = length / 3;  
+    
+    // Ensure we don't go out of bounds
+    if (offset + numPixels > EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS) {
+        numPixels = EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS - offset;
+    }
+    
+    // Copy image data and normalize to 0-1 range
+    for (size_t i = 0; i < numPixels * 3; i++) {
+        out_ptr[i] = (float)rgb888_buffer[(offset * 3) + i] / 255.0f;
+    }
+    
+    return EI_IMPULSE_OK;
+}
 
 // ================= SETUP =================
 void setup()
@@ -94,254 +90,215 @@ void setup()
     Serial.println("Mango Health Monitoring (DEPLOYED)");
 #endif
 
-    ei_printf("Inferencing settings:\n");
-    ei_printf("\tImage resolution: %dx%d\n", EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT);
-    ei_printf("\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
 
-#if ENABLE_BUZZER
-    pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(BUZZER_PIN, LOW);
-#endif
+    // Initialize BLE
+    if (!BLE.begin()) {
+        Serial.println("BLE initialization failed");
+        while (1);
+    }
 
-#if ENABLE_OLED
-    if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR))
+    BLE.setLocalName("MangoHealthMonitor");
+    BLE.setAdvertisedService(mangoHealthService);
+    mangoHealthService.addCharacteristic(classificationCharacteristic);
+    mangoHealthService.addCharacteristic(temperatureCharacteristic);
+    mangoHealthService.addCharacteristic(humidityCharacteristic);
+    BLE.addService(mangoHealthService);
+
+    classificationCharacteristic.writeValue("Unknown");
+    temperatureCharacteristic.writeValue(0.0);
+    humidityCharacteristic.writeValue(0.0);
+
+    BLE.advertise();
+    Serial.println("BLE initialized and advertising");
+
+    if (Cam.begin(QQVGA, RGB565, 1))
     {
-        ei_printf("OLED init failed\n");
+        Serial.println("Camera initialized successfully");
     }
     else
     {
-        display.clearDisplay();
-        display.setTextSize(1);
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(0, 0);
-        display.println("Initializing...");
-        display.display();
+        Serial.println("Camera Config Failed");
     }
-#endif
+    
+    // Initialize DHT sensor
+    dht.begin();
+    Serial.println("DHT sensor initialized");
 
-    if (ei_camera_init())
-    {
-        ei_printf("Camera initialized successfully\n");
-    }
-    else
-    {
-        ei_printf("Camera Config Failed\n");
-    }
+    // Initialize classifier
+    run_classifier_init();
+    Serial.println("Edge Impulse classifier initialized");
 }
 
-// ================= LOOP =================
 void loop()
 {
     unsigned long now = millis();
+
+    // Read DHT sensor data
+    float temperature = dht.readTemperature();
+    float humidity = dht.readHumidity();
+
+    if (isnan(temperature) || isnan(humidity)) {
+        Serial.println("Failed to read DHT sensor data");
+    } else {
+        Serial.print("Temperature: ");
+        Serial.print(temperature);
+        Serial.println(" °C");
+        Serial.print("Humidity: ");
+        Serial.print(humidity);
+        Serial.println(" %");
+    }
 
 #if DEMO_MODE
     static unsigned long lastDemoTime = 0;
     if (now - lastDemoTime >= DEMO_INTERVAL_MS)
     {
         lastDemoTime = now;
-        run_inference_once();
+        
+        Serial.println("Taking photo...");
+        
+        // Capture image (RGB565 format)
+        uint8_t image_buffer[EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * 2];
+        
+        Cam.readFrame(image_buffer);
+        
+        Serial.println("Photo captured!");
+        Serial.print("Image size: ");
+        Serial.print(sizeof(image_buffer));
+        Serial.println(" bytes");
+        
+        // Convert RGB565 to RGB888
+        convertRGB565toRGB888(image_buffer, rgb888_buffer, EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
+        
+        // Run classifier
+        Serial.println("Running classifier...");
+        
+        signal_t signal;
+        signal.get_data = &get_image_data;
+        signal.total_length = EI_CLASSIFIER_NN_INPUT_FRAME_SIZE;
+        
+        ei_impulse_result_t result;
+        EI_IMPULSE_ERROR ei_error = run_classifier(&signal, &result, false);
+        
+        if (ei_error != EI_IMPULSE_OK) {
+            Serial.print("Classifier error: ");
+            Serial.println(ei_error);
+        }
+        else {
+            // Print classification results
+            Serial.println("Classification results:");
+            Serial.println("======================");
+            
+            for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+                Serial.print(result.classification[i].label);
+                Serial.print(": ");
+                Serial.print(result.classification[i].value * 100);
+                Serial.println("%");
+            }
+            
+            // Find the dominant classification
+            float maxConfidence = 0;
+            int maxIndex = -1;
+            for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+                if (result.classification[i].value > maxConfidence) {
+                    maxConfidence = result.classification[i].value;
+                    maxIndex = i;
+                }
+            }
+            
+            if (maxIndex >= 0 && maxConfidence >= DISEASE_CONFIDENCE_THRESHOLD) {
+                Serial.print("Detected: ");
+                Serial.println(result.classification[maxIndex].label);
+                
+                // Send data via BLE if connected
+                BLEDevice central = BLE.central();
+                if (central) {
+                    classificationCharacteristic.writeValue(result.classification[maxIndex].label);
+                    temperatureCharacteristic.writeValue(temperature);
+                    humidityCharacteristic.writeValue(humidity);
+                    Serial.println("Data sent via BLE");
+                }
+            }
+            
+            Serial.print("DSP processing time: ");
+            Serial.print(result.timing.dsp_us / 1000.0);
+            Serial.println(" ms");
+            
+            Serial.print("Classification time: ");
+            Serial.print(result.timing.classification_us / 1000.0);
+            Serial.println(" ms");
+        }
+        
     }
 #else
     if (now - lastScanTime < SCAN_INTERVAL_MS)
     {
-        // Optional: Low Power Sleep could be added here
         delay(10);
         return;
     }
     lastScanTime = now;
-    run_inference_once();
-#endif
-}
-
-// ================= INFERENCE LOGIC =================
-
-void run_inference_once()
-{
-    ei_printf("Taking photo...\n");
-
-    if (!ei_camera_init())
-    {
-        ei_printf("Camera failed to init\n");
-        return;
-    }
-
-    // Capture using static buffer (No malloc here!)
-    if (!ei_camera_capture(
-            EI_CLASSIFIER_INPUT_WIDTH,
-            EI_CLASSIFIER_INPUT_HEIGHT,
-            image_buffer))
-    {
-        ei_printf("Failed to capture image\r\n");
-        return;
-    }
-
-    ei::signal_t signal;
-    signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
-    signal.get_data = &ei_camera_cutout_get_data;
-
-    // Run Classifier
-    ei_impulse_result_t result = {0};
+    
+    Serial.println("Taking photo...");
+    
+    // Capture image (RGB565 format)
+    uint8_t image_buffer[EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * 2];
+    
+    Cam.readFrame(image_buffer);
+    
+    Serial.println("Photo captured!");
+    
+    // Convert RGB565 to RGB888
+    convertRGB565toRGB888(image_buffer, rgb888_buffer, EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
+    
+    // Run classifier
+    Serial.println("Running classifier...");
+    
+    signal_t signal;
+    signal.get_data = &get_image_data;
+    signal.total_length = EI_CLASSIFIER_NN_INPUT_FRAME_SIZE;
+    
+    ei_impulse_result_t result;
     EI_IMPULSE_ERROR ei_error = run_classifier(&signal, &result, false);
-
-    if (ei_error != EI_IMPULSE_OK)
-    {
-        ei_printf("Failed to run impulse (%d)\n", ei_error);
-        return;
+    
+    if (ei_error != EI_IMPULSE_OK) {
+        Serial.print("Classifier error: ");
+        Serial.println(ei_error);
     }
-
-    // Process Results
-    float best_score = -1.0f;
-    float second_best_score = -1.0f;
-    int best_idx = -1;
-
-    for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++)
-    {
-        float v = result.classification[i].value;
-        if (v > best_score)
-        {
-            second_best_score = best_score;
-            best_score = v;
-            best_idx = i;
+    else {
+        // Print classification results
+        Serial.println("Classification results:");
+        Serial.println("======================");
+        
+        for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+            Serial.print(result.classification[i].label);
+            Serial.print(": ");
+            Serial.print(result.classification[i].value * 100);
+            Serial.println("%");
         }
-        else if (v > second_best_score)
-        {
-            second_best_score = v;
+        
+        // Find the dominant classification
+        float maxConfidence = 0;
+        int maxIndex = -1;
+        for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+            if (result.classification[i].value > maxConfidence) {
+                maxConfidence = result.classification[i].value;
+                maxIndex = i;
+            }
+        }
+        
+        if (maxIndex >= 0 && maxConfidence >= DISEASE_CONFIDENCE_THRESHOLD) {
+            Serial.print("Detected: ");
+            Serial.println(result.classification[maxIndex].label);
+            
+            // Send data via BLE if connected
+            BLEDevice central = BLE.central();
+            if (central) {
+                classificationCharacteristic.writeValue(result.classification[maxIndex].label);
+                temperatureCharacteristic.writeValue(temperature);
+                humidityCharacteristic.writeValue(humidity);
+                Serial.println("Data sent via BLE");
+            }
         }
     }
-
-    if (best_idx >= 0)
-    {
-        last_label = ei_classifier_inferencing_categories[best_idx];
-        last_confidence = best_score;
-    }
-
-    bool confident = (best_score >= DISEASE_CONFIDENCE_THRESHOLD) &&
-                     ((best_score - second_best_score) >= CONFIDENCE_MARGIN);
-
-    // Simple Disease Detection (using strstr like original)
-    bool isDisease = (strstr(last_label, "Anthracnose") != nullptr) ||
-                     (strstr(last_label, "Powdery") != nullptr);
-
-    ei_printf("Result: %s (%.2f%%)\n", last_label, last_confidence * 100.0);
-
-    if (confident && isDisease)
-    {
-        ei_printf("[ALERT] Disease Detected!\n");
-        DiseaseType disease = classifyDisease(last_label);
-        printRecommendation(disease, last_confidence);
-
-#if ENABLE_BUZZER
-        tone(BUZZER_PIN, 2000, 3000); // 3s beep
 #endif
-    }
-    else
-    {
-        ei_printf("Healthy or Low Confidence.\n");
-    }
 }
 
-// ================= HELPERS =================
-
-bool ei_camera_init(void)
-{
-    static bool is_initialised = false;
-    if (is_initialised)
-        return true;
-
-    if (!Cam.begin(QQVGA, RGB565, 1))
-    {
-        return false;
-    }
-    is_initialised = true;
-    return true;
-}
-
-bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf)
-{
-    // Determine resize/crop needs
-    uint32_t resize_col_sz;
-    uint32_t resize_row_sz;
-
-    // Use Helper from Image_Utils
-    int res = calculate_resize_dimensions(img_width, img_height, &resize_col_sz, &resize_row_sz, &do_resize);
-    if (res)
-        return false;
-
-    if ((img_width != resize_col_sz) || (img_height != resize_row_sz))
-    {
-        do_crop = true;
-    }
-
-    // Set resize state in camera object
-    Cam.resize_col_sz = resize_col_sz;
-    Cam.resize_row_sz = resize_row_sz;
-
-    // Capture (Class handles resize internally)
-    Cam.readFrame(out_buf);
-
-    // Handle Crop (if needed)
-    if (do_crop)
-    {
-        uint32_t crop_col_start = (resize_col_sz - img_width) / 2;
-        uint32_t crop_row_start = (resize_row_sz - img_height) / 2;
-
-        cropImage(resize_col_sz, resize_row_sz,
-                  out_buf,
-                  crop_col_start, crop_row_start,
-                  img_width, img_height,
-                  out_buf,
-                  16);
-    }
-
-    ei_camera_capture_out = out_buf;
-    return true;
-}
-
-int ei_camera_cutout_get_data(size_t offset, size_t length, float *out_ptr)
-{
-    size_t pixel_ix = offset * 2;
-    size_t bytes_left = length;
-    size_t out_ptr_ix = 0;
-
-    while (bytes_left != 0)
-    {
-        // RGB565 -> RGB888
-        uint16_t pixel = (ei_camera_capture_out[pixel_ix] << 8) | ei_camera_capture_out[pixel_ix + 1];
-        uint8_t r = ((pixel >> 11) & 0x1f) << 3;
-        uint8_t g = ((pixel >> 5) & 0x3f) << 2;
-        uint8_t b = (pixel & 0x1f) << 3;
-
-        float pixel_f = (r << 16) + (g << 8) + b;
-        out_ptr[out_ptr_ix] = pixel_f;
-
-        out_ptr_ix++;
-        pixel_ix += 2;
-        bytes_left--;
-    }
-    return 0;
-}
-
-DiseaseType classifyDisease(const char *label)
-{
-    if (strstr(label, "Anthracnose") != nullptr)
-        return DISEASE_ANTHRACNOSE;
-    if (strstr(label, "Powdery") != nullptr)
-        return DISEASE_POWDERY_MILDEW;
-    // Default/Healthy
-    return DISEASE_HEALTHY;
-}
-
-void printRecommendation(DiseaseType disease, float confidence)
-{
-    DiseaseAdvice advice;
-    memcpy_P(&advice, &diseaseDB[disease], sizeof(DiseaseAdvice));
-
-    Serial.println(" --- RECOMMENDATION --- ");
-    Serial.print("Disease:   ");
-    Serial.println(advice.name);
-    Serial.print("Action:    ");
-    Serial.println(advice.action);
-    Serial.print("Treatment: ");
-    Serial.println(advice.treatment);
-    Serial.println(" ---------------------- ");
-}

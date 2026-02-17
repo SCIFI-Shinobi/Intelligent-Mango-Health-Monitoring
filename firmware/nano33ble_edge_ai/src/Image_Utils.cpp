@@ -1,5 +1,6 @@
 #include "Image_Utils.h"
 #include <Arduino.h>
+#include "Config.h"
 
 // Include device specific headers for SIMD if available
 #ifdef __ARM_FEATURE_SIMD32
@@ -12,8 +13,8 @@ int calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32_
     const ei_device_resize_resolutions_t list[list_size] = { {42,32}, {128,96} };
 
     // (default) conditions
-    *resize_col_sz = 160; // Default EI_CAMERA_RAW_FRAME_BUFFER_COLS
-    *resize_row_sz = 120; // Default EI_CAMERA_RAW_FRAME_BUFFER_ROWS
+    *resize_col_sz = EI_CAMERA_RAW_FRAME_BUFFER_COLS;
+    *resize_row_sz = EI_CAMERA_RAW_FRAME_BUFFER_ROWS;
     *do_resize = false;
 
     for (size_t ix = 0; ix < list_size; ix++) {

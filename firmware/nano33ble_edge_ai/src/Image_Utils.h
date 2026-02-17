@@ -4,18 +4,16 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Arduino.h>
-#include <cstring>
 
 // Structure for resize resolutions
-typedef struct
-{
+typedef struct {
     size_t width;
     size_t height;
 } ei_device_resize_resolutions_t;
 
 // Constants
 #define FRAC_BITS 14
-#define FRAC_VAL (1 << FRAC_BITS)
+#define FRAC_VAL (1<<FRAC_BITS)
 #define FRAC_MASK (FRAC_VAL - 1)
 
 // Function Declarations
