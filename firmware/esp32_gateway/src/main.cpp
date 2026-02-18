@@ -1,231 +1,287 @@
 #include <Arduino.h>
-#include <ArduinoBLE.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <DHT.h>
+#include <Adafruit_Sensor.h>
+#include <NimBLEDevice.h>
 #include "Config.h"
 
-// OLED Display Configuration
+// ================= HARDWARE =================
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+DHT dht(DHT_PIN, DHT_TYPE);
 
-// Variables to store received data
-char lastClassification[32] = "Unknown";
-float lastTemperature = 0.0;
-float lastHumidity = 0.0;
-bool alertActive = false;
-String recommendation = "Monitoring...";
-unsigned long lastAlertTime = 0;
+// ================= BLE UUIDs (must match Nano) =================
+#define NANO_SERVICE_UUID        "19B10000-E8F2-537E-4F6C-D104768A1214"
+#define CLASSIFICATION_CHAR_UUID "19B10001-E8F2-537E-4F6C-D104768A1214"
 
+// ================= STATE =================
+String currentDisease    = "Unknown";
+float  currentConfidence = 0.0;
+float  currentTemperature = 0.0;
+float  currentHumidity    = 0.0;
+bool   alertActive        = false;
+String riskLevel          = "Evaluating...";
+String recommendation     = "Waiting for data...";
+
+// BLE client objects
+NimBLEClient* pClient = nullptr;
+bool bleConnected     = false;
+
+// ================= FORWARD DECLARATIONS =================
+void evaluateRisk();
 void updateDisplay();
-void processClassification(const char* classification);
-void sendDataToCloud(const char* classification, float temperature, float humidity);
+void sendDataToCloud();
+void parseClassification(const std::string& value);
 
-void setup() {
-  Serial.begin(115200);
-
-  // Initialize Buzzer
-  pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);
-
-  // Initialize OLED
-  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
-    Serial.println("OLED initialization failed!");
-    while (1);
-  }
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("ESP32 Gateway");
-  display.println("Initializing...");
-  display.display();
-
-  // Initialize Wi-Fi
-  Serial.print("Connecting to Wi-Fi");
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  int wifi_timeout = 0;
-  while (WiFi.status() != WL_CONNECTED && wifi_timeout < 20) {
-    delay(500);
-    Serial.print(".");
-    wifi_timeout++;
-  }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWi-Fi Connected!");
-    display.println("Wi-Fi Connected");
-  } else {
-    Serial.println("\nWi-Fi Failed");
-    display.println("Wi-Fi Failed");
-  }
-  display.display();
-  delay(1000);
-
-  // Initialize BLE
-  if (!BLE.begin()) {
-    Serial.println("BLE initialization failed!");
-    while (1);
-  }
-  
-  Serial.println("BLE Central initialized. Scanning...");
-  BLE.scanForUuid("19B10000-E8F2-537E-4F6C-D104768A1214");
+// ================= BLE NOTIFY CALLBACK =================
+// Called whenever the Nano sends a new classification value
+void notifyCallback(NimBLERemoteCharacteristic* pChar,
+                    uint8_t* pData, size_t length, bool isNotify) {
+    std::string value((char*)pData, length);
+    Serial.print("BLE Notify received: ");
+    Serial.println(value.c_str());
+    parseClassification(value);
+    evaluateRisk();
+    updateDisplay();
 }
 
-void loop() {
-  BLEDevice peripheral = BLE.available();
-
-  if (peripheral) {
-    if (peripheral.localName() == "MangoHealthMonitor") {
-      Serial.print("Found Nano: ");
-      Serial.println(peripheral.address());
-      BLE.stopScan();
-
-      if (peripheral.connect()) {
-        Serial.println("Connected to Nano");
-        
-        if (peripheral.discoverAttributes()) {
-          Serial.println("Attributes discovered");
-          
-          BLECharacteristic classificationChar = peripheral.characteristic("19B10001-E8F2-537E-4F6C-D104768A1214");
-          BLECharacteristic temperatureChar = peripheral.characteristic("19B10002-E8F2-537E-4F6C-D104768A1214");
-          BLECharacteristic humidityChar = peripheral.characteristic("19B10003-E8F2-537E-4F6C-D104768A1214");
-          
-          if (classificationChar && temperatureChar && humidityChar) {
-            classificationChar.subscribe();
-            temperatureChar.subscribe();
-            humidityChar.subscribe();
-            
-            while (peripheral.connected()) {
-              bool newData = false;
-              
-              if (classificationChar.valueUpdated()) {
-                 int len = classificationChar.valueLength();
-                 if (len > 0) {
-                    // Assuming string is coming in
-                    memset(lastClassification, 0, sizeof(lastClassification));
-                    classificationChar.readValue(lastClassification, min((int)sizeof(lastClassification)-1, len));
-                    Serial.print("Class: ");
-                    Serial.println(lastClassification);
-                    newData = true;
-                    processClassification(lastClassification);
-                 }
-              }
-              
-              if (temperatureChar.valueUpdated()) {
-                 float temp;
-                 temperatureChar.readValue(&temp, sizeof(temp));
-                 lastTemperature = temp;
-                 Serial.print("Temp: ");
-                 Serial.println(lastTemperature);
-              }
-              
-              if (humidityChar.valueUpdated()) {
-                 float hum;
-                 humidityChar.readValue(&hum, sizeof(hum));
-                 lastHumidity = hum;
-                 Serial.print("Humidity: ");
-                 Serial.println(lastHumidity);
-              }
-
-              // Handle Alert Logic
-              if (alertActive) {
-                if (millis() - lastAlertTime < ALERT_DURATION_MS) {
-                    digitalWrite(BUZZER_PIN, HIGH);
-                } else {
-                    digitalWrite(BUZZER_PIN, LOW);
-                    alertActive = false; // Auto reset alert status after buzzer separates
-                }
-              } else {
-                digitalWrite(BUZZER_PIN, LOW);
-              }
-              
-              updateDisplay();
-              
-              if (newData && WiFi.status() == WL_CONNECTED) {
-                sendDataToCloud(lastClassification, lastTemperature, lastHumidity);
-              }
-              
-              delay(10); // Small delay
-            }
-          }
-        }
-        peripheral.disconnect();
-        Serial.println("Disconnected");
-      }
-      
-      Serial.println("Scanning...");
-      BLE.scanForUuid("19B10000-E8F2-537E-4F6C-D104768A1214");
-    }
-  }
-}
-
-void processClassification(const char* classification) {
-    if (strcmp(classification, "Anthracnose") == 0) {
-        recommendation = "Trim affected branches";
-        alertActive = true;
-        lastAlertTime = millis();
-    } else if (strcmp(classification, "Powdery Mildew") == 0) {
-        recommendation = "Apply fungicide";
-        alertActive = true;
-        lastAlertTime = millis();
-    } else if (strcmp(classification, "Healthy") == 0) {
-        recommendation = "Plant is healthy";
-        alertActive = false;
+// ================= PARSE "DiseaseName,Confidence" =================
+void parseClassification(const std::string& value) {
+    String s = String(value.c_str());
+    int commaIdx = s.indexOf(',');
+    if (commaIdx > 0) {
+        currentDisease    = s.substring(0, commaIdx);
+        currentConfidence = s.substring(commaIdx + 1).toFloat();
     } else {
-        recommendation = "Analyzing...";
-        alertActive = false;
+        currentDisease    = s;
+        currentConfidence = 0.0;
     }
 }
 
-void updateDisplay() {
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.print("Status: ");
-  display.println(WiFi.status() == WL_CONNECTED ? "Online" : "Offline");
-  
-  display.drawLine(0, 8, 128, 8, SSD1306_WHITE);
-  
-  display.setCursor(0, 10);
-  display.print("Class: ");
-  display.println(lastClassification);
-  
-  display.print("Temp: ");
-  display.print(lastTemperature, 1);
-  display.print("C  Hum: ");
-  display.print(lastHumidity, 0);
-  display.println("%");
-  
-  display.drawLine(0, 35, 128, 35, SSD1306_WHITE);
-  
-  display.setCursor(0, 37);
-  // Wrap text for recommendation if needed
-  display.println(recommendation);
-  
-  display.display();
+// ================= BLE SCAN + CONNECT =================
+bool connectToNano() {
+    Serial.println("Scanning for MangoHealthMonitor...");
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    pScan->setActiveScan(true);
+    NimBLEScanResults results = pScan->start(5, false); // 5-second scan
+
+    for (int i = 0; i < results.getCount(); i++) {
+        NimBLEAdvertisedDevice device = results.getDevice(i);
+        if (device.getName() == "MangoHealthMonitor") {
+            Serial.println("Found Nano! Connecting...");
+            pScan->stop();
+
+            pClient = NimBLEDevice::createClient();
+            if (!pClient->connect(&device)) {
+                Serial.println("Connection failed.");
+                return false;
+            }
+            Serial.println("Connected to Nano.");
+
+            NimBLERemoteService* pService =
+                pClient->getService(NANO_SERVICE_UUID);
+            if (!pService) {
+                Serial.println("Service not found.");
+                pClient->disconnect();
+                return false;
+            }
+
+            NimBLERemoteCharacteristic* pChar =
+                pService->getCharacteristic(CLASSIFICATION_CHAR_UUID);
+            if (!pChar) {
+                Serial.println("Characteristic not found.");
+                pClient->disconnect();
+                return false;
+            }
+
+            if (pChar->canNotify()) {
+                pChar->subscribe(true, notifyCallback);
+                Serial.println("Subscribed to classification notifications.");
+            }
+
+            return true;
+        }
+    }
+    Serial.println("Nano not found in scan.");
+    return false;
 }
 
-void sendDataToCloud(const char* classification, float temperature, float humidity) {
+// ================= RISK EVALUATION =================
+void evaluateRisk() {
+    riskLevel      = "LOW RISK";
+    recommendation = "Monitor & maintain sanitation.";
+    alertActive    = false;
+
+    if (currentDisease == "Healthy" || currentDisease == "Unknown") {
+        if (currentDisease == "Unknown")
+            recommendation = "Waiting for classification...";
+        return;
+    }
+
+    bool envFavorable = false;
+
+    if (currentDisease == "Anthracnose") {
+        // High risk: 24°C–30°C AND Humidity > 80%
+        if (currentTemperature >= 24 && currentTemperature <= 30 && currentHumidity > 80)
+            envFavorable = true;
+    } else if (currentDisease == "Powdery Mildew") {
+        // High risk: 10°C–31°C AND Humidity > 80%
+        if (currentTemperature >= 10 && currentTemperature <= 31 && currentHumidity > 80)
+            envFavorable = true;
+    }
+
+    if (envFavorable) {
+        riskLevel      = "HIGH RISK";
+        recommendation = "DANGER: Apply fungicides now!";
+        alertActive    = true;
+    } else {
+        riskLevel      = "MEDIUM RISK";
+        recommendation = "Prune branches & improve airflow.";
+        alertActive    = false;
+    }
+}
+
+// ================= OLED DISPLAY =================
+void updateDisplay() {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+
+    // Row 0: Wi-Fi status
+    display.setCursor(0, 0);
+    display.print(WiFi.status() == WL_CONNECTED ? "WiFi:OK" : "WiFi:--");
+    display.print("  BLE:");
+    display.println(bleConnected ? "OK" : "--");
+
+    // Row 1: Environment
+    display.setCursor(0, 10);
+    display.print("T:");
+    display.print(currentTemperature, 1);
+    display.print("C  H:");
+    display.print(currentHumidity, 0);
+    display.println("%");
+
+    // Row 2: AI result
+    display.setCursor(0, 20);
+    display.print("AI: ");
+    display.println(currentDisease);
+
+    // Row 3: Risk level (inverted if HIGH)
+    display.setCursor(0, 32);
+    if (riskLevel == "HIGH RISK") {
+        display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
+    }
+    display.println(riskLevel);
+    display.setTextColor(SSD1306_WHITE);
+
+    // Row 4: Recommendation
+    display.setCursor(0, 45);
+    display.println(recommendation);
+
+    display.display();
+}
+
+// ================= CLOUD UPLOAD =================
+void sendDataToCloud() {
+    if (WiFi.status() != WL_CONNECTED) return;
+
     HTTPClient http;
     http.begin(API_URL);
     http.addHeader("Content-Type", "application/json");
-    
-    // Simple JSON construction
+
     String json = "{";
-    json += "\"classification\":\"" + String(classification) + "\",";
-    json += "\"temperature\":" + String(temperature) + ",";
-    json += "\"humidity\":" + String(humidity);
+    json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
+    json += "\"disease_type\":\"" + currentDisease + "\",";
+    json += "\"confidence_score\":" + String(currentConfidence, 2) + ",";
+    json += "\"temperature\":" + String(currentTemperature, 1) + ",";
+    json += "\"humidity\":" + String(currentHumidity, 1);
     json += "}";
-    
-    int httpResponseCode = http.POST(json);
-    
-    if (httpResponseCode > 0) {
-        Serial.print("HTTP Response code: ");
-        Serial.println(httpResponseCode);
-    } else {
-        Serial.print("Error code: ");
-        Serial.println(httpResponseCode);
-    }
-    
+
+    int code = http.POST(json);
+    Serial.print("Cloud sync HTTP: ");
+    Serial.println(code);
     http.end();
+}
+
+// ================= SETUP =================
+void setup() {
+    Serial.begin(115200);
+
+    // Buzzer
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
+
+    // DHT sensor
+    dht.begin();
+
+    // OLED
+    if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
+        Serial.println("OLED init failed!");
+        while (1);
+    }
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("Mango Monitor");
+    display.println("Starting...");
+    display.display();
+
+    // Wi-Fi
+    Serial.print("Connecting to Wi-Fi");
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    int timeout = 0;
+    while (WiFi.status() != WL_CONNECTED && timeout < 20) {
+        delay(500);
+        Serial.print(".");
+        timeout++;
+    }
+    Serial.println(WiFi.status() == WL_CONNECTED ? "\nWi-Fi OK" : "\nWi-Fi Failed");
+
+    // BLE Central
+    NimBLEDevice::init("ESP32-Gateway");
+    Serial.println("BLE Central initialized.");
+}
+
+// ================= LOOP =================
+void loop() {
+    // 1. Read DHT22 (local sensor on ESP32)
+    float t = dht.readTemperature();
+    float h = dht.readHumidity();
+    if (!isnan(t) && !isnan(h)) {
+        currentTemperature = t;
+        currentHumidity    = h;
+    }
+
+    // 2. Maintain BLE connection to Nano
+    if (!bleConnected || (pClient && !pClient->isConnected())) {
+        bleConnected = false;
+        if (pClient) {
+            NimBLEDevice::deleteClient(pClient);
+            pClient = nullptr;
+        }
+        bleConnected = connectToNano();
+    }
+
+    // 3. Buzzer logic
+    if (alertActive) {
+        digitalWrite(BUZZER_PIN, (millis() / 500) % 2 == 0 ? HIGH : LOW);
+    } else {
+        digitalWrite(BUZZER_PIN, LOW);
+    }
+
+    // 4. Refresh display every loop
+    updateDisplay();
+
+    // 5. Cloud sync every 10 seconds
+    static unsigned long lastSync = 0;
+    if (millis() - lastSync > 10000) {
+        sendDataToCloud();
+        lastSync = millis();
+    }
+
+    delay(200);
 }

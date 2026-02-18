@@ -44,16 +44,17 @@ def upload_data(payload: schemas.UploadPayload, db: Session = Depends(get_db)):
     db.refresh(new_sensor_data)
     db.refresh(new_inference)
     
-    # Generate response with recommendation and foresting
-    recommendation = logic.get_recommendation(payload.disease_type)
-    alert = logic.get_forecast_alert(payload.temperature, payload.humidity)
+    # Evaluate risk using the same expert logic as the ESP32 firmware
+    risk = logic.evaluate_risk(payload.disease_type, payload.temperature, payload.humidity)
+    forecast_alert = logic.get_forecast_alert(payload.temperature, payload.humidity)
     
     return {
         "status": "success",
         "data_id": new_sensor_data.id,
         "inference_id": new_inference.id,
-        "recommendation": recommendation,
-        "forecast_alert": alert
+        "risk_level": risk["risk_level"],
+        "recommendation": risk["recommendation"],
+        "forecast_alert": forecast_alert
     }
 
 @app.get("/history", response_model=schemas.HistoricalData)

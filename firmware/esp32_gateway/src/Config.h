@@ -11,9 +11,14 @@
 // ================= API CONFIGURATION =================
 // TODO: User must update this URL to their backend
 #define API_URL       "http://your-backend-api.com/api/measurements"
+#define DEVICE_ID     "esp32_gateway_001"
 
 // ================= HARDWARE CONFIGURATION =================
-#define BUZZER_PIN    13
+#define BUZZER_PIN    5
+#define DHT_PIN       4
+#define DHT_TYPE      DHT22
+#define RX_PIN        16
+#define TX_PIN        17
 #define SCREEN_WIDTH  128
 #define SCREEN_HEIGHT 64
 #define OLED_I2C_ADDR 0x3C
