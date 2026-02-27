@@ -6,22 +6,8 @@ import imgaug.augmenters as iaa
 from pathlib import Path
 
 # --- Configuration ---
-# Look for a dataset directory in a few common locations
-ROOT_DIR = Path(__file__).parent.parent.resolve()
-POSSIBLE_DATASET_PATHS = [
-    ROOT_DIR / "dataset",
-    ROOT_DIR / "backend" / "app" / "dataset",
-    ROOT_DIR  # Fallback to root
-]
-
-DATASET_PATH = ROOT_DIR # Default
-for p in POSSIBLE_DATASET_PATHS:
-    if p.exists() and p.is_dir():
-        # Check if it contains any of our expected categories
-        if any((p / cat).exists() for cat in ['Anthracnose', 'Healthy', 'Powdery_Mildew']):
-            DATASET_PATH = p
-            break
-
+# using pathlib makes path manipulation much robust against OS differences and spaces
+DATASET_PATH = Path(__file__).parent.resolve()
 # Automatically detect categories based on subdirectories if they match expected names or just include all subdirs
 EXPECTED_CATEGORIES = ['Anthracnose', 'Healthy', 'Powdery_Mildew']
 CATEGORIES = [d.name for d in DATASET_PATH.iterdir() if d.is_dir() and d.name in EXPECTED_CATEGORIES]
