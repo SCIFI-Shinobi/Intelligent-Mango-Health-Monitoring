@@ -48,16 +48,19 @@ This project incorporates historical weather data to model disease risks for man
 - **Period**: 2016-01-01 to 2026-02-20
 - **Variables**: Hourly temperature (2m), relative humidity (2m), and precipitation.
 
-### Weather Dataset (`bahir_dar_mango_dataset.csv`)
-The generated dataset contains timestamped weather records with associated risk levels.
+### Weather Dataset (`bahir_dar_mango_dataset_numeric.csv`)
+The generated dataset contains timestamped weather records with associated risk levels. The seasons are mapped numerically for improved machine learning efficiency:
+- **Bega**: 1
+- **Belg**: 2
+- **Kiremt**: 3
 
 ### Weather Data Script (`weather_data.py`)
 The `weather_data.py` script automates the following process:
 1. **Fetching**: Pulls hourly data from Open-Meteo.
 2. **Processing**: Formats timestamps to ISO 8601 and organizes variables.
 3. **Risk Labeling**: Applies expert-validated thresholds to determine disease risk:
-   - **High_Anthracnose_Risk**: Temperature between 18°C–32°C and humidity > 80% over a 4-hour window (primarily during Kiremt/Belg seasons).
-   - **High_Mildew_Risk**: Daytime (06:00–18:00), temperature 15°C–27°C, and humidity 40%–75% (early-mid dry seasons).
+    - **High_Anthracnose_Risk**: Temperature between 18°C–32°C and humidity > 80% over a 4-hour window (primarily during Kiremt (3) / Belg (2) seasons).
+    - **High_Mildew_Risk**: Daytime (06:00–18:00), temperature 15°C–27°C, and humidity 40%–75% (early-mid dry seasons: Belg (2) / Bega (1)).
    - **Stable**: Conditions outside these thresholds.
 
 ### Requirements

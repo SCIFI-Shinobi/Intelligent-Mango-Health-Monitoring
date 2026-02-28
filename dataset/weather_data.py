@@ -18,7 +18,7 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 # Output directory (relative to project root)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "dataset")
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "bahir_dar_mango_dataset.csv")
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "bahir_dar_mango_dataset_numeric.csv")
 
 def fetch_weather():
     url = "https://archive-api.open-meteo.com/v1/archive"
@@ -46,10 +46,11 @@ def process_data(response):
             end=pd.to_datetime(hourly.TimeEnd(), unit="s", utc=True),
             freq=pd.Timedelta(seconds=hourly.Interval()),
             inclusive="left"
-        )
+        ),
+        "temperature": hourly_temperature_2m,
+        "humidity": hourly_relative_humidity_2m,
+        "precipitation": hourly_precipitation
     }
-    hourly_data["temperature"] = hourly_temperature_2m
-    hourly_data["humidity"] = hourly_relative_humidity_2m
 
     df = pd.DataFrame(data=hourly_data)
     # Format timestamp to ISO 8601
@@ -59,39 +60,41 @@ def process_data(response):
 def apply_risk_labels(df):
     """
     Apply risk labels based on seasonal patterns and relaxed thresholds.
-    Seasons in Bahir Dar:
-    - Kiremt (Main Rainy): June - September
-    - Bega (Dry/Cool): October - February
-    - Belg (Small Rain/Flowering): March - May
     """
     temp_timestamps = pd.to_datetime(df["timestamp"])
     months = temp_timestamps.dt.month
     
-    # Define Season column
-    df["season"] = "Bega"  # Default to Dry season (Oct-Jan)
-    df.loc[months.isin([6, 7, 8, 9]), "season"] = "Kiremt"  # Jun-Sep
-    df.loc[months.isin([2, 3, 4, 5]), "season"] = "Belg"    # Feb-May
+    # Define Season column (Numeric mapping: Bega=1, Belg=2, Kiremt=3)
+    df["season"] = 1  # Bega
+    df.loc[months.isin([6, 7, 8, 9]), "season"] = 3  # Kiremt
+    df.loc[months.isin([2, 3, 4, 5]), "season"] = 2  # Belg
     
     df["risk_level"] = "Stable"
     
-    # 1. High_Anthracnose_Risk: 18°C–32°C and humidity > 80% over a rolling 4-hour window
-    # Primarily during Kiremt (Rainy) or Belg (Small Rains)
-    condition_anthracnose = (df["temperature"] >= 18) & (df["temperature"] <= 32) & (df["humidity"] > 80)
+    # --- IMPROVED ANTHRACNOSE LOGIC ---
+    # Triggered by: Rain OR High Humidity (>80%) + Warmth (15°C–32°C)
+    condition_anthracnose = (
+        (df["temperature"] >= 15) & (df["temperature"] <= 32) & 
+        ((df["humidity"] > 80) | (df["precipitation"] > 0.1))
+    )
     
     # Use rolling window of 4 hours
     df["anth_window"] = condition_anthracnose.rolling(window=4, min_periods=4).min()
     
-    # Anthracnose is much more likely in wet seasons
-    wet_season_mask = df["season"].isin(["Kiremt", "Belg"])
+    wet_season_mask = df["season"].isin([3, 2])  # Kiremt, Belg
     df.loc[(df["anth_window"] == 1.0) & wet_season_mask, "risk_level"] = "High_Anthracnose_Risk"
     
-    # 2. High_Mildew_Risk: daytime (06:00–18:00), temperature 15°C–27°C and humidity 40%–75%
-    # Predominantly during Belg (flowering) or late Bega
+    # --- IMPROVED MILDEW LOGIC ---
+    # Mildew loves humidity but HATES actual rain (rain washes spores away)
     daytime_mask = (temp_timestamps.dt.hour >= 6) & (temp_timestamps.dt.hour <= 18)
-    condition_mildew = daytime_mask & (df["temperature"] >= 15) & (df["temperature"] <= 27) & (df["humidity"] >= 40) & (df["humidity"] <= 75)
+    condition_mildew = (
+        daytime_mask & 
+        (df["temperature"] >= 15) & (df["temperature"] <= 27) & 
+        (df["humidity"] >= 40) & (df["humidity"] <= 75) &
+        (df["precipitation"] == 0)
+    )
     
-    # If it's Bega or Belg, Mildew is a high threat to flowers
-    mildew_season_mask = df["season"].isin(["Belg", "Bega"])
+    mildew_season_mask = df["season"].isin([2, 1])  # Belg, Bega
     df.loc[condition_mildew & mildew_season_mask, "risk_level"] = "High_Mildew_Risk"
     
     # Clean up temporary columns
