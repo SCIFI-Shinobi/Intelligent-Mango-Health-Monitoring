@@ -207,7 +207,7 @@ void updateDisplay() {
     u8g2.drawStr(0, 46, riskLevel);
 
     // Bottom Amharic UI Action
-    u8g2.setFont(u8g2_font_unifont_t_ethiopic);
+    u8g2.setFont(u8g2_font_unifont_tr);
     u8g2.enableUTF8Print();
     
     // Draw the Label
