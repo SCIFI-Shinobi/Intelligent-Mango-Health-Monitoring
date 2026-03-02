@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <U8g2lib.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
@@ -10,21 +9,37 @@
 #include "Config.h"
 
 // ================= HARDWARE =================
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 DHT dht(DHT_PIN, DHT_TYPE);
 
 // ================= BLE UUIDs (must match Nano) =================
 #define NANO_SERVICE_UUID        "19B10000-E8F2-537E-4F6C-D104768A1214"
 #define CLASSIFICATION_CHAR_UUID "19B10001-E8F2-537E-4F6C-D104768A1214"
 
-// ================= STATE =================
-String currentDisease    = "Unknown";
-float  currentConfidence = 0.0;
-float  currentTemperature = 0.0;
-float  currentHumidity    = 0.0;
-bool   alertActive        = false;
-String riskLevel          = "Evaluating...";
-String recommendation     = "Waiting for data...";
+// ================= STRUCTS & STATE =================
+struct DiseaseProfile {
+    const char* name;
+    float minTemp;
+    float maxTemp;
+    float humidityThreshold;
+    const char* targetedAction;
+    const char* preventiveAction;
+};
+
+const DiseaseProfile profiles[] = {
+    {"Anthracnose", 24.0, 30.0, 80.0, "በፈንገስ ማጥፊያ (Copper) ይርጩ", "የታመሙ ቅርንጫፎችን ያስወግዱ"},
+    {"Powdery Mildew", 10.0, 31.0, 80.0, "ሰልፈር (Sulfur) ያለው መድሃኒት ይርጩ", "አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ"}
+};
+const int NUM_PROFILES = sizeof(profiles) / sizeof(profiles[0]);
+
+char currentDisease[32]  = "Unknown";
+float currentConfidence  = 0.0;
+float currentTemperature = 0.0;
+float currentHumidity    = 0.0;
+bool  alertActive        = false;
+const char* riskLevel      = "Evaluating...";
+const char* recommendation = "Waiting for data...";
+const char* farmerAction   = "ክፍት"; // Default/Unknown
 
 // BLE client objects
 NimBLEClient* pClient = nullptr;
@@ -37,9 +52,7 @@ void sendDataToCloud();
 void parseClassification(const std::string& value);
 
 // ================= BLE NOTIFY CALLBACK =================
-// Called whenever the Nano sends a new classification value
-void notifyCallback(NimBLERemoteCharacteristic* pChar,
-                    uint8_t* pData, size_t length, bool isNotify) {
+void notifyCallback(NimBLERemoteCharacteristic* pChar, uint8_t* pData, size_t length, bool isNotify) {
     std::string value((char*)pData, length);
     Serial.print("BLE Notify received: ");
     Serial.println(value.c_str());
@@ -50,13 +63,15 @@ void notifyCallback(NimBLERemoteCharacteristic* pChar,
 
 // ================= PARSE "DiseaseName,Confidence" =================
 void parseClassification(const std::string& value) {
-    String s = String(value.c_str());
-    int commaIdx = s.indexOf(',');
-    if (commaIdx > 0) {
-        currentDisease    = s.substring(0, commaIdx);
-        currentConfidence = s.substring(commaIdx + 1).toFloat();
+    size_t commaIdx = value.find(',');
+    if (commaIdx != std::string::npos) {
+        std::string disease = value.substr(0, commaIdx);
+        strncpy(currentDisease, disease.c_str(), sizeof(currentDisease) - 1);
+        currentDisease[sizeof(currentDisease) - 1] = '\0';
+        currentConfidence = std::stof(value.substr(commaIdx + 1));
     } else {
-        currentDisease    = s;
+        strncpy(currentDisease, value.c_str(), sizeof(currentDisease) - 1);
+        currentDisease[sizeof(currentDisease) - 1] = '\0';
         currentConfidence = 0.0;
     }
 }
@@ -66,7 +81,7 @@ bool connectToNano() {
     Serial.println("Scanning for MangoHealthMonitor...");
     NimBLEScan* pScan = NimBLEDevice::getScan();
     pScan->setActiveScan(true);
-    NimBLEScanResults results = pScan->start(5, false); // 5-second scan
+    NimBLEScanResults results = pScan->start(5, false);
 
     for (int i = 0; i < results.getCount(); i++) {
         NimBLEAdvertisedDevice device = results.getDevice(i);
@@ -81,16 +96,14 @@ bool connectToNano() {
             }
             Serial.println("Connected to Nano.");
 
-            NimBLERemoteService* pService =
-                pClient->getService(NANO_SERVICE_UUID);
+            NimBLERemoteService* pService = pClient->getService(NANO_SERVICE_UUID);
             if (!pService) {
                 Serial.println("Service not found.");
                 pClient->disconnect();
                 return false;
             }
 
-            NimBLERemoteCharacteristic* pChar =
-                pService->getCharacteristic(CLASSIFICATION_CHAR_UUID);
+            NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(CLASSIFICATION_CHAR_UUID);
             if (!pChar) {
                 Serial.println("Characteristic not found.");
                 pClient->disconnect();
@@ -111,77 +124,103 @@ bool connectToNano() {
 
 // ================= RISK EVALUATION =================
 void evaluateRisk() {
-    riskLevel      = "LOW RISK";
-    recommendation = "Monitor & maintain sanitation.";
-    alertActive    = false;
-
-    if (currentDisease == "Healthy" || currentDisease == "Unknown") {
-        if (currentDisease == "Unknown")
-            recommendation = "Waiting for classification...";
+    // Safety check: ensure temperature and humidity are within valid ranges (0-100)
+    if (currentTemperature < 0.0 || currentTemperature > 100.0 || 
+        currentHumidity < 0.0 || currentHumidity > 100.0) {
+        Serial.println("Warning: Invalid sensor readings detected!");
+        riskLevel = "INVALID";
+        recommendation = "Check sensors";
+        farmerAction = "ሴንሰሩን ይፈትሹ"; // Check/Inspect sensors
+        alertActive = false;
         return;
     }
 
-    bool envFavorable = false;
-
-    if (currentDisease == "Anthracnose") {
-        // High risk: 24°C–30°C AND Humidity > 80%
-        if (currentTemperature >= 24 && currentTemperature <= 30 && currentHumidity > 80)
-            envFavorable = true;
-    } else if (currentDisease == "Powdery Mildew") {
-        // High risk: 10°C–31°C AND Humidity > 80%
-        if (currentTemperature >= 10 && currentTemperature <= 31 && currentHumidity > 80)
-            envFavorable = true;
+    if (strcmp(currentDisease, "Healthy") == 0 || strcmp(currentDisease, "Unknown") == 0) {
+        riskLevel = "LOW RISK";
+        recommendation = (strcmp(currentDisease, "Unknown") == 0) ? "Wait..." : "Monitor Crop";
+        farmerAction = "መደበኛ ክትትልና ጽዳት ያድርጉ"; // General monitoring and sanitation
+        alertActive = false;
+        return;
     }
 
-    if (envFavorable) {
-        riskLevel      = "HIGH RISK";
-        recommendation = "DANGER: Apply fungicides now!";
-        alertActive    = true;
-    } else {
-        riskLevel      = "MEDIUM RISK";
-        recommendation = "Prune branches & improve airflow.";
-        alertActive    = false;
+    const DiseaseProfile* profile = nullptr;
+    for (int i = 0; i < NUM_PROFILES; i++) {
+        if (strcmp(currentDisease, profiles[i].name) == 0) {
+            profile = &profiles[i];
+            break;
+        }
+    }
+
+    if (!profile) {
+        riskLevel = "MEDIUM RISK";
+        recommendation = "Preventive Treatment";
+        farmerAction = "መከላከያ"; // Preventive
+        alertActive = false;
+        return;
+    }
+
+    bool tempSuitable = (currentTemperature >= profile->minTemp && currentTemperature <= profile->maxTemp);
+    bool moistureSuitable = (currentHumidity > profile->humidityThreshold);
+    
+    // High Risk: Both temp AND humidity match disease conditions
+    if (tempSuitable && moistureSuitable) {
+        riskLevel = "HIGH RISK";
+        recommendation = "Targeted Control Action & Alert";
+        farmerAction = profile->targetedAction; // Use targeted action from profile
+        alertActive = true;
+    } 
+    // Medium Risk: Only temp OR humidity matches (one condition suitable)
+    else if (tempSuitable || moistureSuitable) {
+        riskLevel = "MEDIUM RISK";
+        recommendation = "Preventive Treatment";
+        farmerAction = profile->preventiveAction; // Use preventive action from profile
+        alertActive = false;
+    } 
+    // Low Risk: Neither condition matches
+    else {
+        riskLevel = "LOW RISK";
+        recommendation = "Monitoring & Cultural Practices";
+        farmerAction = "መደበኛ ክትትል ያድርጉ"; // General monitoring
+        alertActive = false;
     }
 }
 
 // ================= OLED DISPLAY =================
 void updateDisplay() {
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
+    u8g2.clearBuffer();
+    
+    // Header
+    u8g2.setFont(u8g2_font_ncenB08_tr); 
+    u8g2.drawStr(0, 10, WiFi.status() == WL_CONNECTED ? "WiFi:OK" : "WiFi:--");
+    u8g2.drawStr(60, 10, bleConnected ? "BLE:OK" : "BLE:--");
 
-    // Row 0: Wi-Fi status
-    display.setCursor(0, 0);
-    display.print(WiFi.status() == WL_CONNECTED ? "WiFi:OK" : "WiFi:--");
-    display.print("  BLE:");
-    display.println(bleConnected ? "OK" : "--");
+    // Environment
+    char envBuf[32];
+    snprintf(envBuf, sizeof(envBuf), "T:%.1f C  H:%.0f%%", currentTemperature, currentHumidity);
+    u8g2.drawStr(0, 22, envBuf);
 
-    // Row 1: Environment
-    display.setCursor(0, 10);
-    display.print("T:");
-    display.print(currentTemperature, 1);
-    display.print("C  H:");
-    display.print(currentHumidity, 0);
-    display.println("%");
+    // AI result & Risk
+    char aiBuf[32];
+    snprintf(aiBuf, sizeof(aiBuf), "AI: %s", currentDisease);
+    u8g2.drawStr(0, 34, aiBuf);
+    
+    u8g2.drawStr(0, 46, riskLevel);
 
-    // Row 2: AI result
-    display.setCursor(0, 20);
-    display.print("AI: ");
-    display.println(currentDisease);
+    // Bottom Amharic UI Action
+    u8g2.setFont(u8g2_font_unifont_t_ethiopic);
+    u8g2.enableUTF8Print();
+    
+    // Draw the Label
+    u8g2.setCursor(0, 52);
+    u8g2.print("ርምጃ፦"); 
 
-    // Row 3: Risk level (inverted if HIGH)
-    display.setCursor(0, 32);
-    if (riskLevel == "HIGH RISK") {
-        display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
-    }
-    display.println(riskLevel);
-    display.setTextColor(SSD1306_WHITE);
+    // Draw the Instruction (Moved down slightly to give it its own line if needed)
+    u8g2.setCursor(0, 64); 
+    u8g2.print(farmerAction);
+    
+    u8g2.disableUTF8Print();
 
-    // Row 4: Recommendation
-    display.setCursor(0, 45);
-    display.println(recommendation);
-
-    display.display();
+    u8g2.sendBuffer();
 }
 
 // ================= CLOUD UPLOAD =================
@@ -194,7 +233,7 @@ void sendDataToCloud() {
 
     String json = "{";
     json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
-    json += "\"disease_type\":\"" + currentDisease + "\",";
+    json += "\"disease_type\":\"" + String(currentDisease) + "\",";
     json += "\"confidence_score\":" + String(currentConfidence, 2) + ",";
     json += "\"temperature\":" + String(currentTemperature, 1) + ",";
     json += "\"humidity\":" + String(currentHumidity, 1);
@@ -217,18 +256,13 @@ void setup() {
     // DHT sensor
     dht.begin();
 
-    // OLED
-    if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
-        Serial.println("OLED init failed!");
-        while (1);
-    }
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-    display.println("Mango Monitor");
-    display.println("Starting...");
-    display.display();
+    // U8G2 OLED
+    u8g2.begin();
+    u8g2.clearBuffer();
+    u8g2.setFont(u8g2_font_ncenB08_tr);
+    u8g2.drawStr(0, 20, "Mango Monitor");
+    u8g2.drawStr(0, 35, "Starting...");
+    u8g2.sendBuffer();
 
     // Wi-Fi
     Serial.print("Connecting to Wi-Fi");
@@ -248,15 +282,17 @@ void setup() {
 
 // ================= LOOP =================
 void loop() {
-    // 1. Read DHT22 (local sensor on ESP32)
+    // 1. Read DHT22
     float t = dht.readTemperature();
     float h = dht.readHumidity();
-    if (!isnan(t) && !isnan(h)) {
+    if (isnan(t) || isnan(h)) {
+        Serial.println("DHT Read Failed");
+    } else {
         currentTemperature = t;
         currentHumidity    = h;
     }
 
-    // 2. Maintain BLE connection to Nano
+    // 2. Maintain BLE connection
     if (!bleConnected || (pClient && !pClient->isConnected())) {
         bleConnected = false;
         if (pClient) {
@@ -273,10 +309,10 @@ void loop() {
         digitalWrite(BUZZER_PIN, LOW);
     }
 
-    // 4. Refresh display every loop
+    // 4. Update display
     updateDisplay();
 
-    // 5. Cloud sync every 10 seconds
+    // 5. Cloud sync
     static unsigned long lastSync = 0;
     if (millis() - lastSync > 10000) {
         sendDataToCloud();
