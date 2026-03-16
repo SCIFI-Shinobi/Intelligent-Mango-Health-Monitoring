@@ -26,5 +26,6 @@ venv/
 .env
 .env.*
 
-# Cache
+# Cache / Database
 *.sqlite
+*.db
