@@ -997,6 +997,30 @@ body {
 
 /* ================= LOGS PAGE ================= */
 
+.export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #1c2128;
+  border: 1px solid #30363d;
+  color: #3fb950;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.export-btn:hover {
+  background: rgba(63, 185, 80, 0.1);
+  border-color: #3fb950;
+}
+
+.export-btn i {
+  font-size: 14px;
+}
+
 .logs-page {
   background: #161b22;
   border: 1px solid #30363d;
@@ -1068,27 +1092,77 @@ body {
   padding-left: 9px;
 }
 
-.disease-badge {
-  display: inline-block;
-  padding: 6px 12px;
-  border-radius: 6px;
+.disease-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
   font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
-.disease-badge.healthy {
-  background: rgba(63, 185, 80, 0.15);
+.disease-chip i {
+  font-size: 12px;
+}
+
+.disease-chip.healthy {
+  background: rgba(63, 185, 80, 0.12);
   color: #3fb950;
-  border: 1px solid #3fb950;
+  border: 1px solid rgba(63, 185, 80, 0.3);
 }
 
-.disease-badge.anthracnose,
-.disease-badge.powdery {
-  background: rgba(248, 81, 73, 0.15);
+.disease-chip.anthracnose {
+  background: rgba(248, 81, 73, 0.12);
   color: #f85149;
-  border: 1px solid #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.disease-chip.mildew {
+  background: rgba(210, 153, 34, 0.12);
+  color: #d29922;
+  border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.confidence-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.confidence-bar {
+  width: 60px;
+  height: 6px;
+  background: #1c2128;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.confidence-fill.healthy {
+  background: #3fb950;
+}
+
+.confidence-fill.anthracnose {
+  background: #f85149;
+}
+
+.confidence-fill.mildew {
+  background: #d29922;
+}
+
+.confidence-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1d9;
+  min-width: 42px;
 }
 
 .pagination {

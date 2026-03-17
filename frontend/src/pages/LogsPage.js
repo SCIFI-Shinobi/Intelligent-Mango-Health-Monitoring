@@ -1,14 +1,29 @@
 import React, { useState } from 'react';
 import { useAPI } from '../hooks/useAPI';
 import { formatDateEAT } from '../utils/formatTime';
+import { exportDetectionLogs } from '../utils/exportCSV';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function LogsPage() {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const [page, setPage] = useState(1);
   const limit = 10;
 
   const { data, loading, error } = useAPI(`/detection/history?page=${page}&limit=${limit}`);
+  const { data: allData } = useAPI('/detection/history?page=1&limit=1000');
+
+  const handleExport = () => {
+    if (!allData || !allData.data) return;
+    const headers = [
+      t('logs', 'timestamp'),
+      t('logs', 'diseaseClass'),
+      t('logs', 'confidence'),
+      t('logs', 'temperature'),
+      t('logs', 'humidity'),
+      t('logs', 'precipitation')
+    ];
+    exportDetectionLogs(allData.data, headers);
+  };
 
   const handleNextPage = () => {
     if (data && page < data.total_pages) setPage(page + 1);
@@ -22,6 +37,12 @@ export default function LogsPage() {
     <div className="logs-page">
       <div className="section-header">
         <span className="section-title">{t('logs', 'title')}</span>
+        {data && data.data && data.data.length > 0 && (
+          <button className="export-btn" onClick={handleExport}>
+            <i className="fa-solid fa-file-csv"></i>
+            {t('logs', 'exportCSV')}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -45,22 +66,41 @@ export default function LogsPage() {
                   <th>{t('logs', 'confidence')}</th>
                   <th>{t('logs', 'temperature')}</th>
                   <th>{t('logs', 'humidity')}</th>
+                  <th>{t('logs', 'precipitation')}</th>
                 </tr>
               </thead>
               <tbody>
-                {data.data.map((detection, index) => (
-                  <tr key={index}>
-                    <td>{formatDateEAT(detection.timestamp)}</td>
-                    <td>
-                      <span className={`disease-badge ${detection.disease_type.toLowerCase()}`}>
-                        {detection.disease_type}
-                      </span>
-                    </td>
-                    <td>{(detection.confidence_score * 100).toFixed(1)}%</td>
-                    <td>{detection.temperature ? `${detection.temperature.toFixed(1)}°C` : 'N/A'}</td>
-                    <td>{detection.humidity ? `${detection.humidity.toFixed(1)}%` : 'N/A'}</td>
-                  </tr>
-                ))}
+                {data.data.map((detection, index) => {
+                  const dtype = (detection.disease_type || '').toLowerCase();
+                  const isHealthy = dtype === 'healthy';
+                  const badgeClass = isHealthy ? 'healthy' : dtype.includes('powdery') ? 'mildew' : 'anthracnose';
+                  const diseaseKey = isHealthy ? 'healthy' : dtype.includes('powdery') ? 'powderyMildew' : 'anthracnose';
+                  return (
+                    <tr key={index}>
+                      <td>{formatDateEAT(detection.timestamp, lang)}</td>
+                      <td>
+                        <span className={`disease-chip ${badgeClass}`}>
+                          <i className={`fa-solid ${isHealthy ? 'fa-shield-halved' : 'fa-virus'}`}></i>
+                          {t('disease', diseaseKey)}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="confidence-cell">
+                          <div className="confidence-bar">
+                            <div
+                              className={`confidence-fill ${badgeClass}`}
+                              style={{ width: `${(detection.confidence_score * 100).toFixed(0)}%` }}
+                            ></div>
+                          </div>
+                          <span className="confidence-text">{(detection.confidence_score * 100).toFixed(1)}%</span>
+                        </div>
+                      </td>
+                      <td>{detection.temperature ? `${detection.temperature.toFixed(1)}°C` : 'N/A'}</td>
+                      <td>{detection.humidity ? `${detection.humidity.toFixed(1)}%` : 'N/A'}</td>
+                      <td>{detection.precipitation != null ? `${detection.precipitation.toFixed(1)} mm` : 'N/A'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

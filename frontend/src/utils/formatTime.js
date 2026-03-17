@@ -1,28 +1,38 @@
 /**
  * Format time utilities for Ethiopian local time (EAT, UTC+3)
+ * All functions accept an optional `lang` parameter ('en' or 'am')
  */
 
-export function formatTimeAgo(timestamp) {
+const LOCALE_MAP = { en: 'en-US', am: 'am-ET' };
+const getLocale = (lang) => LOCALE_MAP[lang] || LOCALE_MAP.en;
+
+const TIME_AGO = {
+  en: { justNow: 'just now', m: 'm ago', h: 'h ago', d: 'd ago' },
+  am: { justNow: 'አሁን', m: 'ደቂቃ በፊት', h: 'ሰዓት በፊት', d: 'ቀን በፊት' },
+};
+
+export function formatTimeAgo(timestamp, lang = 'en') {
   if (!timestamp) return 'N/A';
 
   const date = new Date(timestamp);
   const now = new Date();
-  const diff = now - date; // milliseconds
+  const diff = now - date;
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
-  if (seconds < 60) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
+  const labels = TIME_AGO[lang] || TIME_AGO.en;
 
-  // For older times, show formatted date
-  return formatDateEAT(date);
+  if (seconds < 60) return labels.justNow;
+  if (minutes < 60) return `${minutes} ${labels.m}`;
+  if (hours < 24) return `${hours} ${labels.h}`;
+  if (days < 7) return `${days} ${labels.d}`;
+
+  return formatDateEAT(date, lang);
 }
 
-export function formatDateEAT(date) {
+export function formatDateEAT(date, lang = 'en') {
   if (!date) return 'N/A';
 
   const d = new Date(date);
@@ -31,13 +41,13 @@ export function formatDateEAT(date) {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'Africa/Addis_Ababa' // EAT timezone
+    timeZone: 'Africa/Addis_Ababa'
   };
 
-  return d.toLocaleString('en-US', options);
+  return d.toLocaleString(getLocale(lang), options);
 }
 
-export function formatDateFullEAT(date) {
+export function formatDateFullEAT(date, lang = 'en') {
   if (!date) return 'N/A';
 
   const d = new Date(date);
@@ -51,7 +61,7 @@ export function formatDateFullEAT(date) {
     timeZone: 'Africa/Addis_Ababa'
   };
 
-  return d.toLocaleString('en-US', options);
+  return d.toLocaleString(getLocale(lang), options);
 }
 
 export function calculateTrend(currentValue, previousValue) {

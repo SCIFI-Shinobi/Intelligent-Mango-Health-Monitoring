@@ -9,7 +9,7 @@ const DISEASE_NAMES = {
 };
 
 export default function DiseaseStatusCard({ detection, loading }) {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
 
   if (loading) {
     return (
@@ -49,7 +49,7 @@ export default function DiseaseStatusCard({ detection, loading }) {
 
       <div className="status-timestamp">
         <span className="label">{t('disease', 'lastScan')}</span>
-        <span className="time">{formatTimeAgo(detection.timestamp)}</span>
+        <span className="time">{formatTimeAgo(detection.timestamp, lang)}</span>
       </div>
     </div>
   );

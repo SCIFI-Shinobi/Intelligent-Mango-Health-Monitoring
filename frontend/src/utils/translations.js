@@ -105,11 +105,13 @@ const translations = {
     confidence: { en: 'Confidence', am: 'እምነት' },
     temperature: { en: 'Temperature', am: 'ሙቀት' },
     humidity: { en: 'Humidity', am: 'እርጥበት' },
+    precipitation: { en: 'Precipitation', am: 'ዝናብ' },
     previous: { en: '← Previous', am: '← ቀዳሚ' },
     next: { en: 'Next →', am: 'ቀጣይ →' },
     pageOf: { en: 'Page', am: 'ገጽ' },
     of: { en: 'of', am: 'ከ' },
     total: { en: 'total', am: 'ጠቅላላ' },
+    exportCSV: { en: 'Export CSV', am: 'CSV አውርድ' },
   },
 
   // ---- Settings Page ----
