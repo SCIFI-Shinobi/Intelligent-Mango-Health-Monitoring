@@ -1,5 +1,4 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import MobileNav from '../components/MobileNav';
@@ -18,10 +17,8 @@ import { useLanguage } from '../context/LanguageContext';
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 export default function Dashboard() {
-  const { logout } = useContext(AuthContext);
+  const { token } = useContext(AuthContext);
   const { t } = useLanguage();
-  const navigate = useNavigate();
-  const token = localStorage.getItem('token');
 
   // Tab state
   const [activeTab, setActiveTab] = useState('home');
@@ -62,11 +59,12 @@ export default function Dashboard() {
           });
         }
         if (incoming.temperature !== undefined) {
-          setSensorLatest({
+          setSensorLatest((prev) => ({
             temperature: incoming.temperature,
             humidity: incoming.humidity,
+            precipitation: incoming.precipitation ?? prev?.precipitation ?? 0,
             timestamp: new Date().toISOString()
-          });
+          }));
         }
       } catch (e) {
         console.error('WebSocket message error:', e);
@@ -135,11 +133,6 @@ export default function Dashboard() {
       if (ws.current) ws.current.close();
     };
   }, [token]);
-
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-  };
 
   // Get window size for responsive behavior
   const [isDesktop, setIsDesktop] = useState(window.innerWidth > 1024);
@@ -218,7 +211,7 @@ export default function Dashboard() {
   if (error && !detection) {
     return (
       <div className="dashboard">
-        <Navbar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} />
+        <Navbar activeTab={activeTab} onTabChange={setActiveTab} />
         <div className="error-message">
           <p>{t('common', 'errorLoading')}: {error}</p>
           <button onClick={() => window.location.reload()}>{t('common', 'retry')}</button>
@@ -230,7 +223,7 @@ export default function Dashboard() {
   return (
     <div className="dashboard">
       {/* Navbar */}
-      <Navbar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} />
+      <Navbar activeTab={activeTab} onTabChange={setActiveTab} />
 
       {/* Main Content */}
       <div className="dashboard-wrapper">

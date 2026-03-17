@@ -2,10 +2,14 @@
     "name": "edge-impulse-sdk",
     "version": "1.0.0",
     "build": {
+        "flags": "-Ilib/edge-impulse-sdk",
+        "srcDir": ".",
         "srcFilter": [
-            "+<*>",
-            "-<porting/>",
-            "+<porting/arduino/>"
+            "+<**/*.c>",
+            "+<**/*.cpp>",
+            "+<**/*.cc>",
+            "-<porting/**>",
+            "+<porting/arduino/**>"
         ]
     }
 }

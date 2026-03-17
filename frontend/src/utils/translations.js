@@ -33,6 +33,32 @@ const translations = {
     invalidCredentials: { en: 'Invalid credentials', am: 'የተሳሳተ መረጃ' },
   },
 
+  // ---- User Profile ----
+  profile: {
+    title: { en: 'Your Profile', am: 'የእርስዎ መገለጫ' },
+    viewProfile: { en: 'View Profile', am: 'መገለጫ ይመልከቱ' },
+    editProfile: { en: 'Edit Profile', am: 'መገለጫ አርትዕ' },
+    displayName: { en: 'Display Name', am: 'የማሳያ ስም' },
+    enterDisplayName: { en: 'Enter your display name', am: 'የማሳያ ስምዎን ያስገቡ' },
+    saveProfile: { en: 'Save Profile', am: 'መገለጫ አስቀምጥ' },
+    profileSaved: { en: 'Profile saved successfully', am: 'መገለጫ በተሳካ ሁኔታ ተቀምጧል' },
+    saveFailed: { en: 'Failed to save profile', am: 'መገለጫ ማስቀመጥ አልተሳካም' },
+    noEmail: { en: 'No email set', am: 'ኢሜይል አልተዘጋጀም' },
+    clickToUpload: { en: 'Click to upload photo', am: 'ፎቶ ለመጫን ይጫኑ' },
+    invalidImageType: { en: 'Please select an image file', am: 'እባክዎ የምስል ፋይል ይምረጡ' },
+    imageTooLarge: { en: 'Image must be less than 1MB', am: 'ምስሉ ከ1MB በታች መሆን አለበት' },
+    changePassword: { en: 'Change Password', am: 'የይለፍ ቃል ይቀይሩ' },
+    currentPassword: { en: 'Current Password', am: 'አሁን ያለው የይለፍ ቃል' },
+    newPassword: { en: 'New Password', am: 'አዲስ የይለፍ ቃል' },
+    confirmPassword: { en: 'Confirm Password', am: 'የይለፍ ቃል ያረጋግጡ' },
+    updatePassword: { en: 'Update Password', am: 'የይለፍ ቃል አዘምን' },
+    passwordChanged: { en: 'Password changed successfully', am: 'የይለፍ ቃል በተሳካ ሁኔታ ተቀይሯል' },
+    passwordChangeFailed: { en: 'Failed to change password', am: 'የይለፍ ቃል መቀየር አልተሳካም' },
+    passwordMismatch: { en: 'Passwords do not match', am: 'የይለፍ ቃሎች አይዛመዱም' },
+    passwordTooShort: { en: 'Password must be at least 6 characters', am: 'የይለፍ ቃል ቢያንስ 6 ቁምፊዎች መሆን አለበት' },
+    usernameCannotChange: { en: 'Username cannot be changed', am: 'የተጠቃሚ ስም መቀየር አይቻልም' },
+  },
+
   // ---- Disease Status Card ----
   disease: {
     healthStatus: { en: 'Health Status', am: 'የጤና ሁኔታ' },
@@ -123,6 +149,8 @@ const translations = {
     maxHumidity: { en: 'Maximum Humidity (%)', am: 'ከፍተኛ እርጥበት (%)' },
     notifications: { en: 'Notifications', am: 'ማሳወቂያዎች' },
     enablePush: { en: 'Enable Push Notifications', am: 'ማሳወቂያዎችን አንቃ' },
+    confidenceThreshold: { en: 'Disease Alert Confidence Threshold', am: 'የበሽታ ማንቂያ እምነት ወሰን' },
+    confidenceHint: { en: 'Only notify when disease detection confidence exceeds this level', am: 'የበሽታ ግኝት እምነት ከዚህ ደረጃ ሲበልጥ ብቻ አሳውቅ' },
     systemInfo: { en: 'System Information', am: 'የስርዓት መረጃ' },
     deviceId: { en: 'Device ID:', am: 'የመሳሪያ ኮድ:' },
     firmware: { en: 'Firmware Version:', am: 'የስርዓት ስሪት:' },

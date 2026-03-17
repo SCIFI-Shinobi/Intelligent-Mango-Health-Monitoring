@@ -23,6 +23,13 @@
 #define SCREEN_HEIGHT 64
 #define OLED_I2C_ADDR 0x3C
 
+// Rain Sensor (FC-37 / YL-83)
+// Analog output: rain intensity (lower value = more rain)
+// Digital output: rain detected threshold (HIGH = no rain, LOW = rain)
+#define RAIN_SENSOR_ANALOG_PIN  34
+#define RAIN_SENSOR_DIGITAL_PIN 35
+#define RAIN_INTENSITY_THRESHOLD 2000  // Below this = raining (0-4095 range on ESP32)
+
 // ================= LOGIC & THRESHOLDS =================
 // Alert duration in milliseconds
 #define ALERT_DURATION_MS 5000

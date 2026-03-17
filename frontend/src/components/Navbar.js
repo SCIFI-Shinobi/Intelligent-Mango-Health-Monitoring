@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import MangoLeafLogo from './MangoLeafLogo';
+import ProfileDropdown from './ProfileDropdown';
 import { formatTimeAgo } from '../utils/formatTime';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -10,6 +11,7 @@ const NOTIF_ICONS = {
   sensor_warning: 'fa-temperature-high',
   recommendation: 'fa-lightbulb',
   system: 'fa-circle-info',
+  forecast_alert: 'fa-cloud-sun',
 };
 
 const NOTIF_COLORS = {
@@ -17,9 +19,10 @@ const NOTIF_COLORS = {
   sensor_warning: '#d29922',
   recommendation: '#2f81f7',
   system: '#8b949e',
+  forecast_alert: '#a371f7',
 };
 
-export default function Navbar({ activeTab, onTabChange, onLogout }) {
+export default function Navbar({ activeTab, onTabChange }) {
   const { lang, switchLang, t } = useLanguage();
   const [showPanel, setShowPanel] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -187,9 +190,7 @@ export default function Navbar({ activeTab, onTabChange, onLogout }) {
           </div>
         )}
 
-        <button className="secondary-btn" onClick={onLogout} title={t('nav', 'logout')}>
-          {t('nav', 'logout')}
-        </button>
+        <ProfileDropdown />
       </div>
     </div>
   );

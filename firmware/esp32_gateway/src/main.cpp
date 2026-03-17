@@ -36,6 +36,8 @@ char currentDisease[32]  = "Unknown";
 float currentConfidence  = 0.0;
 float currentTemperature = 0.0;
 float currentHumidity    = 0.0;
+int   currentRainValue   = 4095;  // Analog rain sensor (4095 = dry, 0 = heavy rain)
+bool  currentIsRaining   = false; // Digital rain sensor
 bool  alertActive        = false;
 const char* riskLevel      = "Evaluating...";
 const char* recommendation = "Waiting for data...";
@@ -161,26 +163,41 @@ void evaluateRisk() {
 
     bool tempSuitable = (currentTemperature >= profile->minTemp && currentTemperature <= profile->maxTemp);
     bool moistureSuitable = (currentHumidity > profile->humidityThreshold);
+    bool isRaining = currentIsRaining || (currentRainValue < RAIN_INTENSITY_THRESHOLD);
     
-    // High Risk: Both temp AND humidity match disease conditions
+    // High Risk: Both temp AND humidity match disease conditions, or rain boosts risk
     if (tempSuitable && moistureSuitable) {
         riskLevel = "HIGH RISK";
         recommendation = "Targeted Control Action & Alert";
-        farmerAction = profile->targetedAction; // Use targeted action from profile
+        farmerAction = profile->targetedAction;
         alertActive = true;
-    } 
-    // Medium Risk: Only temp OR humidity matches (one condition suitable)
+    }
+    // Rain + one other factor = elevated risk
+    else if (isRaining && (tempSuitable || moistureSuitable)) {
+        riskLevel = "HIGH RISK";
+        recommendation = "Rain + conditions favor disease";
+        farmerAction = profile->targetedAction;
+        alertActive = true;
+    }
+    // Medium Risk: Only temp OR humidity matches
     else if (tempSuitable || moistureSuitable) {
         riskLevel = "MEDIUM RISK";
         recommendation = "Preventive Treatment";
-        farmerAction = profile->preventiveAction; // Use preventive action from profile
+        farmerAction = profile->preventiveAction;
         alertActive = false;
-    } 
+    }
+    // Rain alone with disease detected = medium risk
+    else if (isRaining) {
+        riskLevel = "MEDIUM RISK";
+        recommendation = "Rain detected - monitor closely";
+        farmerAction = profile->preventiveAction;
+        alertActive = false;
+    }
     // Low Risk: Neither condition matches
     else {
         riskLevel = "LOW RISK";
         recommendation = "Monitoring & Cultural Practices";
-        farmerAction = "መደበኛ ክትትል ያድርጉ"; // General monitoring
+        farmerAction = "መደበኛ ክትትል ያድርጉ";
         alertActive = false;
     }
 }
@@ -196,7 +213,8 @@ void updateDisplay() {
 
     // Environment
     char envBuf[32];
-    snprintf(envBuf, sizeof(envBuf), "T:%.1f C  H:%.0f%%", currentTemperature, currentHumidity);
+    snprintf(envBuf, sizeof(envBuf), "T:%.1fC H:%.0f%% %s", currentTemperature, currentHumidity,
+             currentIsRaining ? "Rain" : "Dry");
     u8g2.drawStr(0, 22, envBuf);
 
     // AI result & Risk
@@ -236,7 +254,9 @@ void sendDataToCloud() {
     json += "\"disease_type\":\"" + String(currentDisease) + "\",";
     json += "\"confidence_score\":" + String(currentConfidence, 2) + ",";
     json += "\"temperature\":" + String(currentTemperature, 1) + ",";
-    json += "\"humidity\":" + String(currentHumidity, 1);
+    json += "\"humidity\":" + String(currentHumidity, 1) + ",";
+    json += "\"rainfall\":" + String(currentRainValue) + ",";
+    json += "\"is_raining\":" + String(currentIsRaining ? "true" : "false");
     json += "}";
 
     int code = http.POST(json);
@@ -252,6 +272,10 @@ void setup() {
     // Buzzer
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
+
+    // Rain sensor
+    pinMode(RAIN_SENSOR_DIGITAL_PIN, INPUT);
+    // RAIN_SENSOR_ANALOG_PIN (GPIO 34) is input-only, no pinMode needed
 
     // DHT sensor
     dht.begin();
@@ -291,6 +315,13 @@ void loop() {
         currentTemperature = t;
         currentHumidity    = h;
     }
+
+    // 1b. Read rain sensor
+    currentRainValue = analogRead(RAIN_SENSOR_ANALOG_PIN);
+    currentIsRaining = (digitalRead(RAIN_SENSOR_DIGITAL_PIN) == LOW); // LOW = rain detected
+    Serial.print("Rain: ");
+    Serial.print(currentRainValue);
+    Serial.println(currentIsRaining ? " (Raining)" : " (Dry)");
 
     // 2. Maintain BLE connection
     if (!bleConnected || (pClient && !pClient->isConnected())) {

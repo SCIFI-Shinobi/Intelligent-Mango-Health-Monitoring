@@ -133,3 +133,24 @@ class DeviceOut(BaseModel):
 
 class DeviceRegister(BaseModel):
     device_name: Optional[str] = "ESP32 Gateway"
+
+# User Profile schemas
+class UserProfileOut(BaseModel):
+    id: int
+    username: str
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class UserProfileUpdate(BaseModel):
+    display_name: Optional[str] = None
+    email: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str

@@ -2,8 +2,11 @@
     "name": "tflite-model",
     "version": "1.0.0",
     "build": {
+        "flags": "-Ilib/tflite-model",
+        "srcDir": ".",
         "srcFilter": [
-            "+<*>"
+            "+<**/*.c>",
+            "+<**/*.cpp>"
         ]
     }
 }

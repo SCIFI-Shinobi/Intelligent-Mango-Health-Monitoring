@@ -92,6 +92,7 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
     return {
         "temperature": sensor.temperature,
         "humidity": sensor.humidity,
+        "precipitation": sensor.precipitation,
         "moisture": round(sensor.humidity * 0.85, 1),  # derived estimate
         "health": health,
         "stability": stability,
@@ -180,6 +181,65 @@ async def login(username: str = Form(...), password: str = Form(...), db: Sessio
         return {"access_token": token, "token_type": "bearer"}
 
     raise HTTPException(status_code=401, detail="Invalid credentials")
+
+
+# ------------------------------------------------------------------
+# Profile endpoints
+# ------------------------------------------------------------------
+
+@app.get("/me", response_model=schemas.UserProfileOut)
+def get_current_user_profile(user: models.User = Depends(get_current_user)):
+    """Get the current user's profile information."""
+    return user
+
+@app.put("/profile", response_model=schemas.UserProfileOut)
+def update_profile(
+    payload: schemas.UserProfileUpdate,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user)
+):
+    """Update the current user's profile."""
+    # Check email uniqueness if changing
+    if payload.email and payload.email != user.email:
+        existing = db.query(models.User).filter(
+            models.User.email == payload.email,
+            models.User.id != user.id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already in use")
+
+    # Update fields
+    if payload.display_name is not None:
+        user.display_name = payload.display_name
+    if payload.email is not None:
+        user.email = payload.email
+    if payload.avatar_url is not None:
+        user.avatar_url = payload.avatar_url
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+@app.put("/profile/password")
+def change_password(
+    payload: schemas.PasswordChangeRequest,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user)
+):
+    """Change the current user's password."""
+    # Verify current password
+    if not verify_password(payload.current_password, user.password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    # Validate new password
+    if len(payload.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+
+    # Update password
+    user.password = get_password_hash(payload.new_password)
+    db.commit()
+
+    return {"status": "success", "message": "Password updated successfully"}
 
 
 # ------------------------------------------------------------------
@@ -583,8 +643,9 @@ async def data_ingest(
         else:
             users = db.query(models.User).all()
         for user in users:
-            # Disease alert
-            if payload.disease_type != "Healthy":
+            # Disease alert - only if confidence exceeds threshold (default 70%)
+            CONFIDENCE_THRESHOLD = 0.70
+            if payload.disease_type != "Healthy" and payload.confidence_score >= CONFIDENCE_THRESHOLD:
                 db.add(models.Notification(
                     user_id=user.id,
                     title=f"{payload.disease_type} Detected",
@@ -607,6 +668,25 @@ async def data_ingest(
                     message=f"Humidity at {payload.humidity}%. High humidity increases fungal disease risk.",
                     type="sensor_warning"
                 ))
+            # Forecast alerts for high-risk predictions
+            if payload.forecast:
+                for i, day_forecast in enumerate(payload.forecast):
+                    risk_level = day_forecast.get("risk_level", "Stable")
+                    if "High" in risk_level:
+                        # Determine disease type from risk level
+                        if "Anthracnose" in risk_level:
+                            risk_name = "Anthracnose"
+                        elif "Mildew" in risk_level:
+                            risk_name = "Powdery Mildew"
+                        else:
+                            risk_name = "Disease"
+                        day_num = i + 1
+                        db.add(models.Notification(
+                            user_id=user.id,
+                            title=f"Day {day_num} Forecast: High {risk_name} Risk",
+                            message=f"Forecast predicts high {risk_name.lower()} risk in {day_num} day(s). Consider preventive measures.",
+                            type="forecast_alert"
+                        ))
         db.commit()
 
         return {

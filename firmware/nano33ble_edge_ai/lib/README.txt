@@ -1,7 +1,7 @@
 
-# Edge Impulse library for Mango-Plant-Health-TinyML
+# Edge Impulse library for mango health
 
-This is a C++ library that lets you run the impulse for "Mango-Plant-Health-TinyML" (https://studio.edgeimpulse.com/studio/799262) on any device. It consists of the Edge Impulse inferencing SDK - with implementations of both processing and learning blocks - and your model. You will need to include this library in your project to run your impulse locally.
+This is a C++ library that lets you run the impulse for "mango health" (https://studio.edgeimpulse.com/studio/908354) on any device. It consists of the Edge Impulse inferencing SDK - with implementations of both processing and learning blocks - and your model. You will need to include this library in your project to run your impulse locally.
 
 ## Getting Started
 

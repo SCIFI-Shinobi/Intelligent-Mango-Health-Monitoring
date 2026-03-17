@@ -9,7 +9,10 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True, nullable=True)
     password = Column(String)
+    display_name = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)  # Base64 data URL or external URL
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 class Notification(Base):
     __tablename__ = "notifications"
@@ -18,7 +21,7 @@ class Notification(Base):
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
     title = Column(String)
     message = Column(String)
-    type = Column(String)  # 'disease_alert', 'sensor_warning', 'recommendation', 'system'
+    type = Column(String)  # 'disease_alert', 'sensor_warning', 'recommendation', 'system', 'forecast_alert'
     read = Column(Boolean, default=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 

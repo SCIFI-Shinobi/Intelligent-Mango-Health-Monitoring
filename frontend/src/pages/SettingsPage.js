@@ -9,11 +9,8 @@ export default function SettingsPage() {
   const token = localStorage.getItem('token');
 
   const [settings, setSettings] = useState({
-    minTemperature: 15,
-    maxTemperature: 35,
-    minHumidity: 30,
-    maxHumidity: 90,
-    enableNotifications: true
+    enableNotifications: true,
+    diseaseConfidenceThreshold: 70
   });
 
   const [saved, setSaved] = useState(false);
@@ -54,10 +51,7 @@ export default function SettingsPage() {
   }, [fetchDevices]);
 
   const handleSettingChange = (key, value) => {
-    setSettings((prev) => ({
-      ...prev,
-      [key]: typeof value === 'string' ? parseFloat(value) : value
-    }));
+    setSettings((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
   };
 
@@ -210,43 +204,6 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Alert Thresholds */}
-      <div className="settings-section">
-        <h3 className="settings-title">{t('settings', 'alertThresholds')}</h3>
-
-        <div className="setting-group">
-          <label>{t('settings', 'minTemp')}</label>
-          <div className="slider-container">
-            <input type="range" min="-10" max="50" value={settings.minTemperature} onChange={(e) => handleSettingChange('minTemperature', e.target.value)} className="slider" />
-            <span className="value-display">{settings.minTemperature}°C</span>
-          </div>
-        </div>
-
-        <div className="setting-group">
-          <label>{t('settings', 'maxTemp')}</label>
-          <div className="slider-container">
-            <input type="range" min="-10" max="50" value={settings.maxTemperature} onChange={(e) => handleSettingChange('maxTemperature', e.target.value)} className="slider" />
-            <span className="value-display">{settings.maxTemperature}°C</span>
-          </div>
-        </div>
-
-        <div className="setting-group">
-          <label>{t('settings', 'minHumidity')}</label>
-          <div className="slider-container">
-            <input type="range" min="0" max="100" value={settings.minHumidity} onChange={(e) => handleSettingChange('minHumidity', e.target.value)} className="slider" />
-            <span className="value-display">{settings.minHumidity}%</span>
-          </div>
-        </div>
-
-        <div className="setting-group">
-          <label>{t('settings', 'maxHumidity')}</label>
-          <div className="slider-container">
-            <input type="range" min="0" max="100" value={settings.maxHumidity} onChange={(e) => handleSettingChange('maxHumidity', e.target.value)} className="slider" />
-            <span className="value-display">{settings.maxHumidity}%</span>
-          </div>
-        </div>
-      </div>
-
       {/* Notifications */}
       <div className="settings-section">
         <h3 className="settings-title">{t('settings', 'notifications')}</h3>
@@ -255,6 +212,36 @@ export default function SettingsPage() {
             <input type="checkbox" checked={settings.enableNotifications} onChange={(e) => handleSettingChange('enableNotifications', e.target.checked)} className="checkbox" />
             <span>{t('settings', 'enablePush')}</span>
           </label>
+        </div>
+
+        <div className="setting-group">
+          <label>{t('settings', 'confidenceThreshold')}</label>
+          <p className="setting-hint">{t('settings', 'confidenceHint')}</p>
+          <div className="slider-container">
+            <input
+              type="range"
+              min="50"
+              max="95"
+              step="1"
+              value={settings.diseaseConfidenceThreshold}
+              onChange={(e) => handleSettingChange('diseaseConfidenceThreshold', parseInt(e.target.value))}
+              className="slider"
+            />
+            <div className="threshold-input-wrapper">
+              <input
+                type="number"
+                min="50"
+                max="95"
+                value={settings.diseaseConfidenceThreshold}
+                onChange={(e) => {
+                  const val = Math.min(95, Math.max(50, parseInt(e.target.value) || 50));
+                  handleSettingChange('diseaseConfidenceThreshold', val);
+                }}
+                className="threshold-input"
+              />
+              <span className="threshold-percent">%</span>
+            </div>
+          </div>
         </div>
       </div>
 
