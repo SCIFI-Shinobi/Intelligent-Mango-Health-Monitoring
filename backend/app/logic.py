@@ -14,7 +14,8 @@ def evaluate_risk(disease_type: str, temperature: float, humidity: float) -> dic
     if disease_type == "Healthy":
         return {
             "risk_level": "LOW RISK",
-            "recommendation": "Monitor & maintain sanitation."
+            "recommendation": "Monitor & maintain sanitation.",
+            "recommendation_am": "መደበኛ ክትትልና ጽዳት ያድርጉ"
         }
 
     env_favorable = False
@@ -27,20 +28,113 @@ def evaluate_risk(disease_type: str, temperature: float, humidity: float) -> dic
             env_favorable = True
 
     if env_favorable:
+        action = TARGETED_ACTIONS.get(disease_type, {})
         return {
             "risk_level": "HIGH RISK",
-            "recommendation": "DANGER: Apply targeted fungicides immediately."
+            "recommendation": action.get("en", "Apply targeted fungicides immediately."),
+            "recommendation_am": action.get("am", "ወዲያውኑ መድሃኒት ይርጩ")
         }
     elif disease_type in ("Anthracnose", "Powdery Mildew"):
+        action = PREVENTIVE_ACTIONS.get(disease_type, {})
         return {
             "risk_level": "MEDIUM RISK",
-            "recommendation": "Prune affected branches & improve airflow."
+            "recommendation": action.get("en", "Prune affected branches & improve airflow."),
+            "recommendation_am": action.get("am", "የታመሙ ቅርንጫፎችን ያስወግዱ")
         }
     else:
         return {
             "risk_level": "LOW RISK",
-            "recommendation": "Monitor & maintain sanitation."
+            "recommendation": "Monitor & maintain sanitation.",
+            "recommendation_am": "መደበኛ ክትትል ያድርጉ"
         }
+
+
+# ---- Recommendation data matching ESP32 firmware DiseaseProfile ----
+
+TARGETED_ACTIONS = {
+    "Anthracnose": {
+        "en": "Spray with copper-based fungicide (Copper oxychloride). High risk conditions detected.",
+        "am": "በፈንገስ ማጥፊያ (Copper) ይርጩ"
+    },
+    "Powdery Mildew": {
+        "en": "Spray with sulfur-based medicine (Sulfur fungicide). High risk conditions detected.",
+        "am": "ሰልፈር (Sulfur) ያለው መድሃኒት ይርጩ"
+    },
+}
+
+PREVENTIVE_ACTIONS = {
+    "Anthracnose": {
+        "en": "Remove diseased branches and improve air circulation.",
+        "am": "የታመሙ ቅርንጫፎችን ያስወግዱ"
+    },
+    "Powdery Mildew": {
+        "en": "Prune tree branches to allow air circulation.",
+        "am": "አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ"
+    },
+}
+
+# Full bilingual recommendation set matching firmware
+RECOMMENDATIONS = {
+    "Anthracnose": {
+        "en": {
+            "title": "Anthracnose Detected",
+            "targeted": "Spray with copper-based fungicide (Copper oxychloride). Ensure trees are well-ventilated.",
+            "preventive": "Remove diseased branches and improve air circulation around trees.",
+        },
+        "am": {
+            "title": "አንትራክኖዝ ተገኝቷል",
+            "targeted": "በፈንገስ ማጥፊያ (Copper) ይርጩ",
+            "preventive": "የታመሙ ቅርንጫፎችን ያስወግዱ",
+        },
+    },
+    "Powdery Mildew": {
+        "en": {
+            "title": "Powdery Mildew Detected",
+            "targeted": "Apply sulfur-based fungicide or neem oil. Reduce humidity and remove infected leaves.",
+            "preventive": "Prune tree branches to allow air circulation.",
+        },
+        "am": {
+            "title": "የዱቄት ሻጋታ ተገኝቷል",
+            "targeted": "ሰልፈር (Sulfur) ያለው መድሃኒት ይርጩ",
+            "preventive": "አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ",
+        },
+    },
+    "Healthy": {
+        "en": {
+            "title": "Plant Healthy",
+            "targeted": "Continue regular monitoring and maintenance.",
+            "preventive": "Maintain field sanitation and monitor regularly.",
+        },
+        "am": {
+            "title": "ተክሉ ጤናማ ነው",
+            "targeted": "መደበኛ ክትትልና ጽዳት ያድርጉ",
+            "preventive": "መደበኛ ክትትል ያድርጉ",
+        },
+    },
+}
+
+GENERAL_TIPS = [
+    {
+        "en": {"title": "Monitor Humidity", "description": "Humidity levels above 80% increase fungal disease risk. Ensure proper ventilation around mango trees."},
+        "am": {"title": "እርጥበት ይከታተሉ", "description": "ከ80% በላይ እርጥበት የፈንገስ በሽታ ስጋትን ይጨምራል። በማንጎ ዛፎች ዙሪያ በቂ አየር ማናፈሻ ይኑር።"},
+    },
+    {
+        "en": {"title": "Pruning Needed", "description": "Remove overcrowded branches to improve airflow and reduce fungal risk."},
+        "am": {"title": "መግረዝ ያስፈልጋል", "description": "የአየር ዝውውርን ለማሻሻልና የፈንገስ ስጋትን ለመቀነስ የተጨናነቁ ቅርንጫፎችን ያስወግዱ።"},
+    },
+    {
+        "en": {"title": "Fungicide Application", "description": "Apply copper-based fungicide as a preventive measure during the wet season."},
+        "am": {"title": "የፈንገስ ማጥፊያ መርጨት", "description": "በዝናብ ወቅት እንደ መከላከያ በፈንገስ ማጥፊያ (Copper) ይርጩ።"},
+    },
+    {
+        "en": {"title": "Soil Drainage", "description": "Check soil drainage around tree bases. Waterlogging increases disease risk."},
+        "am": {"title": "የአፈር ፍሳሽ", "description": "በዛፉ ስር ያለውን የአፈር ፍሳሽ ይፈትሹ። የውሃ መቆር የበሽታ ስጋትን ይጨምራል።"},
+    },
+    {
+        "en": {"title": "Harvest Timing", "description": "Consider early harvest if disease pressure increases to save unaffected fruits."},
+        "am": {"title": "የመከር ጊዜ", "description": "የበሽታ ጫና ከጨመረ ያልተጎዱ ፍራፍሬዎችን ለማዳን ቀድሞ መሰብሰብ ያስቡ።"},
+    },
+]
 
 
 def get_recommendation(disease_type: str) -> str:
@@ -48,12 +142,24 @@ def get_recommendation(disease_type: str) -> str:
     Returns a simple text recommendation based on the detected disease.
     Kept for backwards compatibility.
     """
-    recommendations = {
-        "Anthracnose": "Trim affected branches and apply copper-based fungicides. Ensure good air circulation.",
-        "Powdery Mildew": "Apply sulfur-based fungicides or neem oil. Reduce humidity and remove infected leaves.",
-        "Healthy": "Plant appears healthy. Continue regular monitoring and maintenance."
+    rec = RECOMMENDATIONS.get(disease_type, RECOMMENDATIONS["Healthy"])
+    return rec["en"]["targeted"]
+
+
+def get_recommendation_bilingual(disease_type: str, risk_level: str) -> dict:
+    """
+    Returns bilingual (English + Amharic) recommendation matching ESP32 firmware.
+    """
+    rec = RECOMMENDATIONS.get(disease_type, RECOMMENDATIONS["Healthy"])
+    is_high = "HIGH" in risk_level.upper()
+    action_key = "targeted" if is_high else "preventive"
+
+    return {
+        "title_en": rec["en"]["title"],
+        "title_am": rec["am"]["title"],
+        "description_en": rec["en"][action_key],
+        "description_am": rec["am"][action_key],
     }
-    return recommendations.get(disease_type, "No specific recommendation available.")
 
 
 def get_forecast_alert(temperature: float, humidity: float) -> str:

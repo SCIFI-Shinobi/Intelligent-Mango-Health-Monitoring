@@ -7,3 +7,5 @@ python-dotenv
 python-jose[cryptography]
 python-multipart
 websockets
+passlib[bcrypt]
+bcrypt==4.0.1

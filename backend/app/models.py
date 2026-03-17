@@ -1,6 +1,26 @@
-from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from .database import Base
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=True)
+    password = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    title = Column(String)
+    message = Column(String)
+    type = Column(String)  # 'disease_alert', 'sensor_warning', 'recommendation', 'system'
+    read = Column(Boolean, default=False)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 class SensorData(Base):
     __tablename__ = "sensor_data"
@@ -9,6 +29,7 @@ class SensorData(Base):
     device_id = Column(String, index=True)
     temperature = Column(Float)
     humidity = Column(Float)
+    precipitation = Column(Float, nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 class InferenceResult(Base):
@@ -19,3 +40,34 @@ class InferenceResult(Base):
     disease_type = Column(String)  # 'Healthy', 'Anthracnose', 'Powdery Mildew'
     confidence_score = Column(Float)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class Recommendation(Base):
+    __tablename__ = "recommendations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String, index=True)
+    title = Column(String)
+    description = Column(String)
+    title_am = Column(String, nullable=True)
+    description_am = Column(String, nullable=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class ForecastContext(Base):
+    __tablename__ = "forecast_contexts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String, index=True)
+    season = Column(String)  # 'dry', 'wet', 'belg'
+    precipitation = Column(Float)  # mm
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class ForecastData(Base):
+    __tablename__ = "forecast_data"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String, index=True)
+    day_index = Column(Integer)  # 0-4 for Day 1-5
+    risk_level = Column(String)  # 'Stable', 'High_Anthracnose_Risk', 'High_Mildew_Risk'
+    forecast_date = Column(DateTime(timezone=True))
+    context_id = Column(Integer, ForeignKey("forecast_contexts.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

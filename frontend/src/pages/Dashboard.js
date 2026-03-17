@@ -1,237 +1,254 @@
-import React, { useEffect, useState, useRef, useContext } from "react";
-import "../App.css";
-import StabilityChart from "../components/StabilityChart";
-import { exportToCSV } from "../utils/exportCSV";
-import { AuthContext } from "../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import React, { useContext, useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
+import Navbar from '../components/Navbar';
+import MobileNav from '../components/MobileNav';
+import DiseaseStatusCard from '../components/DiseaseStatusCard';
+import SensorCard from '../components/SensorCard';
+import HistoricalChart from '../components/HistoricalChart';
+import RecommendationsPanel from '../components/RecommendationsPanel';
+import ForecastCard from '../components/ForecastCard';
+import LogsPage from './LogsPage';
+import SettingsPage from './SettingsPage';
+import AnalysisPage from './AnalysisPage';
+import { useAPI } from '../hooks/useAPI';
+import { useTimeRange } from '../hooks/useTimeRange';
+import { useLanguage } from '../context/LanguageContext';
 
-function Dashboard() {
-  const [data, setData] = useState({
-    temperature: 0,
-    humidity: 0,
-    moisture: 0,
-    health: "OPTIMAL",
-    stabilityHistory: [],
-    recommendations: []
-  });
-  const [connected, setConnected] = useState(false);
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
+export default function Dashboard() {
+  const { logout } = useContext(AuthContext);
+  const { t } = useLanguage();
+  const navigate = useNavigate();
+  const token = localStorage.getItem('token');
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState('home');
+
+  // Data states
+  const [detection, setDetection] = useState(null);
+  const [sensorLatest, setSensorLatest] = useState(null);
+  const [sensorHistory, setSensorHistory] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
+  const [forecast, setForecast] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Time range management
+  const { range, setRange, data: historyData, loading: historyLoading } = useTimeRange();
+
+  // WebSocket for real-time updates
   const ws = useRef(null);
   const reconnectTimer = useRef(null);
-  const { logout } = useContext(AuthContext);
-  const navigate = useNavigate();
-  const token = localStorage.getItem("token");
 
   const connectWebSocket = () => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
 
-    ws.current = new WebSocket(`ws://localhost:8000/ws?token=${token}`);
+    ws.current = new WebSocket(`ws://${API_BASE_URL.replace(/^https?:\/\//, '')}/ws?token=${token}`);
 
-    ws.current.onopen = () => setConnected(true);
-
-    ws.current.onmessage = (event) => {
-      const incoming = JSON.parse(event.data);
-      setData(prev => ({
-        ...prev,
-        ...incoming,
-        stabilityHistory: [
-          ...prev.stabilityHistory.slice(-6),
-          incoming.stability
-        ]
-      }));
+    ws.current.onopen = () => {
+      console.log('WebSocket connected');
     };
 
-    ws.current.onerror = () => {
-      console.log("WebSocket error");
+    ws.current.onmessage = (event) => {
+      try {
+        const incoming = JSON.parse(event.data);
+        if (incoming.disease_type) {
+          setDetection({
+            disease_type: incoming.disease_type,
+            confidence_score: incoming.confidence_score,
+            timestamp: new Date().toISOString()
+          });
+        }
+        if (incoming.temperature !== undefined) {
+          setSensorLatest({
+            temperature: incoming.temperature,
+            humidity: incoming.humidity,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch (e) {
+        console.error('WebSocket message error:', e);
+      }
     };
 
     ws.current.onclose = () => {
-      setConnected(false);
+      console.log('WebSocket closed, reconnecting...');
       reconnectTimer.current = setTimeout(connectWebSocket, 3000);
+    };
+
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
     };
   };
 
+  // Fetch all data on mount and when tab changes
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const headers = {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        };
+
+        // Fetch latest detection
+        const detectionRes = await fetch(`${API_BASE_URL}/detection/latest`, { headers });
+        if (detectionRes.ok) {
+          setDetection(await detectionRes.json());
+        }
+
+        // Fetch latest sensor data
+        const sensorRes = await fetch(`${API_BASE_URL}/sensors/latest`, { headers });
+        if (sensorRes.ok) {
+          setSensorLatest(await sensorRes.json());
+        }
+
+        // Fetch sensor history (will be updated by useTimeRange)
+        setSensorHistory(historyData);
+
+        // Fetch recommendations
+        const recsRes = await fetch(`${API_BASE_URL}/recommendations/latest?limit=5`, { headers });
+        if (recsRes.ok) {
+          const recsData = await recsRes.json();
+          setRecommendations(recsData.data || []);
+        }
+
+        // Fetch forecast
+        const forecastRes = await fetch(`${API_BASE_URL}/forecast/latest`, { headers });
+        if (forecastRes.ok) {
+          setForecast(await forecastRes.json());
+        }
+      } catch (err) {
+        setError(err.message);
+        console.error('Data fetch error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
     connectWebSocket();
+
     return () => {
       clearTimeout(reconnectTimer.current);
       if (ws.current) ws.current.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
-
-  const runScan = async () => {
-    await fetch("http://localhost:8000/run-scan", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-  };
-
-  const exportData = () => {
-    exportToCSV(data.stabilityHistory);
-  };
+  }, [token, historyData]);
 
   const handleLogout = () => {
     logout();
-    navigate("/");
+    navigate('/');
   };
 
-  const healthColor =
-    data.health === "OPTIMAL"
-      ? "green"
-      : data.health === "WARNING"
-      ? "orange"
-      : "red";
+  // Get window size for responsive behavior
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth > 1024);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth > 1024);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Render content based on active tab
+  const renderContent = () => {
+    // Settings, Analysis, Logs work on both desktop and mobile
+    switch (activeTab) {
+      case 'settings':
+      case 'analysis':
+      case 'logs':
+        return (
+          <div className="subpage-wrapper">
+            {activeTab === 'settings' && <SettingsPage />}
+            {activeTab === 'analysis' && <AnalysisPage />}
+            {activeTab === 'logs' && <LogsPage />}
+          </div>
+        );
+
+      case 'home':
+      default:
+        return (
+          <div className="dashboard-content">
+            {/* Top Grid: Disease Status + Sensors */}
+            <div className={isDesktop ? "top-grid" : ""}>
+              <DiseaseStatusCard detection={detection} loading={loading} />
+              <div className={isDesktop ? "sensor-grid-desktop" : "sensor-row"}>
+                <SensorCard
+                  name={t('sensor', 'temperature')}
+                  value={sensorLatest?.temperature?.toFixed(1) || '-'}
+                  unit="°C"
+                  icon="temp"
+                />
+                <SensorCard
+                  name={t('sensor', 'humidity')}
+                  value={sensorLatest?.humidity?.toFixed(1) || '-'}
+                  unit="%"
+                  icon="humidity"
+                />
+                <SensorCard
+                  name={t('sensor', 'precipitation')}
+                  value={sensorLatest?.precipitation != null ? sensorLatest.precipitation.toFixed(1) : '0.0'}
+                  unit="mm"
+                  icon="precip"
+                />
+              </div>
+            </div>
+
+            {/* Chart + Recommendations */}
+            <div className={isDesktop ? "middle-grid" : ""}>
+              <HistoricalChart
+                data={historyData}
+                loading={historyLoading}
+                onRangeChange={setRange}
+                currentRange={range}
+              />
+              <RecommendationsPanel recommendations={recommendations} loading={loading} />
+            </div>
+
+            {/* Forecast */}
+            <ForecastCard forecast={forecast} loading={loading} />
+          </div>
+        );
+    }
+  };
+
+  if (error && !detection) {
+    return (
+      <div className="dashboard">
+        <Navbar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} />
+        <div className="error-message">
+          <p>{t('common', 'errorLoading')}: {error}</p>
+          <button onClick={() => window.location.reload()}>{t('common', 'retry')}</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard">
-      {/* Top Navigation Bar */}
-      <div className="navbar">
-        <div className="navbar-left">
-          <span className="app-title">BASEY</span>
-          <input className="search-bar" placeholder="Search BASEY insights..." />
-        </div>
-        <div className="navbar-right">
-          {!connected && <span style={{color: "#ef4444", fontSize: 13, alignSelf: "center"}}>Reconnecting...</span>}
-          <button className="icon-btn"><i className="fa-solid fa-bell"></i></button>
-          <button className="icon-btn"><i className="fa-solid fa-user"></i></button>
-        </div>
+      {/* Navbar */}
+      <Navbar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} />
+
+      {/* Main Content */}
+      <div className="dashboard-wrapper">
+        {renderContent()}
       </div>
 
-      {/* Breadcrumb */}
-      <div className="breadcrumb">BASEY Terminal &gt; <span className="active">Live Monitoring</span></div>
+      {/* Mobile Navigation (hidden on desktop) */}
+      {!isDesktop && (
+        <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />
+      )}
 
-      {/* Header */}
-      <div className="header">
-        <div></div>
-        <div className="header-buttons">
-          <button className="primary-btn" onClick={runScan}>
-            Run BASEY Scan
-          </button>
-          <button className="secondary-btn" onClick={exportData}>
-            Export Data
-          </button>
-          <button className="secondary-btn" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </div>
-
-      {/* Status Cards */}
-      <div className="top-grid">
-        <div className="metric-card temp">
-          <div className="card-header">
-            <span className="icon temp-icon" />
-            <span>Temperature</span>
-          </div>
-          <div className="card-value">
-            <span className="main-value">{data.temperature}°C</span>
-          </div>
-        </div>
-
-        <div className="metric-card humidity">
-          <div className="card-header">
-            <span className="icon humidity-icon" />
-            <span>Humidity</span>
-          </div>
-          <div className="card-value">
-            <span className="main-value">{data.humidity}%</span>
-          </div>
-        </div>
-
-        <div className="metric-card moisture">
-          <div className="card-header">
-            <span className="icon moisture-icon" />
-            <span>Moisture</span>
-          </div>
-          <div className="card-value">
-            <span className="main-value">{data.moisture}%</span>
-          </div>
-        </div>
-
-        <div className={`health-card ${healthColor}`}>
-          <div className="card-header">
-            <span className="icon health-icon" />
-            <span>BASEY Health Status</span>
-          </div>
-          <div className="card-value">
-            <span className="main-value">{data.health}</span>
-            <span className="integrity">SYSTEM INTEGRITY</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Chart + Recommendations */}
-      <div className="middle-grid">
-        <div className="chart-container">
-          <div className="section-header">
-            <span>Historical Trends</span>
-            <span className="section-title">BASEY Stability Index</span>
-          </div>
-          <StabilityChart data={data.stabilityHistory} />
-        </div>
-
-        <div className="recommendation-container">
-          <div className="section-header">
-            <span className="section-title">BASEY Recommendations</span>
-            <span className="recommendation-count">{data.recommendations.length} New</span>
-          </div>
-          {data.recommendations.length === 0 && (
-            <div className="recommendation-card">
-              <span className="recommendation-title">No Alerts</span>
-              <span className="recommendation-desc">Run a BASEY Scan or wait for sensor data.</span>
-            </div>
-          )}
-          {data.recommendations.map((rec, index) => (
-            <div key={index} className="recommendation-card">
-              <span className="recommendation-title">{rec.title}</span>
-              <span className="recommendation-desc">{rec.desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Forecast */}
-      <div className="forecast-section">
-        <div className="section-header">
-          <span className="section-title">BASEY Predictive Forecast</span>
-        </div>
-        <span className="forecast-desc">Next 5-day health projection generated by BASEY Intelligence.</span>
-        <div className="forecast-bars">
-          <div className="forecast-bar">
-            <span className="forecast-label">TOMORROW</span>
-            <div className="bar" style={{ height: "92%" }}>92%</div>
-          </div>
-          <div className="forecast-bar">
-            <span className="forecast-label">DAY 2</span>
-            <div className="bar" style={{ height: "96%" }}>96%</div>
-          </div>
-          <div className="forecast-bar">
-            <span className="forecast-label">DAY 3</span>
-            <div className="bar" style={{ height: "88%" }}>88%</div>
-          </div>
-          <div className="forecast-bar danger">
-            <span className="forecast-label">DAY 4</span>
-            <div className="bar" style={{ height: "72%" }}>72%</div>
-          </div>
-          <div className="forecast-bar">
-            <span className="forecast-label">DAY 5</span>
-            <div className="bar" style={{ height: "84%" }}>84%</div>
-          </div>
-        </div>
-        <div className="forecast-legend">
-          <span className="legend predicted">● Predicted</span>
-          <span className="legend historical">● Historical Mean</span>
-        </div>
-      </div>
-
+      {/* Footer */}
       <div className="footer">
-        © 2024 BASEY Health Monitoring Systems. All proprietary data is encrypted and secure.
+        {t('footer', 'text')}
       </div>
     </div>
   );
 }
-
-export default Dashboard;

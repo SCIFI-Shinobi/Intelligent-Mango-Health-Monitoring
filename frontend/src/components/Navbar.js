@@ -1,0 +1,196 @@
+import React, { useState, useEffect, useRef } from 'react';
+import MangoLeafLogo from './MangoLeafLogo';
+import { formatTimeAgo } from '../utils/formatTime';
+import { useLanguage } from '../context/LanguageContext';
+
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
+const NOTIF_ICONS = {
+  disease_alert: 'fa-virus',
+  sensor_warning: 'fa-temperature-high',
+  recommendation: 'fa-lightbulb',
+  system: 'fa-circle-info',
+};
+
+const NOTIF_COLORS = {
+  disease_alert: '#f85149',
+  sensor_warning: '#d29922',
+  recommendation: '#2f81f7',
+  system: '#8b949e',
+};
+
+export default function Navbar({ activeTab, onTabChange, onLogout }) {
+  const { lang, switchLang, t } = useLanguage();
+  const [showPanel, setShowPanel] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const panelRef = useRef(null);
+  const token = localStorage.getItem('token');
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data.data || []);
+        setUnreadCount(data.unread_count || 0);
+      }
+    } catch (e) {
+      console.error('Failed to fetch notifications:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) {
+        setShowPanel(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleBellClick = () => {
+    setShowPanel(!showPanel);
+    if (!showPanel) fetchNotifications();
+  };
+
+  const markAsRead = async (id) => {
+    try {
+      await fetch(`${API_BASE_URL}/notifications/${id}/read`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      );
+      setUnreadCount((c) => Math.max(0, c - 1));
+    } catch (e) {
+      console.error('Failed to mark notification as read:', e);
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/notifications/read-all`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (e) {
+      console.error('Failed to mark all as read:', e);
+    }
+  };
+
+  const navLinks = [
+    { id: 'home', labelKey: 'dashboard', icon: 'fa-house' },
+    { id: 'analysis', labelKey: 'analysis', icon: 'fa-chart-line' },
+    { id: 'logs', labelKey: 'logs', icon: 'fa-clipboard-list' },
+    { id: 'settings', labelKey: 'settings', icon: 'fa-sliders' },
+  ];
+
+  return (
+    <div className="navbar">
+      <div className="navbar-left">
+        <MangoLeafLogo size={36} />
+        <span className="app-title">MangoGuard</span>
+      </div>
+
+      <div className="navbar-center">
+        {navLinks.map((link) => (
+          <button
+            key={link.id}
+            className={`nav-link ${activeTab === link.id ? 'active' : ''}`}
+            onClick={() => onTabChange(link.id)}
+          >
+            <i className={`fa-solid ${link.icon}`}></i>
+            <span>{t('nav', link.labelKey)}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="navbar-right" ref={panelRef}>
+        <div className="lang-toggle">
+          <button
+            className={`lang-btn ${lang === 'en' ? 'active' : ''}`}
+            onClick={() => switchLang('en')}
+          >
+            EN
+          </button>
+          <button
+            className={`lang-btn ${lang === 'am' ? 'active' : ''}`}
+            onClick={() => switchLang('am')}
+          >
+            አማ
+          </button>
+        </div>
+
+        <button className="icon-btn notif-bell" onClick={handleBellClick} title={t('nav', 'notifications')}>
+          <i className="fa-solid fa-bell"></i>
+          {unreadCount > 0 && (
+            <span className="notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+          )}
+        </button>
+
+        {showPanel && (
+          <div className="notif-panel">
+            <div className="notif-panel-header">
+              <span className="notif-panel-title">{t('nav', 'notifications')}</span>
+              {unreadCount > 0 && (
+                <button className="notif-mark-all" onClick={markAllRead}>
+                  {t('nav', 'markAllRead')}
+                </button>
+              )}
+            </div>
+
+            <div className="notif-list">
+              {notifications.length === 0 ? (
+                <div className="notif-empty">
+                  <i className="fa-solid fa-bell-slash"></i>
+                  <span>{t('nav', 'noNotifications')}</span>
+                </div>
+              ) : (
+                notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`notif-item ${n.read ? '' : 'unread'}`}
+                    onClick={() => !n.read && markAsRead(n.id)}
+                  >
+                    <div
+                      className="notif-icon-circle"
+                      style={{ background: `${NOTIF_COLORS[n.type] || '#8b949e'}20` }}
+                    >
+                      <i
+                        className={`fa-solid ${NOTIF_ICONS[n.type] || 'fa-circle-info'}`}
+                        style={{ color: NOTIF_COLORS[n.type] || '#8b949e' }}
+                      ></i>
+                    </div>
+                    <div className="notif-content">
+                      <span className="notif-title">{n.title}</span>
+                      <span className="notif-message">{n.message}</span>
+                      <span className="notif-time">{formatTimeAgo(n.timestamp)}</span>
+                    </div>
+                    {!n.read && <span className="notif-unread-dot"></span>}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        <button className="secondary-btn" onClick={onLogout} title={t('nav', 'logout')}>
+          {t('nav', 'logout')}
+        </button>
+      </div>
+    </div>
+  );
+}

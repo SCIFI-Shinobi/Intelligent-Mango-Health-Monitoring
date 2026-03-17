@@ -1,5 +1,5 @@
 export function exportToCSV(data, options = {}) {
-  const filename = options.filename || "basey_data.csv";
+  const filename = options.filename || "mangoguard_data.csv";
 
   // Helper to build CSV text from rows
   const rowsToText = rows => rows.map(r => r.map(cell => {
@@ -27,7 +27,7 @@ export function exportToCSV(data, options = {}) {
       ["Temperature", data.temperature ?? ""],
       ["Humidity", data.humidity ?? ""],
       ["Moisture", data.moisture ?? ""],
-      ["BASEY Health Status", data.healthStatus ?? ""],
+      ["MangoGuard Health Status", data.healthStatus ?? ""],
       ["System Integrity", data.systemIntegrity ?? ""],
     ];
     csvSections.push(rowsToText(summaryRows));
