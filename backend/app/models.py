@@ -71,3 +71,13 @@ class ForecastData(Base):
     forecast_date = Column(DateTime(timezone=True))
     context_id = Column(Integer, ForeignKey("forecast_contexts.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Device(Base):
+    __tablename__ = "devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    device_name = Column(String, default="ESP32 Gateway")
+    api_key = Column(String, unique=True, index=True)
+    last_seen = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

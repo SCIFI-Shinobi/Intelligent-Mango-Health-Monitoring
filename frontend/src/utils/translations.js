@@ -129,6 +129,18 @@ const translations = {
     lastSync: { en: 'Last Sync (EAT):', am: 'የመጨረሻ ማመሳሰል:' },
     save: { en: 'Save Settings', am: 'ቅንብሮችን አስቀምጥ' },
     saved: { en: 'Settings saved', am: 'ቅንብሮች ተቀምጠዋል' },
+    deviceConnection: { en: 'Device Connection', am: 'የመሳሪያ ግንኙነት' },
+    apiEndpoint: { en: 'API Endpoint', am: 'API መንገድ' },
+    noDevices: { en: 'No devices connected yet. Generate a key to link your ESP32.', am: 'ምንም መሳሪያ አልተገናኘም። ESP32ን ለማገናኘት ቁልፍ ይፍጠሩ።' },
+    generateKey: { en: 'Generate Device Key', am: 'የመሳሪያ ቁልፍ ፍጠር' },
+    deviceApiKey: { en: 'Device API Key', am: 'የመሳሪያ API ቁልፍ' },
+    connected: { en: 'Connected', am: 'ተገናኝቷል' },
+    neverConnected: { en: 'Never connected', am: 'በጭራሽ አልተገናኘም' },
+    lastSeen: { en: 'Last seen', am: 'ለመጨረሻ ጊዜ የታየ' },
+    esp32Config: { en: 'ESP32 Config.h', am: 'ESP32 Config.h' },
+    regenerateKey: { en: 'Regenerate', am: 'ቁልፍ ቀይር' },
+    removeDevice: { en: 'Remove', am: 'አስወግድ' },
+    addAnother: { en: 'Add Another Device', am: 'ሌላ መሳሪያ ጨምር' },
   },
 
   // ---- Analysis Page ----

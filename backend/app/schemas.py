@@ -118,3 +118,16 @@ class NotificationOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class DeviceOut(BaseModel):
+    id: int
+    device_name: str
+    api_key: str
+    last_seen: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class DeviceRegister(BaseModel):
+    device_name: Optional[str] = "ESP32 Gateway"

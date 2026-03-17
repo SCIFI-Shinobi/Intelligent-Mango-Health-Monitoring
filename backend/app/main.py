@@ -1,11 +1,13 @@
 import os
 import json
 import asyncio
+import secrets
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
 
@@ -478,15 +480,30 @@ def get_recommendations_latest(db: Session = Depends(get_db), limit: int = 5):
 
 
 @app.post("/data/ingest")
-async def data_ingest(payload: schemas.DataIngestPayload, db: Session = Depends(get_db)):
+async def data_ingest(
+    payload: schemas.DataIngestPayload,
+    db: Session = Depends(get_db),
+    x_device_key: Optional[str] = Header(None)
+):
     """
-    Combined endpoint for ESP32 to submit all data in one call:
-    - Sensor data (temperature, humidity)
-    - Disease detection result
-    - Forecast context (season, precipitation)
-    - Recommendations (optional)
-    - Forecast data (optional)
+    Combined endpoint for ESP32 to submit all data in one call.
+    Authenticates via X-Device-Key header (links data to device owner).
+    Falls back to no-auth for backward compatibility.
     """
+    owner_id = None
+
+    # Authenticate via device API key
+    if x_device_key:
+        device = db.query(models.Device).filter(
+            models.Device.api_key == x_device_key
+        ).first()
+        if not device:
+            raise HTTPException(status_code=401, detail="Invalid device API key")
+        # Update last_seen
+        device.last_seen = datetime.utcnow()
+        owner_id = device.user_id
+        db.commit()
+
     try:
         # 1. Store sensor data
         new_sensor = models.SensorData(
@@ -556,8 +573,12 @@ async def data_ingest(payload: schemas.DataIngestPayload, db: Session = Depends(
 
         await broadcast_to_clients(dashboard_payload)
 
-        # 6. Auto-generate notifications for all users
-        users = db.query(models.User).all()
+        # 6. Auto-generate notifications for device owner (or all users if no key)
+        if owner_id:
+            users = [db.query(models.User).filter(models.User.id == owner_id).first()]
+            users = [u for u in users if u]
+        else:
+            users = db.query(models.User).all()
         for user in users:
             # Disease alert
             if payload.disease_type != "Healthy":
@@ -648,5 +669,96 @@ def mark_all_read(db: Session = Depends(get_db), user: models.User = Depends(get
         models.Notification.user_id == user.id,
         models.Notification.read == False
     ).update({"read": True})
+    db.commit()
+    return {"status": "ok"}
+
+
+# ------------------------------------------------------------------
+# Device management endpoints
+# ------------------------------------------------------------------
+
+@app.post("/devices/register")
+def register_device(
+    payload: schemas.DeviceRegister,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user)
+):
+    """Register a new device and generate an API key for the current user."""
+    api_key = f"mg_{secrets.token_hex(24)}"
+    new_device = models.Device(
+        user_id=user.id,
+        device_name=payload.device_name or "ESP32 Gateway",
+        api_key=api_key
+    )
+    db.add(new_device)
+    db.commit()
+    db.refresh(new_device)
+    return {
+        "id": new_device.id,
+        "device_name": new_device.device_name,
+        "api_key": new_device.api_key,
+        "last_seen": new_device.last_seen,
+        "created_at": new_device.created_at
+    }
+
+
+@app.get("/devices/my")
+def get_my_devices(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Get all devices for the current user."""
+    devices = db.query(models.Device).filter(
+        models.Device.user_id == user.id
+    ).order_by(models.Device.created_at.desc()).all()
+    return {
+        "data": [
+            {
+                "id": d.id,
+                "device_name": d.device_name,
+                "api_key": d.api_key,
+                "last_seen": d.last_seen,
+                "created_at": d.created_at
+            } for d in devices
+        ]
+    }
+
+
+@app.post("/devices/{device_id}/regenerate-key")
+def regenerate_device_key(
+    device_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user)
+):
+    """Regenerate the API key for a device."""
+    device = db.query(models.Device).filter(
+        models.Device.id == device_id,
+        models.Device.user_id == user.id
+    ).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    device.api_key = f"mg_{secrets.token_hex(24)}"
+    db.commit()
+    db.refresh(device)
+    return {
+        "id": device.id,
+        "device_name": device.device_name,
+        "api_key": device.api_key,
+        "last_seen": device.last_seen,
+        "created_at": device.created_at
+    }
+
+
+@app.delete("/devices/{device_id}")
+def delete_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user)
+):
+    """Delete a device."""
+    device = db.query(models.Device).filter(
+        models.Device.id == device_id,
+        models.Device.user_id == user.id
+    ).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    db.delete(device)
     db.commit()
     return {"status": "ok"}
