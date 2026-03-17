@@ -55,6 +55,8 @@ class SensorLatest(BaseModel):
 class RecommendationBase(BaseModel):
     title: str
     description: str
+    title_am: Optional[str] = None
+    description_am: Optional[str] = None
 
 class Recommendation(RecommendationBase):
     id: int

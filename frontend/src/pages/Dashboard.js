@@ -29,7 +29,6 @@ export default function Dashboard() {
   // Data states
   const [detection, setDetection] = useState(null);
   const [sensorLatest, setSensorLatest] = useState(null);
-  const [sensorHistory, setSensorHistory] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -45,7 +44,8 @@ export default function Dashboard() {
   const connectWebSocket = () => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
 
-    ws.current = new WebSocket(`ws://${API_BASE_URL.replace(/^https?:\/\//, '')}/ws?token=${token}`);
+    const wsProto = API_BASE_URL.startsWith('https://') ? 'wss://' : 'ws://';
+    ws.current = new WebSocket(`${wsProto}${API_BASE_URL.replace(/^https?:\/\//, '')}/ws?token=${token}`);
 
     ws.current.onopen = () => {
       console.log('WebSocket connected');
@@ -107,9 +107,6 @@ export default function Dashboard() {
           setSensorLatest(await sensorRes.json());
         }
 
-        // Fetch sensor history (will be updated by useTimeRange)
-        setSensorHistory(historyData);
-
         // Fetch recommendations
         const recsRes = await fetch(`${API_BASE_URL}/recommendations/latest?limit=5`, { headers });
         if (recsRes.ok) {
@@ -137,7 +134,7 @@ export default function Dashboard() {
       clearTimeout(reconnectTimer.current);
       if (ws.current) ws.current.close();
     };
-  }, [token, historyData]);
+  }, [token]);
 
   const handleLogout = () => {
     logout();

@@ -388,7 +388,8 @@ def get_detection_history(page: int = 1, limit: int = 10, db: Session = Depends(
             "confidence_score": detection.confidence_score,
             "timestamp": detection.timestamp,
             "temperature": sensor.temperature if sensor else None,
-            "humidity": sensor.humidity if sensor else None
+            "humidity": sensor.humidity if sensor else None,
+            "precipitation": sensor.precipitation if sensor else None
         })
 
     return {
@@ -541,7 +542,9 @@ async def data_ingest(
                 new_rec = models.Recommendation(
                     device_id=payload.device_id,
                     title=rec.title,
-                    description=rec.description
+                    description=rec.description,
+                    title_am=rec.title_am,
+                    description_am=rec.description_am
                 )
                 db.add(new_rec)
             db.commit()

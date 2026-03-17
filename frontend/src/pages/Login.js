@@ -30,7 +30,8 @@ function Login() {
         formData.append("email", email);
       }
 
-      const response = await fetch(`http://localhost:8000${endpoint}`, {
+      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: formData

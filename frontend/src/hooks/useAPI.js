@@ -26,8 +26,13 @@ export function useAPI(endpoint, options = {}) {
           method: options.method || 'GET',
           headers,
           body: options.body ? JSON.stringify(options.body) : undefined,
-          ...options
         });
+
+        if (response.status === 401) {
+          localStorage.removeItem('token');
+          window.location.href = '/';
+          return;
+        }
 
         if (!response.ok) {
           throw new Error(`API Error: ${response.statusText}`);
@@ -72,8 +77,13 @@ export async function apiCall(endpoint, options = {}) {
     method: options.method || 'GET',
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
-    ...options
   });
+
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    window.location.href = '/';
+    return;
+  }
 
   if (!response.ok) {
     throw new Error(`API Error: ${response.statusText}`);

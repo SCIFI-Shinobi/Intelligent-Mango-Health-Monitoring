@@ -1,5 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useAPI } from './useAPI';
+
+const EMPTY_ARRAY = [];
 
 export function useTimeRange() {
   const [range, setRange] = useState('24h');
@@ -13,10 +15,12 @@ export function useTimeRange() {
     }
   }, []);
 
+  const historyData = useMemo(() => data?.data || EMPTY_ARRAY, [data]);
+
   return {
     range,
     setRange: handleRangeChange,
-    data: data?.data || [],
+    data: historyData,
     loading,
     error
   };
