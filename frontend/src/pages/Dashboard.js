@@ -38,6 +38,16 @@ export default function Dashboard() {
   const ws = useRef(null);
   const reconnectTimer = useRef(null);
 
+  const parseTimestampMs = (ts) => {
+    if (!ts) return NaN;
+    const direct = Date.parse(ts);
+    if (!Number.isNaN(direct)) return direct;
+
+    // Handle ISO timestamps with >3 fractional second digits (e.g. .184693)
+    const normalized = String(ts).replace(/(\.\d{3})\d+/, '$1');
+    return Date.parse(normalized);
+  };
+
   const connectWebSocket = () => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
 
@@ -52,10 +62,28 @@ export default function Dashboard() {
       try {
         const incoming = JSON.parse(event.data);
         if (incoming.disease_type) {
-          setDetection({
-            disease_type: incoming.disease_type,
-            confidence_score: incoming.confidence_score,
-            timestamp: new Date().toISOString()
+          setDetection((prev) => {
+            const incomingType = incoming.disease_type;
+            const nowIso = new Date().toISOString();
+
+            // Keep a recent disease visible instead of instantly replacing it with
+            // a routine "Healthy" websocket update.
+            if (incomingType === 'Healthy' && prev && prev.disease_type && prev.disease_type !== 'Healthy') {
+              const prevTs = parseTimestampMs(prev.timestamp);
+              const ageMs = Date.now() - prevTs;
+              const keepDiseaseWindowMs = 24 * 60 * 60 * 1000;
+
+              // If timestamp parse fails, keep disease state to avoid false overwrite.
+              if (Number.isNaN(prevTs) || (ageMs >= 0 && ageMs < keepDiseaseWindowMs)) {
+                return prev;
+              }
+            }
+
+            return {
+              disease_type: incomingType,
+              confidence_score: incoming.confidence_score,
+              timestamp: nowIso,
+            };
           });
         }
         if (incoming.temperature !== undefined) {

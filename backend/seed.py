@@ -111,33 +111,38 @@ def seed():
             db.commit()
             print(f"    Added {len(detections)} detection results")
 
-        # --- 4. Recommendations (bilingual: English + Amharic) ---
+        # --- 4. Recommendations (bilingual: English + Amharic) - Disease-specific from ESP32 ---
         rec_count = db.query(Recommendation).count()
         if rec_count > 3:
             print(f"[=] Recommendations already has {rec_count} records, skipping")
         else:
             print("[+] Seeding recommendations...")
             recs = [
-                ("Monitor Humidity",
-                 "Humidity levels above 80% increase fungal disease risk. Ensure proper ventilation around mango trees.",
-                 "እርጥበት ይከታተሉ",
-                 "ከ80% በላይ እርጥበት የፈንገስ በሽታ ስጋትን ይጨምራል። በማንጎ ዛፎች ዙሪያ በቂ አየር ማናፈሻ ይኑር።"),
-                ("Pruning Needed",
-                 "Remove overcrowded branches to improve airflow and reduce fungal risk.",
-                 "መግረዝ ያስፈልጋል",
-                 "የአየር ዝውውርን ለማሻሻልና የፈንገስ ስጋትን ለመቀነስ የተጨናነቁ ቅርንጫፎችን ያስወግዱ።"),
-                ("Fungicide Application",
-                 "Apply copper-based fungicide as a preventive measure during the wet season.",
-                 "የፈንገስ ማጥፊያ መርጨት",
-                 "በዝናብ ወቅት እንደ መከላከያ በፈንገስ ማጥፊያ (Copper) ይርጩ።"),
-                ("Soil Drainage",
-                 "Check soil drainage around tree bases. Waterlogging increases disease risk.",
-                 "የአፈር ፍሳሽ",
-                 "በዛፉ ስር ያለውን የአፈር ፍሳሽ ይፈትሹ። የውሃ መቆር የበሽታ ስጋትን ይጨምራል።"),
-                ("Harvest Timing",
-                 "Consider early harvest if disease pressure increases to save unaffected fruits.",
-                 "የመከር ጊዜ",
-                 "የበሽታ ጫና ከጨመረ ያልተጎዱ ፍራፍሬዎችን ለማዳን ቀድሞ መሰብሰብ ያስቡ።"),
+                # Anthracnose - Targeted (High Risk)
+                ("Anthracnose Control",
+                 "Spray with copper-based fungicide (Copper oxychloride). High risk conditions detected.",
+                 "አንትራክኖዝ ቆጣቢ",
+                 "በፈንገስ ማጥፊያ (Copper) ይርጩ"),
+                # Anthracnose - Preventive (Medium Risk)
+                ("Anthracnose Prevention",
+                 "Remove diseased branches and improve air circulation around trees.",
+                 "አንትራክኖዝ መከላከያ",
+                 "የታመሙ ቅርንጫፎችን ያስወግዱ"),
+                # Powdery Mildew - Targeted (High Risk)
+                ("Powdery Mildew Control",
+                 "Spray with sulfur-based medicine (Sulfur fungicide). High risk conditions detected.",
+                 "የዱቄት ሻጋታ ቆጣቢ",
+                 "ሰልፈር (Sulfur) ያለው መድሃኒት ይርጩ"),
+                # Powdery Mildew - Preventive (Medium Risk)
+                ("Powdery Mildew Prevention",
+                 "Prune tree branches to allow air circulation.",
+                 "የዱቄት ሻጋታ መከላከያ",
+                 "አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ"),
+                # Healthy/General
+                ("Regular Monitoring",
+                 "Continue regular monitoring and maintenance. Monitor humidity and pruning.",
+                 "መደበኛ ክትትል",
+                 "መደበኛ ክትትልና ጽዳት ያድርጉ"),
             ]
             for i, (title, desc, title_am, desc_am) in enumerate(recs):
                 db.add(Recommendation(

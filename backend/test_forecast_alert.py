@@ -2,9 +2,38 @@
 Demo script for defense day - simulates ESP32 sending forecast with anomaly detection
 Run: python test_forecast_alert.py
 """
-import requests
+import json
+
+try:
+    import requests  # type: ignore
+except ImportError:
+    requests = None
+    import urllib.request
+    import urllib.error
 
 API_URL = "http://localhost:8000/data/ingest"
+
+
+def post_json(url, payload):
+    """POST JSON using requests when available, else urllib (no extra dependency)."""
+    if requests is not None:
+        response = requests.post(url, json=payload, timeout=10)
+        return response.status_code, response.text
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            return response.getcode(), body
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        return e.code, body
 
 # Simulate ESP32 detecting high disease risk in forecast
 payload = {
@@ -30,14 +59,14 @@ print(f"Forecast includes HIGH RISK on Day 2 (Anthracnose) and Day 3 (Mildew)")
 print("-" * 50)
 
 try:
-    response = requests.post(API_URL, json=payload)
-    if response.status_code == 200:
+    status_code, response_text = post_json(API_URL, payload)
+    if status_code == 200:
         print("SUCCESS! Forecast alerts created.")
         print("Check the notification bell in the dashboard!")
-        print(response.json())
+        print(response_text)
     else:
-        print(f"Error: {response.status_code}")
-        print(response.text)
+        print(f"Error: {status_code}")
+        print(response_text)
 except Exception as e:
     print(f"Connection error: {e}")
     print("Make sure the backend is running!")

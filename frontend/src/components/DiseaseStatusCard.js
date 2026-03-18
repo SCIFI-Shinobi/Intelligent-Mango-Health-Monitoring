@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatTimeAgo } from '../utils/formatTime';
 import { useLanguage } from '../context/LanguageContext';
+import { MdShield, MdCheckCircle } from 'react-icons/md';
 
 const DISEASE_NAMES = {
   'Healthy': 'healthy',
@@ -21,35 +22,49 @@ export default function DiseaseStatusCard({ detection, loading }) {
 
   if (!detection) {
     return (
-      <div className="disease-status-card">
-        <span className="section-title">{t('disease', 'diseaseStatus')}</span>
-        <span className="status-text">{t('disease', 'noData')}</span>
+      <div className="disease-status-card status-unknown">
+        <div className="disease-status-content">
+          <div className="disease-status-text">
+            <h4 className="disease-status-title">{t('disease', 'healthStatus')}</h4>
+            <p className="disease-status-value">{t('disease', 'noData')}</p>
+          </div>
+          <div className="disease-status-icon-wrapper">
+            <MdShield className="disease-status-icon" />
+            <div className="disease-status-checkmark">
+              <MdCheckCircle className="disease-checkmark-icon" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   const isHealthy = detection.disease_type === 'Healthy';
-  const statusColor = isHealthy ? 'green' : 'red';
+  const statusClass = isHealthy ? 'optimal' : 'warning';
   const diseaseKey = DISEASE_NAMES[detection.disease_type];
   const diseaseName = diseaseKey ? t('disease', diseaseKey) : detection.disease_type;
 
   return (
-    <div className={`disease-status-card status-${statusColor}`}>
-      <div className="status-header">
-        <div className={`status-dot ${statusColor}`}></div>
-        <span className="section-title">{t('disease', 'healthStatus')}</span>
-      </div>
-
-      <div className="disease-info">
-        <span className="disease-name">{diseaseName}</span>
-        <span className="confidence">
-          {(detection.confidence_score * 100).toFixed(1)}% {t('disease', 'confidence')}
-        </span>
-      </div>
-
-      <div className="status-timestamp">
-        <span className="label">{t('disease', 'lastScan')}</span>
-        <span className="time">{formatTimeAgo(detection.timestamp, lang)}</span>
+    <div className={`disease-status-card status-${statusClass}`}>
+      <div className="disease-status-content">
+        <div className="disease-status-text">
+          <h4 className="disease-status-title">{t('disease', 'healthStatus')}</h4>
+          <p className="disease-status-value">{diseaseName}</p>
+          <div className="disease-status-details">
+            <span className="confidence">
+              {(detection.confidence_score * 100).toFixed(1)}% {t('disease', 'confidence')}
+            </span>
+            <span className="time-ago">
+              {t('disease', 'lastScan')}: {formatTimeAgo(detection.timestamp, lang)}
+            </span>
+          </div>
+        </div>
+        <div className="disease-status-icon-wrapper">
+          <MdShield className="disease-status-icon" />
+          <div className="disease-status-checkmark">
+            <MdCheckCircle className="disease-checkmark-icon" />
+          </div>
+        </div>
       </div>
     </div>
   );

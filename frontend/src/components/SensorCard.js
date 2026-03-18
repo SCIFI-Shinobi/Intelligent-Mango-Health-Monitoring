@@ -1,5 +1,6 @@
 import React from 'react';
 import { calculateTrend } from '../utils/formatTime';
+import { MdOutlineThermostat, MdOpacity, MdWaterDrop } from 'react-icons/md';
 
 export default function SensorCard({ name, value, unit, previousValue, icon }) {
   const trend = calculateTrend(value, previousValue);
@@ -16,16 +17,48 @@ export default function SensorCard({ name, value, unit, previousValue, icon }) {
     return 'trend-stable';
   };
 
+  const getIcon = () => {
+    switch (icon) {
+      case 'temp':
+        return <MdOutlineThermostat className="sensor-icon-svg temp" />;
+      case 'humidity':
+        return <MdOpacity className="sensor-icon-svg humidity" />;
+      case 'moisture':
+      case 'precip':
+        return <MdWaterDrop className="sensor-icon-svg moisture" />;
+      default:
+        return <MdWaterDrop className="sensor-icon-svg" />;
+    }
+  };
+
+  const getProgressValue = () => {
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(numValue)) return 0;
+    if (icon === 'temp') return Math.min(50, numValue);
+    return Math.min(100, numValue);
+  };
+
   return (
-    <div className="sensor-card">
+    <div className={`sensor-card sensor-card-${icon === 'precip' ? 'moisture' : icon}`}>
       <div className="card-header">
-        <span className={`icon sensor-icon ${icon}`}></span>
+        <div className="sensor-icon-container">
+          {getIcon()}
+        </div>
         <span className="sensor-name">{name}</span>
       </div>
 
       <div className="sensor-value">
         <span className="value">{value}</span>
         <span className="unit">{unit}</span>
+      </div>
+
+      <div className="progress-bar-container">
+        <div className="progress-bar">
+          <div
+            className={`progress-fill progress-fill-${icon === 'precip' ? 'moisture' : icon}`}
+            style={{ width: `${getProgressValue()}%` }}
+          ></div>
+        </div>
       </div>
 
       {previousValue !== undefined && previousValue !== null && (

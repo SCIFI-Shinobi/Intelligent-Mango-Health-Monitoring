@@ -9,6 +9,7 @@ from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import case
 from jose import jwt, JWTError
 
 from . import models, schemas, logic, database
@@ -406,7 +407,24 @@ def get_sensors_history(range: str = "24h", db: Session = Depends(get_db)):
 
 @app.get("/detection/latest", response_model=schemas.DetectionLatest)
 def get_detection_latest(db: Session = Depends(get_db)):
-    """Get the latest disease detection result."""
+    """Get the latest disease detection result (prioritizes disease detections over healthy scans)."""
+    # First try to get the most recent disease detection (non-Healthy) from the last 24 hours
+    recent_cutoff = datetime.utcnow() - timedelta(hours=24)
+    
+    disease_detection = db.query(models.InferenceResult).filter(
+        models.InferenceResult.disease_type != "Healthy",
+        models.InferenceResult.timestamp >= recent_cutoff
+    ).order_by(models.InferenceResult.timestamp.desc()).first()
+    
+    # If a recent disease detection exists, return it
+    if disease_detection:
+        return {
+            "disease_type": disease_detection.disease_type,
+            "confidence_score": disease_detection.confidence_score,
+            "timestamp": disease_detection.timestamp
+        }
+    
+    # Otherwise, fall back to the absolute latest detection (even if Healthy)
     detection = db.query(models.InferenceResult).order_by(models.InferenceResult.timestamp.desc()).first()
     if not detection:
         raise HTTPException(status_code=404, detail="No detection data available")
@@ -419,15 +437,29 @@ def get_detection_latest(db: Session = Depends(get_db)):
 
 
 @app.get("/detection/history")
-def get_detection_history(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
+def get_detection_history(
+    page: int = 1,
+    limit: int = 10,
+    disease_first: bool = False,
+    db: Session = Depends(get_db),
+):
     """
     Get paginated detection history with sensor readings at time of detection.
     """
     skip = (page - 1) * limit
 
-    detections = db.query(models.InferenceResult).order_by(
-        models.InferenceResult.timestamp.desc()
-    ).offset(skip).limit(limit).all()
+    query = db.query(models.InferenceResult)
+
+    if disease_first:
+        # Prioritize non-healthy detections, then newest timestamp.
+        query = query.order_by(
+            case((models.InferenceResult.disease_type == "Healthy", 1), else_=0),
+            models.InferenceResult.timestamp.desc(),
+        )
+    else:
+        query = query.order_by(models.InferenceResult.timestamp.desc())
+
+    detections = query.offset(skip).limit(limit).all()
 
     total = db.query(models.InferenceResult).count()
 

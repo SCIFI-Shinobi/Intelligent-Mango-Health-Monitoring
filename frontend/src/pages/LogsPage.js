@@ -9,8 +9,8 @@ export default function LogsPage() {
   const [page, setPage] = useState(1);
   const limit = 10;
 
-  const { data, loading, error } = useAPI(`/detection/history?page=${page}&limit=${limit}`);
-  const { data: allData } = useAPI('/detection/history?page=1&limit=1000');
+  const { data, loading, error } = useAPI(`/detection/history?page=${page}&limit=${limit}&disease_first=true`);
+  const { data: allData } = useAPI('/detection/history?page=1&limit=1000&disease_first=true');
 
   const handleExport = () => {
     if (!allData || !allData.data) return;
