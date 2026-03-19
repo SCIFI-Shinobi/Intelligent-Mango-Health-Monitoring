@@ -2,7 +2,7 @@ import os
 import json
 import asyncio
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Form, Header
@@ -101,6 +101,7 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
         "confidence_score": inference.confidence_score,
         "risk_level": risk["risk_level"],
         "recommendations": recommendations,
+        "timestamp": inference.timestamp.isoformat() if inference.timestamp else None,
     }
 
 
@@ -255,11 +256,17 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
         # Send current state immediately on connect
         db = database.SessionLocal()
         try:
-            sensor = db.query(models.SensorData).order_by(models.SensorData.timestamp.desc()).first()
             inference = db.query(models.InferenceResult).order_by(models.InferenceResult.timestamp.desc()).first()
-            if sensor and inference:
-                payload = build_dashboard_payload(sensor, inference, db)
-                await websocket.send_json(payload)
+            if inference:
+                # Get sensor data at the time of detection (to match dashboard/logs)
+                sensor = db.query(models.SensorData).filter(
+                    models.SensorData.timestamp <= inference.timestamp
+                ).order_by(models.SensorData.timestamp.desc()).first()
+                if not sensor:
+                    sensor = db.query(models.SensorData).order_by(models.SensorData.timestamp.asc()).first()
+                if sensor:
+                    payload = build_dashboard_payload(sensor, inference, db)
+                    await websocket.send_json(payload)
         finally:
             db.close()
 
@@ -377,7 +384,7 @@ def get_sensors_history(range: str = "24h", db: Session = Depends(get_db)):
     Get sensor history for a specified time range.
     range: '24h', '7d', or '30d'
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if range == "24h":
         start_time = now - timedelta(hours=24)
@@ -405,34 +412,32 @@ def get_sensors_history(range: str = "24h", db: Session = Depends(get_db)):
     }
 
 
-@app.get("/detection/latest", response_model=schemas.DetectionLatest)
+@app.get("/detection/latest")
 def get_detection_latest(db: Session = Depends(get_db)):
-    """Get the latest disease detection result (prioritizes disease detections over healthy scans)."""
-    # First try to get the most recent disease detection (non-Healthy) from the last 24 hours
-    recent_cutoff = datetime.utcnow() - timedelta(hours=24)
-    
-    disease_detection = db.query(models.InferenceResult).filter(
-        models.InferenceResult.disease_type != "Healthy",
-        models.InferenceResult.timestamp >= recent_cutoff
-    ).order_by(models.InferenceResult.timestamp.desc()).first()
-    
-    # If a recent disease detection exists, return it
-    if disease_detection:
-        return {
-            "disease_type": disease_detection.disease_type,
-            "confidence_score": disease_detection.confidence_score,
-            "timestamp": disease_detection.timestamp
-        }
-    
-    # Otherwise, fall back to the absolute latest detection (even if Healthy)
-    detection = db.query(models.InferenceResult).order_by(models.InferenceResult.timestamp.desc()).first()
+    """Get the absolute latest disease detection result with matching sensor data."""
+    detection = db.query(models.InferenceResult).order_by(
+        models.InferenceResult.timestamp.desc()
+    ).first()
+
     if not detection:
         raise HTTPException(status_code=404, detail="No detection data available")
+
+    # Get sensor data at the time of detection (same as /detection/history does)
+    sensor = db.query(models.SensorData).filter(
+        models.SensorData.timestamp <= detection.timestamp
+    ).order_by(models.SensorData.timestamp.desc()).first()
+
+    # Fallback to nearest sensor if none before
+    if not sensor:
+        sensor = db.query(models.SensorData).order_by(models.SensorData.timestamp.asc()).first()
 
     return {
         "disease_type": detection.disease_type,
         "confidence_score": detection.confidence_score,
-        "timestamp": detection.timestamp
+        "timestamp": detection.timestamp,
+        "temperature": sensor.temperature if sensor else None,
+        "humidity": sensor.humidity if sensor else None,
+        "precipitation": sensor.precipitation if sensor else None
     }
 
 
@@ -663,7 +668,7 @@ async def data_ingest(
             "confidence_score": payload.confidence_score,
             "season": payload.season,
             "precipitation": payload.precipitation,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": new_detection.timestamp.isoformat() if new_detection.timestamp else datetime.now(timezone.utc).isoformat()
         }
 
         await broadcast_to_clients(dashboard_payload)
