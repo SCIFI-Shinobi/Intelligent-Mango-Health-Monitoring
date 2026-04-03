@@ -88,10 +88,6 @@ export default function ForecastCard({ forecast, loading }) {
           <i className="fa-solid fa-calendar-day"></i>
           <span>{t('forecast', 'season')}: <strong>{season.name}</strong> ({t('forecast', seasonDescKey)})</span>
         </div>
-        <div className="context-item">
-          <i className="fa-solid fa-droplet"></i>
-          <span>{t('forecast', 'precipitation')}: <strong>{forecast.context.precipitation}mm</strong></span>
-        </div>
       </div>
 
       <div className="forecast-grid">

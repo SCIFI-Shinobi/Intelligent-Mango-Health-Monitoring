@@ -19,8 +19,7 @@ export default function LogsPage() {
       t('logs', 'diseaseClass'),
       t('logs', 'confidence'),
       t('logs', 'temperature'),
-      t('logs', 'humidity'),
-      t('logs', 'precipitation')
+      t('logs', 'humidity')
     ];
     exportDetectionLogs(allData.data, headers);
   };
@@ -66,7 +65,6 @@ export default function LogsPage() {
                   <th>{t('logs', 'confidence')}</th>
                   <th>{t('logs', 'temperature')}</th>
                   <th>{t('logs', 'humidity')}</th>
-                  <th>{t('logs', 'precipitation')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -97,7 +95,6 @@ export default function LogsPage() {
                       </td>
                       <td>{detection.temperature ? `${detection.temperature.toFixed(1)}°C` : 'N/A'}</td>
                       <td>{detection.humidity ? `${detection.humidity.toFixed(1)}%` : 'N/A'}</td>
-                      <td>{detection.precipitation != null ? `${detection.precipitation.toFixed(1)} mm` : 'N/A'}</td>
                     </tr>
                   );
                 })}

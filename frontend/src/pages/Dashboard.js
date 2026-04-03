@@ -62,7 +62,6 @@ export default function Dashboard() {
           setSensorLatest({
             temperature: incoming.temperature,
             humidity: incoming.humidity,
-            precipitation: incoming.precipitation ?? 0,
             timestamp: incoming.timestamp || new Date().toISOString()
           });
         }
@@ -102,7 +101,6 @@ export default function Dashboard() {
           setSensorLatest({
             temperature: detectionData.temperature,
             humidity: detectionData.humidity,
-            precipitation: detectionData.precipitation,
             timestamp: detectionData.timestamp
           });
         }
@@ -182,12 +180,6 @@ export default function Dashboard() {
                   value={sensorLatest?.humidity?.toFixed(1) || '-'}
                   unit="%"
                   icon="humidity"
-                />
-                <SensorCard
-                  name={t('sensor', 'precipitation')}
-                  value={sensorLatest?.precipitation != null ? sensorLatest.precipitation.toFixed(1) : '0.0'}
-                  unit="mm"
-                  icon="precip"
                 />
               </div>
             </div>

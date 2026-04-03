@@ -6,7 +6,6 @@ class SensorDataBase(BaseModel):
     device_id: str
     temperature: float
     humidity: float
-    precipitation: Optional[float] = None
 
 class SensorDataCreate(SensorDataBase):
     pass
@@ -49,7 +48,6 @@ class HistoricalData(BaseModel):
 class SensorLatest(BaseModel):
     temperature: float
     humidity: float
-    precipitation: Optional[float] = None
     timestamp: datetime
 
 class RecommendationBase(BaseModel):
@@ -69,7 +67,6 @@ class Recommendation(RecommendationBase):
 class ForecastContextPayload(BaseModel):
     device_id: str
     season: str  # 'dry', 'wet', 'belg'
-    precipitation: float
 
 class ForecastDay(BaseModel):
     day: int  # 1-5
@@ -77,7 +74,7 @@ class ForecastDay(BaseModel):
     date: datetime
 
 class ForecastLatest(BaseModel):
-    context: dict  # {'season': str, 'precipitation': float}
+    context: dict  # {'season': str}
     days: list[ForecastDay]
     created_at: datetime
 
@@ -104,7 +101,6 @@ class DataIngestPayload(BaseModel):
     confidence_score: float
     # Forecast context
     season: str  # 'dry', 'wet', 'belg'
-    precipitation: float
     # Recommendations (optional)
     recommendations: Optional[list[RecommendationBase]] = None
     # Forecast (5 days)

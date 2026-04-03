@@ -43,7 +43,6 @@ payload = {
     "disease_type": "Healthy",
     "confidence_score": 0.92,
     "season": "wet",
-    "precipitation": 15.0,
     "forecast": [
         {"day": 1, "risk_level": "Stable"},
         {"day": 2, "risk_level": "High_Anthracnose_Risk"},  # ANOMALY - triggers alert

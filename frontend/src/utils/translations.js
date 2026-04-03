@@ -76,7 +76,6 @@ const translations = {
   sensor: {
     temperature: { en: 'Temperature', am: 'ሙቀት' },
     humidity: { en: 'Humidity', am: 'እርጥበት' },
-    precipitation: { en: 'Precipitation', am: 'ዝናብ' },
   },
 
   // ---- Historical Chart ----
@@ -85,10 +84,8 @@ const translations = {
     noData: { en: 'No data available', am: 'ምንም መረጃ የለም' },
     loadingData: { en: 'Loading data...', am: 'መረጃ እየጫነ ነው...' },
     tempAxis: { en: 'Temp (°C) / Humidity (%)', am: 'ሙቀት (°C) / እርጥበት (%)' },
-    precipAxis: { en: 'Precipitation (mm)', am: 'ዝናብ (ሚሜ)' },
     tempLabel: { en: 'Temperature (°C)', am: 'ሙቀት (°C)' },
     humidityLabel: { en: 'Humidity (%)', am: 'እርጥበት (%)' },
-    precipLabel: { en: 'Precipitation (mm)', am: 'ዝናብ (ሚሜ)' },
   },
 
   // ---- Recommendations ----
@@ -110,7 +107,6 @@ const translations = {
     loading: { en: 'Loading forecast...', am: 'ትንበያ እየጫነ ነው...' },
     noData: { en: 'No forecast data available', am: 'ምንም የትንበያ መረጃ የለም' },
     season: { en: 'Season', am: 'ወቅት' },
-    precipitation: { en: 'Precipitation', am: 'ዝናብ' },
     tomorrow: { en: 'Tomorrow', am: 'ነገ' },
     stable: { en: 'Stable', am: 'የተረጋጋ' },
     anthracnoseRisk: { en: 'Anthracnose Risk', am: 'የአንትራክኖዝ ስጋት' },
@@ -131,7 +127,6 @@ const translations = {
     confidence: { en: 'Confidence', am: 'እምነት' },
     temperature: { en: 'Temperature', am: 'ሙቀት' },
     humidity: { en: 'Humidity', am: 'እርጥበት' },
-    precipitation: { en: 'Precipitation', am: 'ዝናብ' },
     previous: { en: '← Previous', am: '← ቀዳሚ' },
     next: { en: 'Next →', am: 'ቀጣይ →' },
     pageOf: { en: 'Page', am: 'ገጽ' },

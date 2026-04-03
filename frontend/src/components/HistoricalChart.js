@@ -43,7 +43,6 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
 
   const temps = data.map((d) => d.temperature);
   const humidities = data.map((d) => d.humidity);
-  const precipitation = data.map((d) => d.precipitation || 0);
 
   const chartData = {
     labels,
@@ -69,18 +68,6 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
         pointRadius: 3,
         pointBackgroundColor: '#3b82f6',
         yAxisID: 'y'
-      },
-      {
-        label: t('chart', 'precipLabel'),
-        data: precipitation,
-        borderColor: '#22d3ee',
-        backgroundColor: 'rgba(34, 211, 238, 0.15)',
-        tension: 0.2,
-        fill: true,
-        pointRadius: 2,
-        pointBackgroundColor: '#22d3ee',
-        borderWidth: 1.5,
-        yAxisID: 'y1'
       }
     ]
   };
@@ -99,13 +86,6 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
         grid: { color: '#30363d', drawBorder: false },
         ticks: { color: '#7b8bbd' },
         title: { display: true, text: t('chart', 'tempAxis'), color: '#7b8bbd', font: { size: 11 } }
-      },
-      y1: {
-        type: 'linear', position: 'right',
-        grid: { drawOnChartArea: false },
-        ticks: { color: '#22d3ee' },
-        title: { display: true, text: t('chart', 'precipAxis'), color: '#22d3ee', font: { size: 11 } },
-        min: 0
       },
       x: { grid: { display: false }, ticks: { color: '#7b8bbd' } }
     }

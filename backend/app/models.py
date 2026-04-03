@@ -32,7 +32,6 @@ class SensorData(Base):
     device_id = Column(String, index=True)
     temperature = Column(Float)
     humidity = Column(Float)
-    precipitation = Column(Float, nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 class InferenceResult(Base):
@@ -61,7 +60,6 @@ class ForecastContext(Base):
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(String, index=True)
     season = Column(String)  # 'dry', 'wet', 'belg'
-    precipitation = Column(Float)  # mm
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 class ForecastData(Base):

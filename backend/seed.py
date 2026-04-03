@@ -62,17 +62,10 @@ def seed():
                 hum = base_humidity + random.uniform(-5, 15) - (temp - base_temp) * 1.5
                 hum = max(40, min(95, hum))
 
-                # Precipitation: higher during rainy hours, 0 otherwise
-                if 14 <= hour <= 20 and random.random() < 0.35:
-                    precip = round(random.uniform(0.5, 12.0), 1)
-                else:
-                    precip = 0.0
-
                 entries.append(SensorData(
                     device_id="ESP32-001",
                     temperature=round(temp, 1),
                     humidity=round(hum, 1),
-                    precipitation=precip,
                     timestamp=ts
                 ))
 
@@ -165,7 +158,6 @@ def seed():
             ctx = ForecastContext(
                 device_id="ESP32-001",
                 season="kiremt",
-                precipitation=45.2,
                 timestamp=now - timedelta(hours=1)
             )
             db.add(ctx)

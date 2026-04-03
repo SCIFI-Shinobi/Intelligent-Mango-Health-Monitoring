@@ -1,20 +1,25 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <U8g2lib.h>
+#include <LiquidCrystal_I2C.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
 #include <Adafruit_Sensor.h>
 #include <NimBLEDevice.h>
+#include <time.h>
 #include "Config.h"
 
 // ================= HARDWARE =================
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLUMNS, LCD_ROWS);
 DHT dht(DHT_PIN, DHT_TYPE);
 
 // ================= BLE UUIDs (must match Nano) =================
 #define NANO_SERVICE_UUID        "19B10000-E8F2-537E-4F6C-D104768A1214"
 #define CLASSIFICATION_CHAR_UUID "19B10001-E8F2-537E-4F6C-D104768A1214"
+
+// ================= CONFIDENCE THRESHOLD =================
+// Only generate recommendations if AI confidence exceeds this threshold
+#define CONFIDENCE_THRESHOLD 0.70
 
 // ================= STRUCTS & STATE =================
 struct DiseaseProfile {
@@ -22,15 +27,49 @@ struct DiseaseProfile {
     float minTemp;
     float maxTemp;
     float humidityThreshold;
-    const char* targetedAction;
-    const char* preventiveAction;
+    // English recommendations
+    const char* targetedActionEn;
+    const char* preventiveActionEn;
+    // Amharic recommendations
+    const char* targetedActionAm;
+    const char* preventiveActionAm;
+    // Titles
+    const char* titleEn;
+    const char* titleAm;
 };
 
 const DiseaseProfile profiles[] = {
-    {"Anthracnose", 24.0, 30.0, 80.0, "በፈንገስ ማጥፊያ (Copper) ይርጩ", "የታመሙ ቅርንጫፎችን ያስወግዱ"},
-    {"Powdery Mildew", 10.0, 31.0, 80.0, "ሰልፈር (Sulfur) ያለው መድሃኒት ይርጩ", "አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ"}
+    {
+        "Anthracnose", 24.0, 30.0, 80.0,
+        "Spray with copper-based fungicide (Copper oxychloride). High risk conditions detected.",
+        "Remove diseased branches and improve air circulation.",
+        "በፈንገስ ማጥፊያ (Copper) ይርጩ",
+        "የታመሙ ቅርንጫፎችን ያስወግዱ",
+        "Anthracnose Detected",
+        "አንትራክኖዝ ተገኝቷል"
+    },
+    {
+        "Powdery Mildew", 10.0, 31.0, 80.0,
+        "Spray with sulfur-based medicine (Sulfur fungicide). High risk conditions detected.",
+        "Prune tree branches to allow air circulation.",
+        "ሰልፈር (Sulfur) ያለው መድሃኒት ይርጩ",
+        "አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ",
+        "Powdery Mildew Detected",
+        "የዱቄት ሻጋታ ተገኝቷል"
+    }
 };
 const int NUM_PROFILES = sizeof(profiles) / sizeof(profiles[0]);
+
+// Healthy profile for when plant is healthy
+const DiseaseProfile healthyProfile = {
+    "Healthy", 0.0, 100.0, 100.0,
+    "Continue regular monitoring and maintenance.",
+    "Maintain field sanitation and monitor regularly.",
+    "መደበኛ ክትትልና ጽዳት ያድርጉ",
+    "መደበኛ ክትትል ያድርጉ",
+    "Plant Healthy",
+    "ተክሉ ጤናማ ነው"
+};
 
 char currentDisease[32]  = "Unknown";
 float currentConfidence  = 0.0;
@@ -42,6 +81,10 @@ bool  alertActive        = false;
 const char* riskLevel      = "Evaluating...";
 const char* recommendation = "Waiting for data...";
 const char* farmerAction   = "ክፍት"; // Default/Unknown
+
+// Current recommendation details (for sending to backend)
+const DiseaseProfile* currentProfile = nullptr;
+bool isHighRisk = false;
 
 // BLE client objects
 NimBLEClient* pClient = nullptr;
@@ -124,10 +167,51 @@ bool connectToNano() {
     return false;
 }
 
+// ================= SEASON DETECTION =================
+// Ethiopian seasons based on month:
+// - Bega (Dry): October - January (months 10, 11, 12, 1)
+// - Belg (Short rains): February - May (months 2, 3, 4, 5)
+// - Kiremt (Wet/Main rains): June - September (months 6, 7, 8, 9)
+const char* getCurrentSeason() {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+        // If time not available, use rainfall to estimate
+        if (currentIsRaining || currentRainValue < RAIN_INTENSITY_THRESHOLD) {
+            return "wet";
+        }
+        return "dry";
+    }
+
+    int month = timeinfo.tm_mon + 1; // tm_mon is 0-11
+
+    if (month >= 6 && month <= 9) {
+        return "wet";    // Kiremt
+    } else if (month >= 2 && month <= 5) {
+        return "belg";   // Belg
+    } else {
+        return "dry";    // Bega
+    }
+}
+
+// Convert analog rain sensor value to approximate precipitation in mm
+// Rain sensor: 4095 = completely dry, 0 = heavy rain
+float estimatePrecipitation() {
+    if (!currentIsRaining && currentRainValue > RAIN_INTENSITY_THRESHOLD) {
+        return 0.0;  // No rain
+    }
+    // Map 0-RAIN_INTENSITY_THRESHOLD to 0-50mm (rough estimation)
+    float intensity = (float)(RAIN_INTENSITY_THRESHOLD - currentRainValue) / RAIN_INTENSITY_THRESHOLD;
+    return intensity * 50.0;  // Max ~50mm for heavy rain reading
+}
+
 // ================= RISK EVALUATION =================
 void evaluateRisk() {
+    // Reset state
+    currentProfile = nullptr;
+    isHighRisk = false;
+
     // Safety check: ensure temperature and humidity are within valid ranges (0-100)
-    if (currentTemperature < 0.0 || currentTemperature > 100.0 || 
+    if (currentTemperature < 0.0 || currentTemperature > 100.0 ||
         currentHumidity < 0.0 || currentHumidity > 100.0) {
         Serial.println("Warning: Invalid sensor readings detected!");
         riskLevel = "INVALID";
@@ -137,18 +221,33 @@ void evaluateRisk() {
         return;
     }
 
+    // Check for healthy or unknown state
     if (strcmp(currentDisease, "Healthy") == 0 || strcmp(currentDisease, "Unknown") == 0) {
         riskLevel = "LOW RISK";
         recommendation = (strcmp(currentDisease, "Unknown") == 0) ? "Wait..." : "Monitor Crop";
         farmerAction = "መደበኛ ክትትልና ጽዳት ያድርጉ"; // General monitoring and sanitation
+        currentProfile = &healthyProfile;
         alertActive = false;
         return;
     }
 
+    // CONFIDENCE CHECK: Only proceed with disease recommendations if confidence is high enough
+    if (currentConfidence < CONFIDENCE_THRESHOLD) {
+        riskLevel = "LOW RISK";
+        recommendation = "Low confidence - continue monitoring";
+        farmerAction = "እርግጠኛ አይደለም - ክትትል ያድርጉ";
+        Serial.printf("Confidence %.1f%% below threshold %.1f%%, skipping recommendation\n",
+                      currentConfidence * 100, CONFIDENCE_THRESHOLD * 100);
+        alertActive = false;
+        return;
+    }
+
+    // Find matching disease profile
     const DiseaseProfile* profile = nullptr;
     for (int i = 0; i < NUM_PROFILES; i++) {
         if (strcmp(currentDisease, profiles[i].name) == 0) {
             profile = &profiles[i];
+            currentProfile = profile;
             break;
         }
     }
@@ -164,33 +263,47 @@ void evaluateRisk() {
     bool tempSuitable = (currentTemperature >= profile->minTemp && currentTemperature <= profile->maxTemp);
     bool moistureSuitable = (currentHumidity > profile->humidityThreshold);
     bool isRaining = currentIsRaining || (currentRainValue < RAIN_INTENSITY_THRESHOLD);
-    
+
+    // Factor in season for risk calculation
+    const char* season = getCurrentSeason();
+    bool wetSeason = (strcmp(season, "wet") == 0 || strcmp(season, "belg") == 0);
+
     // High Risk: Both temp AND humidity match disease conditions, or rain boosts risk
     if (tempSuitable && moistureSuitable) {
         riskLevel = "HIGH RISK";
-        recommendation = "Targeted Control Action & Alert";
-        farmerAction = profile->targetedAction;
+        recommendation = profile->targetedActionEn;
+        farmerAction = profile->targetedActionAm;
+        isHighRisk = true;
         alertActive = true;
     }
     // Rain + one other factor = elevated risk
     else if (isRaining && (tempSuitable || moistureSuitable)) {
         riskLevel = "HIGH RISK";
-        recommendation = "Rain + conditions favor disease";
-        farmerAction = profile->targetedAction;
+        recommendation = profile->targetedActionEn;
+        farmerAction = profile->targetedActionAm;
+        isHighRisk = true;
+        alertActive = true;
+    }
+    // Wet season + disease detected + one environmental factor = elevated risk
+    else if (wetSeason && (tempSuitable || moistureSuitable)) {
+        riskLevel = "HIGH RISK";
+        recommendation = profile->targetedActionEn;
+        farmerAction = profile->targetedActionAm;
+        isHighRisk = true;
         alertActive = true;
     }
     // Medium Risk: Only temp OR humidity matches
     else if (tempSuitable || moistureSuitable) {
         riskLevel = "MEDIUM RISK";
-        recommendation = "Preventive Treatment";
-        farmerAction = profile->preventiveAction;
+        recommendation = profile->preventiveActionEn;
+        farmerAction = profile->preventiveActionAm;
         alertActive = false;
     }
     // Rain alone with disease detected = medium risk
     else if (isRaining) {
         riskLevel = "MEDIUM RISK";
-        recommendation = "Rain detected - monitor closely";
-        farmerAction = profile->preventiveAction;
+        recommendation = profile->preventiveActionEn;
+        farmerAction = profile->preventiveActionAm;
         alertActive = false;
     }
     // Low Risk: Neither condition matches
@@ -200,45 +313,39 @@ void evaluateRisk() {
         farmerAction = "መደበኛ ክትትል ያድርጉ";
         alertActive = false;
     }
+
+    Serial.printf("Risk Evaluation: %s (Conf: %.1f%%, Temp: %.1f°C, Hum: %.1f%%, Rain: %s, Season: %s)\n",
+                  riskLevel, currentConfidence * 100, currentTemperature, currentHumidity,
+                  isRaining ? "Yes" : "No", season);
 }
 
-// ================= OLED DISPLAY =================
+// ================= LCD DISPLAY =================
 void updateDisplay() {
-    u8g2.clearBuffer();
-    
-    // Header
-    u8g2.setFont(u8g2_font_ncenB08_tr); 
-    u8g2.drawStr(0, 10, WiFi.status() == WL_CONNECTED ? "WiFi:OK" : "WiFi:--");
-    u8g2.drawStr(60, 10, bleConnected ? "BLE:OK" : "BLE:--");
+    String line1 = String(WiFi.status() == WL_CONNECTED ? "W:OK " : "W:-- ") +
+                   String(bleConnected ? "B:OK" : "B:--");
 
-    // Environment
-    char envBuf[32];
-    snprintf(envBuf, sizeof(envBuf), "T:%.1fC H:%.0f%% %s", currentTemperature, currentHumidity,
-             currentIsRaining ? "Rain" : "Dry");
-    u8g2.drawStr(0, 22, envBuf);
+    char envBuf[17];
+    snprintf(envBuf, sizeof(envBuf), "T:%2.0f H:%2.0f %s", currentTemperature, currentHumidity,
+             currentIsRaining ? "R" : "D");
+    String line2 = String(envBuf);
 
-    // AI result & Risk
-    char aiBuf[32];
-    snprintf(aiBuf, sizeof(aiBuf), "AI: %s", currentDisease);
-    u8g2.drawStr(0, 34, aiBuf);
-    
-    u8g2.drawStr(0, 46, riskLevel);
+    if (alertActive) {
+        line1 = "ALERT " + String(currentDisease);
+        line2 = String(riskLevel);
+    }
 
-    // Bottom Amharic UI Action
-    u8g2.setFont(u8g2_font_unifont_tr);
-    u8g2.enableUTF8Print();
-    
-    // Draw the Label
-    u8g2.setCursor(0, 52);
-    u8g2.print("ርምጃ፦"); 
+    if (line1.length() > LCD_COLUMNS) {
+        line1 = line1.substring(0, LCD_COLUMNS);
+    }
+    if (line2.length() > LCD_COLUMNS) {
+        line2 = line2.substring(0, LCD_COLUMNS);
+    }
 
-    // Draw the Instruction (Moved down slightly to give it its own line if needed)
-    u8g2.setCursor(0, 64); 
-    u8g2.print(farmerAction);
-    
-    u8g2.disableUTF8Print();
-
-    u8g2.sendBuffer();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(line1);
+    lcd.setCursor(0, 1);
+    lcd.print(line2);
 }
 
 // ================= CLOUD UPLOAD =================
@@ -246,22 +353,81 @@ void sendDataToCloud() {
     if (WiFi.status() != WL_CONNECTED) return;
 
     HTTPClient http;
-    http.begin(API_URL);
+    http.begin(String(API_BASE_URL) + "/data/ingest");
     http.addHeader("Content-Type", "application/json");
 
+    // Add device API key header if configured
+    #ifdef DEVICE_API_KEY
+    http.addHeader("X-Device-Key", DEVICE_API_KEY);
+    #endif
+
+    // Get current season
+    const char* season = getCurrentSeason();
+
+    // Build JSON payload matching DataIngestPayload schema
     String json = "{";
     json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
-    json += "\"disease_type\":\"" + String(currentDisease) + "\",";
-    json += "\"confidence_score\":" + String(currentConfidence, 2) + ",";
     json += "\"temperature\":" + String(currentTemperature, 1) + ",";
     json += "\"humidity\":" + String(currentHumidity, 1) + ",";
-    json += "\"rainfall\":" + String(currentRainValue) + ",";
-    json += "\"is_raining\":" + String(currentIsRaining ? "true" : "false");
+    json += "\"disease_type\":\"" + String(currentDisease) + "\",";
+    json += "\"confidence_score\":" + String(currentConfidence, 2) + ",";
+    json += "\"season\":\"" + String(season) + "\",";
+
+    // Add recommendations array (only if we have a valid profile and confidence is high enough)
+    if (currentProfile != nullptr && currentConfidence >= CONFIDENCE_THRESHOLD) {
+        json += "\"recommendations\":[{";
+        json += "\"title\":\"" + String(isHighRisk ? currentProfile->titleEn : "Risk Assessment") + "\",";
+        json += "\"description\":\"" + String(isHighRisk ? currentProfile->targetedActionEn : currentProfile->preventiveActionEn) + "\",";
+        json += "\"title_am\":\"" + String(isHighRisk ? currentProfile->titleAm : "የስጋት ግምገማ") + "\",";
+        json += "\"description_am\":\"" + String(isHighRisk ? currentProfile->targetedActionAm : currentProfile->preventiveActionAm) + "\"";
+        json += "}],";
+
+        // Add simple 5-day forecast based on current conditions and season
+        json += "\"forecast\":[";
+        for (int day = 1; day <= 5; day++) {
+            String dayRisk = "Stable";
+
+            // Higher risk for wet/belg season with disease detected
+            if (strcmp(currentDisease, "Healthy") != 0 && currentConfidence >= CONFIDENCE_THRESHOLD) {
+                bool wetSeason = (strcmp(season, "wet") == 0 || strcmp(season, "belg") == 0);
+                bool highHumidity = currentHumidity > 75;
+
+                if (wetSeason && highHumidity) {
+                    // Disease-specific forecast
+                    if (strcmp(currentDisease, "Anthracnose") == 0) {
+                        dayRisk = (day <= 2) ? "High_Anthracnose_Risk" : "Moderate_Anthracnose_Risk";
+                    } else if (strcmp(currentDisease, "Powdery Mildew") == 0) {
+                        dayRisk = (day <= 2) ? "High_Mildew_Risk" : "Moderate_Mildew_Risk";
+                    }
+                } else if (wetSeason || highHumidity) {
+                    dayRisk = "Moderate";
+                }
+            }
+
+            json += "{\"day\":" + String(day) + ",\"risk_level\":\"" + dayRisk + "\"}";
+            if (day < 5) json += ",";
+        }
+        json += "]";
+    } else {
+        // No recommendations when healthy or low confidence
+        json += "\"recommendations\":null,";
+        json += "\"forecast\":null";
+    }
+
     json += "}";
+
+    Serial.println("Sending to cloud:");
+    Serial.println(json);
 
     int code = http.POST(json);
     Serial.print("Cloud sync HTTP: ");
     Serial.println(code);
+
+    if (code > 0) {
+        String response = http.getString();
+        Serial.println("Response: " + response);
+    }
+
     http.end();
 }
 
@@ -280,13 +446,14 @@ void setup() {
     // DHT sensor
     dht.begin();
 
-    // U8G2 OLED
-    u8g2.begin();
-    u8g2.clearBuffer();
-    u8g2.setFont(u8g2_font_ncenB08_tr);
-    u8g2.drawStr(0, 20, "Mango Monitor");
-    u8g2.drawStr(0, 35, "Starting...");
-    u8g2.sendBuffer();
+    // 16x2 I2C LCD
+    lcd.init();
+    lcd.backlight();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Mango Monitor");
+    lcd.setCursor(0, 1);
+    lcd.print("Starting...");
 
     // Wi-Fi
     Serial.print("Connecting to Wi-Fi");
@@ -298,6 +465,27 @@ void setup() {
         timeout++;
     }
     Serial.println(WiFi.status() == WL_CONNECTED ? "\nWi-Fi OK" : "\nWi-Fi Failed");
+
+    // Configure NTP for Ethiopian Time (UTC+3)
+    if (WiFi.status() == WL_CONNECTED) {
+        configTime(GMT_OFFSET, DST_OFFSET, NTP_SERVER);
+        Serial.println("NTP configured for Ethiopian Time (EAT)");
+
+        // Wait for time sync
+        struct tm timeinfo;
+        int ntpRetry = 0;
+        while (!getLocalTime(&timeinfo) && ntpRetry < 10) {
+            Serial.println("Waiting for NTP time sync...");
+            delay(1000);
+            ntpRetry++;
+        }
+        if (getLocalTime(&timeinfo)) {
+            Serial.printf("Current time: %02d/%02d/%04d %02d:%02d:%02d\n",
+                          timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
+                          timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+            Serial.printf("Current season: %s\n", getCurrentSeason());
+        }
+    }
 
     // BLE Central
     NimBLEDevice::init("ESP32-Gateway");
@@ -345,7 +533,7 @@ void loop() {
 
     // 5. Cloud sync
     static unsigned long lastSync = 0;
-    if (millis() - lastSync > 10000) {
+    if (millis() - lastSync > CLOUD_SYNC_INTERVAL_MS) {
         sendDataToCloud();
         lastSync = millis();
     }

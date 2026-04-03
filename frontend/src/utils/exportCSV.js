@@ -25,8 +25,7 @@ export function exportDetectionLogs(records, headers) {
       `"${r.disease_type || ''}"`,
       r.confidence_score != null ? (r.confidence_score * 100).toFixed(1) : '',
       r.temperature != null ? r.temperature.toFixed(1) : '',
-      r.humidity != null ? r.humidity.toFixed(1) : '',
-      r.precipitation != null ? r.precipitation.toFixed(1) : ''
+      r.humidity != null ? r.humidity.toFixed(1) : ''
     ];
     return values.join(",");
   });

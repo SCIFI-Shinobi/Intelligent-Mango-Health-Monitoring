@@ -93,7 +93,6 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
     return {
         "temperature": sensor.temperature,
         "humidity": sensor.humidity,
-        "precipitation": sensor.precipitation,
         "moisture": round(sensor.humidity * 0.85, 1),  # derived estimate
         "health": health,
         "stability": stability,
@@ -373,7 +372,6 @@ def get_sensors_latest(db: Session = Depends(get_db)):
     return {
         "temperature": sensor.temperature,
         "humidity": sensor.humidity,
-        "precipitation": sensor.precipitation,
         "timestamp": sensor.timestamp
     }
 
@@ -405,7 +403,6 @@ def get_sensors_history(range: str = "24h", db: Session = Depends(get_db)):
             {
                 "temperature": d.temperature,
                 "humidity": d.humidity,
-                "precipitation": d.precipitation,
                 "timestamp": d.timestamp
             } for d in data
         ]
@@ -436,8 +433,7 @@ def get_detection_latest(db: Session = Depends(get_db)):
         "confidence_score": detection.confidence_score,
         "timestamp": detection.timestamp,
         "temperature": sensor.temperature if sensor else None,
-        "humidity": sensor.humidity if sensor else None,
-        "precipitation": sensor.precipitation if sensor else None
+        "humidity": sensor.humidity if sensor else None
     }
 
 
@@ -485,8 +481,7 @@ def get_detection_history(
             "confidence_score": detection.confidence_score,
             "timestamp": detection.timestamp,
             "temperature": sensor.temperature if sensor else None,
-            "humidity": sensor.humidity if sensor else None,
-            "precipitation": sensor.precipitation if sensor else None
+            "humidity": sensor.humidity if sensor else None
         })
 
     return {
@@ -519,7 +514,6 @@ def get_forecast_latest(db: Session = Depends(get_db)):
     return {
         "context": {
             "season": context.season,
-            "precipitation": context.precipitation,
             "timestamp": context.timestamp
         },
         "days": [
@@ -536,12 +530,11 @@ def get_forecast_latest(db: Session = Depends(get_db)):
 @app.post("/forecast/context")
 def post_forecast_context(payload: schemas.ForecastContextPayload, db: Session = Depends(get_db)):
     """
-    Accept season and precipitation from ESP32 for forecast model input.
+    Accept season from ESP32 for forecast model input.
     """
     new_context = models.ForecastContext(
         device_id=payload.device_id,
-        season=payload.season,
-        precipitation=payload.precipitation
+        season=payload.season
     )
     db.add(new_context)
     db.commit()
@@ -550,7 +543,7 @@ def post_forecast_context(payload: schemas.ForecastContextPayload, db: Session =
     return {
         "status": "success",
         "context_id": new_context.id,
-        "message": f"Forecast context recorded: {payload.season} season, {payload.precipitation}mm precipitation"
+        "message": f"Forecast context recorded: {payload.season} season"
     }
 
 
@@ -607,8 +600,7 @@ async def data_ingest(
         new_sensor = models.SensorData(
             device_id=payload.device_id,
             temperature=payload.temperature,
-            humidity=payload.humidity,
-            precipitation=payload.precipitation
+            humidity=payload.humidity
         )
         db.add(new_sensor)
 
@@ -623,8 +615,7 @@ async def data_ingest(
         # 3. Store forecast context
         new_context = models.ForecastContext(
             device_id=payload.device_id,
-            season=payload.season,
-            precipitation=payload.precipitation
+            season=payload.season
         )
         db.add(new_context)
 
@@ -667,7 +658,6 @@ async def data_ingest(
             "disease_type": payload.disease_type,
             "confidence_score": payload.confidence_score,
             "season": payload.season,
-            "precipitation": payload.precipitation,
             "timestamp": new_detection.timestamp.isoformat() if new_detection.timestamp else datetime.now(timezone.utc).isoformat()
         }
 
