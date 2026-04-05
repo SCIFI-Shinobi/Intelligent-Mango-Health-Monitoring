@@ -17,7 +17,10 @@
 // ================= GLOBAL STATE =================
 unsigned long lastScanTime = 0;
 static OV7675 Cam;
-static uint8_t rgb888_buffer[EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * 3];
+// RGB565 buffer - kept during inference for on-the-fly conversion
+static uint8_t* image_buffer = nullptr;
+static const size_t IMG_BUF_SIZE = EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * 2;
+static bool cameraReady = false;
 
 // BLE Service — only one characteristic: the classification result
 // Format sent: "DiseaseName,Confidence"  e.g. "Anthracnose,0.92"
@@ -29,37 +32,58 @@ BLEStringCharacteristic classificationCharacteristic(
 );
 
 // ================= IMAGE CONVERSION =================
-void convertRGB565toRGB888(const uint8_t* rgb565, uint8_t* rgb888, size_t pixelCount) {
-    for (size_t i = 0; i < pixelCount; i++) {
-        uint16_t pixel = (rgb565[i * 2] << 8) | rgb565[i * 2 + 1];
-        uint8_t r5 = (pixel >> 11) & 0x1F;
-        uint8_t g6 = (pixel >> 5)  & 0x3F;
-        uint8_t b5 = pixel          & 0x1F;
-        rgb888[i * 3 + 0] = (r5 * 527 + 23) >> 6;
-        rgb888[i * 3 + 1] = (g6 * 259 + 33) >> 6;
-        rgb888[i * 3 + 2] = (b5 * 527 + 23) >> 6;
-    }
-}
+// Removed: convertRGB565toRGB888 - we now convert directly in the callback
 
 // ================= CLASSIFIER CALLBACK =================
+// Convert RGB565 directly to float on-the-fly (saves 76KB RAM!)
 int get_image_data(size_t offset, size_t length, float *out_ptr) {
-    size_t numPixels = length / 3;
-    if (offset + numPixels > EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS) {
-        numPixels = EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS - offset;
-    }
-    for (size_t i = 0; i < numPixels * 3; i++) {
-        out_ptr[i] = (float)rgb888_buffer[(offset * 3) + i] / 255.0f;
+    if (!image_buffer) return EI_IMPULSE_DSP_ERROR;
+
+    size_t pixel_count = length / 3;
+    size_t total_pixels = EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS;
+
+    for (size_t i = 0; i < pixel_count && (offset + i) < total_pixels; i++) {
+        size_t px = offset + i;
+        // Read RGB565 pixel (big-endian in buffer)
+        uint16_t pixel = (image_buffer[px * 2] << 8) | image_buffer[px * 2 + 1];
+
+        // Extract and convert to 0.0-1.0 float
+        uint8_t r5 = (pixel >> 11) & 0x1F;
+        uint8_t g6 = (pixel >> 5) & 0x3F;
+        uint8_t b5 = pixel & 0x1F;
+
+        out_ptr[i * 3 + 0] = (float)((r5 * 527 + 23) >> 6) / 255.0f;
+        out_ptr[i * 3 + 1] = (float)((g6 * 259 + 33) >> 6) / 255.0f;
+        out_ptr[i * 3 + 2] = (float)((b5 * 527 + 23) >> 6) / 255.0f;
     }
     return EI_IMPULSE_OK;
 }
 
 // ================= INFERENCE + BLE PUBLISH =================
 void runInferenceAndPublish() {
-    Serial.println("Capturing image...");
-    uint8_t image_buffer[EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * 2];
-    Cam.readFrame(image_buffer);
-    convertRGB565toRGB888(image_buffer, rgb888_buffer,
-                          EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
+    if (!cameraReady) {
+        return;
+    }
+
+    Serial.print(".");  // Show we're trying
+    Serial.flush();
+
+    // Allocate capture buffer if not already
+    if (!image_buffer) {
+        image_buffer = (uint8_t*)malloc(IMG_BUF_SIZE);
+        if (!image_buffer) {
+            Serial.println("!M");  // Malloc failed
+            return;
+        }
+    }
+
+    if (!Cam.readFrame(image_buffer)) {
+        Serial.println("X");  // Capture failed
+        return;
+    }
+    Serial.print("OK ");  // Capture succeeded
+
+    // No conversion needed - get_image_data converts RGB565→float on-the-fly
 
     signal_t signal;
     signal.get_data = &get_image_data;
@@ -90,16 +114,13 @@ void runInferenceAndPublish() {
 
     String payload;
     if (maxIndex >= 0 && maxConfidence >= DISEASE_CONFIDENCE_THRESHOLD) {
-        // Format: "DiseaseName,Confidence"
         payload = String(result.classification[maxIndex].label) + "," + String(maxConfidence, 2);
     } else {
         payload = "Unknown,0.00";
     }
 
-    Serial.print("Publishing via BLE: ");
+    Serial.print("BLE: ");
     Serial.println(payload);
-
-    // Update BLE characteristic — ESP32 will be notified automatically
     classificationCharacteristic.writeValue(payload);
 }
 
@@ -128,15 +149,17 @@ void setup() {
     BLE.advertise();
     Serial.println("BLE advertising as 'MangoHealthMonitor'");
 
-    // Initialize Camera
-    if (Cam.begin(QQVGA, RGB565, 1)) {
-        Serial.println("Camera initialized");
+    // Initialize Camera (VGA 640x480, resizes cleanly to 160x160 for model)
+    if (Cam.begin(VGA, RGB565, 1)) {
+        Serial.println("Camera OK");
+        cameraReady = true;
     } else {
-        Serial.println("Camera init failed!");
+        Serial.println("Camera FAILED");
+        cameraReady = false;
     }
 
     run_classifier_init();
-    Serial.println("Edge Impulse classifier ready.");
+    Serial.println("System ready.");
 }
 
 // ================= LOOP =================

@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 #include <DHT.h>
 #include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
@@ -263,9 +263,9 @@ void handleSerialData() {
                     
                     // Check if classification exceeds threshold and matches a disease
                     if (lastClassification.confidence >= ALERT_THRESHOLD) {
-                        for (int i = 0; i < sizeof(profiles) / sizeof(profiles[0]); i++) {
+                        for (size_t i = 0; i < sizeof(profiles) / sizeof(profiles[0]); i++) {
                             if (lastClassification.className == profiles[i].name) {
-                                lastClassification.classIndex = i;
+                                lastClassification.classIndex = static_cast<int>(i);
                                 // Check environmental conditions match disease profile
                                 if (currentSensorData.temperature >= profiles[i].minTemp &&
                                     currentSensorData.temperature <= profiles[i].maxTemp &&
@@ -297,20 +297,18 @@ void triggerAlert(const DiseaseProfile& profile) {
     
     // Send alert to backend
     if (WiFi.status() == WL_CONNECTED) {
+        WiFiClient wifiClient;
         HTTPClient http;
-        String url = String(API_BASE_URL) + "/api/alerts";
-        http.begin(url);
+        String url = String(API_BASE_URL) + "/upload";
+        http.begin(wifiClient, url);
         http.addHeader("Content-Type", "application/json");
         
         DynamicJsonDocument alertDoc(512);
         alertDoc["device_id"] = DEVICE_ID;
-        alertDoc["disease_name"] = profile.name;
-        alertDoc["confidence"] = lastClassification.confidence;
+        alertDoc["disease_type"] = profile.name;
+        alertDoc["confidence_score"] = lastClassification.confidence;
         alertDoc["temperature"] = currentSensorData.temperature;
         alertDoc["humidity"] = currentSensorData.humidity;
-        alertDoc["is_raining"] = currentSensorData.isRaining;
-        alertDoc["action_en"] = profile.targetedActionEn;
-        alertDoc["action_am"] = profile.targetedActionAm;
         
         String jsonString;
         serializeJson(alertDoc, jsonString);
@@ -345,19 +343,23 @@ void handleBuzzerAlert() {
 // ================= CLOUD SYNC =================
 void syncToCloud() {
     if (WiFi.status() == WL_CONNECTED) {
+        WiFiClient wifiClient;
         HTTPClient http;
-        String url = String(API_BASE_URL) + "/api/sensor-data";
-        http.begin(url);
+        String url = String(API_BASE_URL) + "/upload";
+        http.begin(wifiClient, url);
         http.addHeader("Content-Type", "application/json");
         
         DynamicJsonDocument doc(256);
+        String diseaseType = (lastClassification.className.length() && lastClassification.className != "None")
+            ? lastClassification.className
+            : "Healthy";
+        float confidenceScore = (diseaseType == "Healthy") ? 1.0 : lastClassification.confidence;
+
         doc["device_id"] = DEVICE_ID;
         doc["temperature"] = currentSensorData.temperature;
         doc["humidity"] = currentSensorData.humidity;
-        doc["rain_intensity"] = currentSensorData.rainIntensity;
-        doc["is_raining"] = currentSensorData.isRaining;
-        doc["last_disease"] = lastClassification.className;
-        doc["confidence"] = lastClassification.confidence;
+        doc["disease_type"] = diseaseType;
+        doc["confidence_score"] = confidenceScore;
         
         String jsonString;
         serializeJson(doc, jsonString);

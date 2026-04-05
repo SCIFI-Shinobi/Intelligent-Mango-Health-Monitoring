@@ -11,7 +11,7 @@
 class OV7675 : public OV767X {
     public:
         int begin(int resolution, int format, int fps);
-        void readFrame(void* buffer);
+        bool readFrame(void* buffer);
         
         // Members to track resize state
         uint32_t resize_col_sz;
@@ -45,7 +45,7 @@ class OV7675 : public OV767X {
         
         // Removed buf_limit as it wasn't used in valid code
 
-        void readBuf();
+        bool readBuf();
         int allocate_scratch_buffs();
         int deallocate_scratch_buffs();
 };

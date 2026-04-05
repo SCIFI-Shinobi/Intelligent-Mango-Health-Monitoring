@@ -23,7 +23,7 @@ const float CONFIDENCE_MARGIN = 0.20f;
 const uint8_t BUZZER_PIN = 9;
 
 // ================= HARDWARE CONFIG =================
-// Camera Constants
+// Camera Constants (must match Edge Impulse model: 160x160)
 #define EI_CAMERA_RAW_FRAME_BUFFER_COLS     160
 #define EI_CAMERA_RAW_FRAME_BUFFER_ROWS     160
 #define EI_CAMERA_FRAME_BYTE_SIZE           3
