@@ -66,7 +66,6 @@ class Recommendation(RecommendationBase):
 
 class ForecastContextPayload(BaseModel):
     device_id: str
-    season: str  # 'dry', 'wet', 'belg'
 
 class ForecastDay(BaseModel):
     day: int  # 1-5
@@ -74,7 +73,7 @@ class ForecastDay(BaseModel):
     date: datetime
 
 class ForecastLatest(BaseModel):
-    context: dict  # {'season': str}
+    context: dict
     days: list[ForecastDay]
     created_at: datetime
 
@@ -99,8 +98,6 @@ class DataIngestPayload(BaseModel):
     # Detection
     disease_type: str
     confidence_score: float
-    # Forecast context
-    season: str  # 'dry', 'wet', 'belg'
     # Recommendations (optional)
     recommendations: Optional[list[RecommendationBase]] = None
     # Forecast (5 days)

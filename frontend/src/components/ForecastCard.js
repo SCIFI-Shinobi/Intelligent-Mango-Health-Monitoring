@@ -1,20 +1,6 @@
 import React from 'react';
 import { useLanguage } from '../context/LanguageContext';
 
-const SEASON_MAP = {
-  'dry': { name: 'Bega', icon: 'fa-sun' },
-  'bega': { name: 'Bega', icon: 'fa-sun' },
-  'belg': { name: 'Belg', icon: 'fa-cloud-sun-rain' },
-  'wet': { name: 'Kiremt', icon: 'fa-cloud-showers-heavy' },
-  'kiremt': { name: 'Kiremt', icon: 'fa-cloud-showers-heavy' },
-};
-
-const SEASON_DESC_KEY = {
-  'dry': 'bega', 'bega': 'bega',
-  'belg': 'belg',
-  'wet': 'kiremt', 'kiremt': 'kiremt',
-};
-
 export default function ForecastCard({ forecast, loading }) {
   const { t } = useLanguage();
 
@@ -66,27 +52,12 @@ export default function ForecastCard({ forecast, loading }) {
     return { dayName, dayNum, isFirst: index === 0 };
   };
 
-  const seasonRaw = forecast.context?.season?.toLowerCase() || 'dry';
-  const season = SEASON_MAP[seasonRaw] || SEASON_MAP['dry'];
-  const seasonDescKey = SEASON_DESC_KEY[seasonRaw] || 'bega';
-
   return (
     <div className="forecast-section">
       <div className="forecast-header">
         <div className="forecast-title-row">
           <i className="fa-solid fa-chart-line forecast-title-icon"></i>
           <span className="section-title">{t('forecast', 'title')}</span>
-        </div>
-        <div className="forecast-season-badge">
-          <i className={`fa-solid ${season.icon}`}></i>
-          <span>{season.name}</span>
-        </div>
-      </div>
-
-      <div className="forecast-context-strip">
-        <div className="context-item">
-          <i className="fa-solid fa-calendar-day"></i>
-          <span>{t('forecast', 'season')}: <strong>{season.name}</strong> ({t('forecast', seasonDescKey)})</span>
         </div>
       </div>
 

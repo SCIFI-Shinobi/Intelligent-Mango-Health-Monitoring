@@ -88,7 +88,7 @@ The same risk logic runs on both the ESP32 (in real-time) and the FastAPI backen
 
 ### On-Device XGBoost Forecasting
 - The ESP32 runs an **XGBoost model** to predict disease risk for the next **5 days**.
-- Uses temperature, humidity, precipitation, and seasonal context as inputs.
+- Uses temperature, humidity, and precipitation as inputs.
 - Forecast results are displayed locally on OLED and synced to the dashboard.
 
 ### Field-Ready Hardware UI
@@ -101,7 +101,7 @@ The same risk logic runs on both the ESP32 (in real-time) and the FastAPI backen
 - **Disease status card** with confidence score and last scan time.
 - **Sensor cards** for temperature, humidity, and precipitation with trend indicators.
 - **Historical trends chart** with dual Y-axis (temp/humidity + precipitation) and 24h/7d/30d time range toggles.
-- **5-day disease risk forecast** with seasonal context (Bega/Belg/Kiremt).
+- **5-day disease risk forecast** from current sensor and inference context.
 - **Bilingual recommendations** matching the ESP32 firmware's Amharic output.
 - **Notification system** with auto-generated alerts for disease detection, high temperature, and high humidity.
 - **Detection history** with paginated logs.
@@ -284,7 +284,7 @@ REACT_APP_API_BASE_URL=http://localhost:8000
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
 | `/forecast/latest` | GET | 5-day disease risk forecast |
-| `/forecast/context` | POST | Submit season + precipitation from ESP32 |
+| `/forecast/context` | POST | Submit forecast context metadata from ESP32 |
 | `/recommendations/latest` | GET | Bilingual recommendations (`?limit=5`) |
 
 ### Notifications

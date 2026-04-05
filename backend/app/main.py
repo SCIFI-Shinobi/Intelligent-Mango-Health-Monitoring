@@ -496,7 +496,7 @@ def get_detection_history(
 @app.get("/forecast/latest")
 def get_forecast_latest(db: Session = Depends(get_db)):
     """
-    Get the latest 5-day forecast with context (season, precipitation).
+    Get the latest 5-day forecast with available context.
     """
     # Get the most recent forecast context
     context = db.query(models.ForecastContext).order_by(
@@ -513,7 +513,6 @@ def get_forecast_latest(db: Session = Depends(get_db)):
 
     return {
         "context": {
-            "season": context.season,
             "timestamp": context.timestamp
         },
         "days": [
@@ -530,11 +529,10 @@ def get_forecast_latest(db: Session = Depends(get_db)):
 @app.post("/forecast/context")
 def post_forecast_context(payload: schemas.ForecastContextPayload, db: Session = Depends(get_db)):
     """
-    Accept season from ESP32 for forecast model input.
+    Accept forecast context from ESP32.
     """
     new_context = models.ForecastContext(
-        device_id=payload.device_id,
-        season=payload.season
+        device_id=payload.device_id
     )
     db.add(new_context)
     db.commit()
@@ -543,7 +541,7 @@ def post_forecast_context(payload: schemas.ForecastContextPayload, db: Session =
     return {
         "status": "success",
         "context_id": new_context.id,
-        "message": f"Forecast context recorded: {payload.season} season"
+        "message": "Forecast context recorded"
     }
 
 
@@ -614,8 +612,7 @@ async def data_ingest(
 
         # 3. Store forecast context
         new_context = models.ForecastContext(
-            device_id=payload.device_id,
-            season=payload.season
+            device_id=payload.device_id
         )
         db.add(new_context)
 
@@ -657,7 +654,6 @@ async def data_ingest(
             "humidity": payload.humidity,
             "disease_type": payload.disease_type,
             "confidence_score": payload.confidence_score,
-            "season": payload.season,
             "timestamp": new_detection.timestamp.isoformat() if new_detection.timestamp else datetime.now(timezone.utc).isoformat()
         }
 

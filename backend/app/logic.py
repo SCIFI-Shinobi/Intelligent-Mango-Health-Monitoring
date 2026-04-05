@@ -123,8 +123,8 @@ GENERAL_TIPS = [
         "am": {"title": "መግረዝ ያስፈልጋል", "description": "የአየር ዝውውርን ለማሻሻልና የፈንገስ ስጋትን ለመቀነስ የተጨናነቁ ቅርንጫፎችን ያስወግዱ።"},
     },
     {
-        "en": {"title": "Fungicide Application", "description": "Apply copper-based fungicide as a preventive measure during the wet season."},
-        "am": {"title": "የፈንገስ ማጥፊያ መርጨት", "description": "በዝናብ ወቅት እንደ መከላከያ በፈንገስ ማጥፊያ (Copper) ይርጩ።"},
+        "en": {"title": "Fungicide Application", "description": "Apply copper-based fungicide as a preventive measure in high-humidity periods."},
+        "am": {"title": "የፈንገስ ማጥፊያ መርጨት", "description": "እርጥበት በሚጨምርበት ጊዜ እንደ መከላከያ በፈንገስ ማጥፊያ (Copper) ይርጩ።"},
     },
     {
         "en": {"title": "Soil Drainage", "description": "Check soil drainage around tree bases. Waterlogging increases disease risk."},

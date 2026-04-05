@@ -157,7 +157,6 @@ def seed():
             print("[+] Seeding forecast data...")
             ctx = ForecastContext(
                 device_id="ESP32-001",
-                season="kiremt",
                 timestamp=now - timedelta(hours=1)
             )
             db.add(ctx)

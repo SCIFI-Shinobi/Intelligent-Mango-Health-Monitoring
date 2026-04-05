@@ -27,7 +27,7 @@ def fetch_weather():
         "longitude": LONGITUDE,
         "start_date": START_DATE,
         "end_date": END_DATE,
-        "hourly": ["temperature_2m", "relative_humidity_2m", "precipitation"],
+        "hourly": ["temperature_2m", "relative_humidity_2m"],
         "timezone": "GMT"
     }
     responses = openmeteo.weather_api(url, params=params)
@@ -38,7 +38,6 @@ def process_data(response):
     hourly = response.Hourly()
     hourly_temperature_2m = hourly.Variables(0).ValuesAsNumpy()
     hourly_relative_humidity_2m = hourly.Variables(1).ValuesAsNumpy()
-    hourly_precipitation = hourly.Variables(2).ValuesAsNumpy()
 
     hourly_data = {
         "timestamp": pd.date_range(
@@ -48,8 +47,7 @@ def process_data(response):
             inclusive="left"
         ),
         "temperature": hourly_temperature_2m,
-        "humidity": hourly_relative_humidity_2m,
-        "precipitation": hourly_precipitation
+        "humidity": hourly_relative_humidity_2m
     }
 
     df = pd.DataFrame(data=hourly_data)
@@ -59,43 +57,34 @@ def process_data(response):
 
 def apply_risk_labels(df):
     """
-    Apply risk labels based on seasonal patterns and relaxed thresholds.
+    Apply risk labels based on temperature and humidity patterns.
     """
     temp_timestamps = pd.to_datetime(df["timestamp"])
-    months = temp_timestamps.dt.month
-    
-    # Define Season column (Numeric mapping: Bega=1, Belg=2, Kiremt=3)
-    df["season"] = 1  # Bega
-    df.loc[months.isin([6, 7, 8, 9]), "season"] = 3  # Kiremt
-    df.loc[months.isin([2, 3, 4, 5]), "season"] = 2  # Belg
-    
+
     df["risk_level"] = "Stable"
     
     # --- IMPROVED ANTHRACNOSE LOGIC ---
-    # Triggered by: Rain OR High Humidity (>80%) + Warmth (15°C–32°C)
+    # Triggered by: High Humidity (>80%) + Warmth (15°C–32°C)
     condition_anthracnose = (
         (df["temperature"] >= 15) & (df["temperature"] <= 32) & 
-        ((df["humidity"] > 80) | (df["precipitation"] > 0.1))
+        (df["humidity"] > 80)
     )
     
     # Use rolling window of 4 hours
     df["anth_window"] = condition_anthracnose.rolling(window=4, min_periods=4).min()
     
-    wet_season_mask = df["season"].isin([3, 2])  # Kiremt, Belg
-    df.loc[(df["anth_window"] == 1.0) & wet_season_mask, "risk_level"] = "High_Anthracnose_Risk"
+    df.loc[df["anth_window"] == 1.0, "risk_level"] = "High_Anthracnose_Risk"
     
     # --- IMPROVED MILDEW LOGIC ---
-    # Mildew loves humidity but HATES actual rain (rain washes spores away)
+    # Mildew daytime pattern under moderate temperature and humidity.
     daytime_mask = (temp_timestamps.dt.hour >= 6) & (temp_timestamps.dt.hour <= 18)
     condition_mildew = (
         daytime_mask & 
         (df["temperature"] >= 15) & (df["temperature"] <= 27) & 
-        (df["humidity"] >= 40) & (df["humidity"] <= 75) &
-        (df["precipitation"] == 0)
+        (df["humidity"] >= 40) & (df["humidity"] <= 75)
     )
     
-    mildew_season_mask = df["season"].isin([2, 1])  # Belg, Bega
-    df.loc[condition_mildew & mildew_season_mask, "risk_level"] = "High_Mildew_Risk"
+    df.loc[condition_mildew, "risk_level"] = "High_Mildew_Risk"
     
     # Clean up temporary columns
     df = df.drop(columns=["anth_window"])

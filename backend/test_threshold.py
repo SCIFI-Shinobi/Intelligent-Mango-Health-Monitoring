@@ -44,7 +44,6 @@ def build_detection_payload(
     confidence,
     temperature=28.5,
     humidity=75.0,
-    season="wet",
     device_id=DEFAULT_DEVICE_ID,
 ):
     return {
@@ -53,7 +52,6 @@ def build_detection_payload(
         "humidity": humidity,
         "disease_type": disease_type,
         "confidence_score": confidence,
-        "season": season,
         "forecast": [],
     }
 
@@ -91,7 +89,6 @@ def test_forecast_alert():
         "humidity": 80.0,
         "disease_type": "Healthy",
         "confidence_score": 0.95,
-        "season": "wet",
         "forecast": [
             {"day": 1, "risk_level": "Stable"},
             {"day": 2, "risk_level": "High_Anthracnose_Risk"},
@@ -171,7 +168,6 @@ def send_custom_detection():
     confidence = ask_float("Confidence score (0 to 1)", 0.75, 0.0, 1.0)
     temperature = ask_float("Temperature (degC)", 28.5)
     humidity = ask_float("Humidity (%)", 75.0)
-    season = ask_text("Season (wet / dry / belg)", "wet")
     device_id = ask_text("Device ID", DEFAULT_DEVICE_ID)
 
     payload = build_detection_payload(
@@ -179,7 +175,6 @@ def send_custom_detection():
         confidence=confidence,
         temperature=temperature,
         humidity=humidity,
-        season=season,
         device_id=device_id,
     )
     send_detection(payload, "Custom detection")

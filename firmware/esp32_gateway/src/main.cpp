@@ -167,32 +167,6 @@ bool connectToNano() {
     return false;
 }
 
-// ================= SEASON DETECTION =================
-// Ethiopian seasons based on month:
-// - Bega (Dry): October - January (months 10, 11, 12, 1)
-// - Belg (Short rains): February - May (months 2, 3, 4, 5)
-// - Kiremt (Wet/Main rains): June - September (months 6, 7, 8, 9)
-const char* getCurrentSeason() {
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo)) {
-        // If time not available, use rainfall to estimate
-        if (currentIsRaining || currentRainValue < RAIN_INTENSITY_THRESHOLD) {
-            return "wet";
-        }
-        return "dry";
-    }
-
-    int month = timeinfo.tm_mon + 1; // tm_mon is 0-11
-
-    if (month >= 6 && month <= 9) {
-        return "wet";    // Kiremt
-    } else if (month >= 2 && month <= 5) {
-        return "belg";   // Belg
-    } else {
-        return "dry";    // Bega
-    }
-}
-
 // Convert analog rain sensor value to approximate precipitation in mm
 // Rain sensor: 4095 = completely dry, 0 = heavy rain
 float estimatePrecipitation() {
@@ -264,10 +238,6 @@ void evaluateRisk() {
     bool moistureSuitable = (currentHumidity > profile->humidityThreshold);
     bool isRaining = currentIsRaining || (currentRainValue < RAIN_INTENSITY_THRESHOLD);
 
-    // Factor in season for risk calculation
-    const char* season = getCurrentSeason();
-    bool wetSeason = (strcmp(season, "wet") == 0 || strcmp(season, "belg") == 0);
-
     // High Risk: Both temp AND humidity match disease conditions, or rain boosts risk
     if (tempSuitable && moistureSuitable) {
         riskLevel = "HIGH RISK";
@@ -278,14 +248,6 @@ void evaluateRisk() {
     }
     // Rain + one other factor = elevated risk
     else if (isRaining && (tempSuitable || moistureSuitable)) {
-        riskLevel = "HIGH RISK";
-        recommendation = profile->targetedActionEn;
-        farmerAction = profile->targetedActionAm;
-        isHighRisk = true;
-        alertActive = true;
-    }
-    // Wet season + disease detected + one environmental factor = elevated risk
-    else if (wetSeason && (tempSuitable || moistureSuitable)) {
         riskLevel = "HIGH RISK";
         recommendation = profile->targetedActionEn;
         farmerAction = profile->targetedActionAm;
@@ -314,9 +276,9 @@ void evaluateRisk() {
         alertActive = false;
     }
 
-    Serial.printf("Risk Evaluation: %s (Conf: %.1f%%, Temp: %.1f°C, Hum: %.1f%%, Rain: %s, Season: %s)\n",
+    Serial.printf("Risk Evaluation: %s (Conf: %.1f%%, Temp: %.1f°C, Hum: %.1f%%, Rain: %s)\n",
                   riskLevel, currentConfidence * 100, currentTemperature, currentHumidity,
-                  isRaining ? "Yes" : "No", season);
+                  isRaining ? "Yes" : "No");
 }
 
 // ================= LCD DISPLAY =================
@@ -361,9 +323,6 @@ void sendDataToCloud() {
     http.addHeader("X-Device-Key", DEVICE_API_KEY);
     #endif
 
-    // Get current season
-    const char* season = getCurrentSeason();
-
     // Build JSON payload matching DataIngestPayload schema
     String json = "{";
     json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
@@ -371,7 +330,6 @@ void sendDataToCloud() {
     json += "\"humidity\":" + String(currentHumidity, 1) + ",";
     json += "\"disease_type\":\"" + String(currentDisease) + "\",";
     json += "\"confidence_score\":" + String(currentConfidence, 2) + ",";
-    json += "\"season\":\"" + String(season) + "\",";
 
     // Add recommendations array (only if we have a valid profile and confidence is high enough)
     if (currentProfile != nullptr && currentConfidence >= CONFIDENCE_THRESHOLD) {
@@ -382,24 +340,21 @@ void sendDataToCloud() {
         json += "\"description_am\":\"" + String(isHighRisk ? currentProfile->targetedActionAm : currentProfile->preventiveActionAm) + "\"";
         json += "}],";
 
-        // Add simple 5-day forecast based on current conditions and season
+        // Add simple 5-day forecast based on current conditions
         json += "\"forecast\":[";
         for (int day = 1; day <= 5; day++) {
             String dayRisk = "Stable";
 
-            // Higher risk for wet/belg season with disease detected
             if (strcmp(currentDisease, "Healthy") != 0 && currentConfidence >= CONFIDENCE_THRESHOLD) {
-                bool wetSeason = (strcmp(season, "wet") == 0 || strcmp(season, "belg") == 0);
                 bool highHumidity = currentHumidity > 75;
-
-                if (wetSeason && highHumidity) {
+                if (highHumidity) {
                     // Disease-specific forecast
                     if (strcmp(currentDisease, "Anthracnose") == 0) {
                         dayRisk = (day <= 2) ? "High_Anthracnose_Risk" : "Moderate_Anthracnose_Risk";
                     } else if (strcmp(currentDisease, "Powdery Mildew") == 0) {
                         dayRisk = (day <= 2) ? "High_Mildew_Risk" : "Moderate_Mildew_Risk";
                     }
-                } else if (wetSeason || highHumidity) {
+                } else {
                     dayRisk = "Moderate";
                 }
             }
@@ -483,7 +438,6 @@ void setup() {
             Serial.printf("Current time: %02d/%02d/%04d %02d:%02d:%02d\n",
                           timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
                           timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-            Serial.printf("Current season: %s\n", getCurrentSeason());
         }
     }
 

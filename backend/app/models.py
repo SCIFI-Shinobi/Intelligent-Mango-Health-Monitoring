@@ -59,7 +59,6 @@ class ForecastContext(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(String, index=True)
-    season = Column(String)  # 'dry', 'wet', 'belg'
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 class ForecastData(Base):
