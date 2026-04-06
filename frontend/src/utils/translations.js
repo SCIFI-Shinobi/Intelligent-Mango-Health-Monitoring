@@ -106,6 +106,7 @@ const translations = {
     title: { en: 'Disease Risk Forecast', am: 'የበሽታ ስጋት ትንበያ' },
     loading: { en: 'Loading forecast...', am: 'ትንበያ እየጫነ ነው...' },
     noData: { en: 'No forecast data available', am: 'ምንም የትንበያ መረጃ የለም' },
+    forecastDate: { en: 'Forecast date:', am: 'የትንበያ ቀን:' },
     tomorrow: { en: 'Tomorrow', am: 'ነገ' },
     stable: { en: 'Stable', am: 'የተረጋጋ' },
     anthracnoseRisk: { en: 'Anthracnose Risk', am: 'የአንትራክኖዝ ስጋት' },

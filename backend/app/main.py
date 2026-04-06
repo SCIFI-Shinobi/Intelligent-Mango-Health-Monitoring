@@ -594,11 +594,14 @@ async def data_ingest(
         db.commit()
 
     try:
+        server_now = datetime.now(timezone.utc)
+
         # 1. Store sensor data
         new_sensor = models.SensorData(
             device_id=payload.device_id,
             temperature=payload.temperature,
-            humidity=payload.humidity
+            humidity=payload.humidity,
+            timestamp=server_now
         )
         db.add(new_sensor)
 
@@ -606,13 +609,15 @@ async def data_ingest(
         new_detection = models.InferenceResult(
             device_id=payload.device_id,
             disease_type=payload.disease_type,
-            confidence_score=payload.confidence_score
+            confidence_score=payload.confidence_score,
+            timestamp=server_now
         )
         db.add(new_detection)
 
         # 3. Store forecast context
         new_context = models.ForecastContext(
-            device_id=payload.device_id
+            device_id=payload.device_id,
+            timestamp=server_now
         )
         db.add(new_context)
 
@@ -629,7 +634,8 @@ async def data_ingest(
                     title=rec.title,
                     description=rec.description,
                     title_am=rec.title_am,
-                    description_am=rec.description_am
+                    description_am=rec.description_am,
+                    timestamp=server_now
                 )
                 db.add(new_rec)
             db.commit()
@@ -637,7 +643,7 @@ async def data_ingest(
         # 5. Store forecast data if provided
         if payload.forecast:
             for i, day_forecast in enumerate(payload.forecast):
-                forecast_date = datetime.utcnow() + timedelta(days=i+1)
+                forecast_date = server_now + timedelta(days=i + 1)
                 new_forecast = models.ForecastData(
                     device_id=payload.device_id,
                     day_index=i,

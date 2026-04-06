@@ -43,7 +43,16 @@ export default function ForecastCard({ forecast, loading }) {
 
   const getRisk = (riskLevel) => RISK_MAP[normalizeRisk(riskLevel)] || RISK_MAP.stable;
 
-  const getDayLabel = (index) => {
+  const getDayLabel = (day, index) => {
+    if (day?.date) {
+      const parsed = new Date(day.date);
+      if (!Number.isNaN(parsed.getTime())) {
+        const dayName = parsed.toLocaleDateString('en-US', { weekday: 'short' });
+        const dayNum = parsed.getDate();
+        return { dayName, dayNum, isFirst: index === 0 };
+      }
+    }
+
     const today = new Date();
     const date = new Date(today);
     date.setDate(today.getDate() + index + 1);
@@ -51,6 +60,18 @@ export default function ForecastCard({ forecast, loading }) {
     const dayNum = date.getDate();
     return { dayName, dayNum, isFirst: index === 0 };
   };
+
+  const rawForecastDate = forecast?.created_at || forecast?.context?.timestamp;
+  let forecastDateText = null;
+  if (rawForecastDate) {
+    const parsedDate = new Date(rawForecastDate);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      const dd = String(parsedDate.getDate()).padStart(2, '0');
+      const mm = String(parsedDate.getMonth() + 1).padStart(2, '0');
+      const yyyy = parsedDate.getFullYear();
+      forecastDateText = `${dd}/${mm}/${yyyy}`;
+    }
+  }
 
   return (
     <div className="forecast-section">
@@ -63,7 +84,7 @@ export default function ForecastCard({ forecast, loading }) {
 
       <div className="forecast-grid">
         {forecast.days.map((day, index) => {
-          const { dayName, dayNum, isFirst } = getDayLabel(index);
+          const { dayName, dayNum, isFirst } = getDayLabel(day, index);
           const risk = getRisk(day.risk_level);
           return (
             <div key={index} className="forecast-day-card">
@@ -93,6 +114,12 @@ export default function ForecastCard({ forecast, loading }) {
         </div>
         <span className="forecast-source">{t('forecast', 'source')}</span>
       </div>
+
+      {forecastDateText && (
+        <div className="forecast-generated-date">
+          {t('forecast', 'forecastDate')} {forecastDateText}
+        </div>
+      )}
     </div>
   );
 }

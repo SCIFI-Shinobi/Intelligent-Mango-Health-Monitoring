@@ -1237,6 +1237,13 @@ body {
   font-style: italic;
 }
 
+.forecast-generated-date {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #6e7681;
+  text-align: right;
+}
+
 .forecast-loading,
 .forecast-empty {
   padding: 20px;
@@ -2136,6 +2143,10 @@ body {
     flex-direction: column;
     gap: 8px;
     align-items: flex-start;
+  }
+
+  .forecast-generated-date {
+    text-align: left;
   }
 
   .mobile-nav {
