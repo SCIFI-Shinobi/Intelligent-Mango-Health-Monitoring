@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState, useRef } from 'react';
+import React, { useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import MobileNav from '../components/MobileNav';
@@ -10,7 +10,6 @@ import ForecastCard from '../components/ForecastCard';
 import LogsPage from './LogsPage';
 import SettingsPage from './SettingsPage';
 import AnalysisPage from './AnalysisPage';
-import { useAPI } from '../hooks/useAPI';
 import { useTimeRange } from '../hooks/useTimeRange';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -38,7 +37,7 @@ export default function Dashboard() {
   const ws = useRef(null);
   const reconnectTimer = useRef(null);
 
-  const connectWebSocket = () => {
+  const connectWebSocket = useCallback(() => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
 
     const wsProto = API_BASE_URL.startsWith('https://') ? 'wss://' : 'ws://';
@@ -72,13 +71,13 @@ export default function Dashboard() {
 
     ws.current.onclose = () => {
       console.log('WebSocket closed, reconnecting...');
-      reconnectTimer.current = setTimeout(connectWebSocket, 3000);
+      reconnectTimer.current = setTimeout(() => connectWebSocket(), 3000);
     };
 
     ws.current.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
-  };
+  }, [token]);
 
   // Fetch all data on mount and when tab changes
   useEffect(() => {
@@ -132,7 +131,7 @@ export default function Dashboard() {
       clearTimeout(reconnectTimer.current);
       if (ws.current) ws.current.close();
     };
-  }, [token]);
+  }, [token, connectWebSocket]);
 
   // Get window size for responsive behavior
   const [isDesktop, setIsDesktop] = useState(window.innerWidth > 1024);

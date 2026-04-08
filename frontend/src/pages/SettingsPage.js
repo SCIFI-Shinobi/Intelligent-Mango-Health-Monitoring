@@ -44,7 +44,7 @@ export default function SettingsPage() {
     } catch (e) {
       console.error('Failed to fetch devices:', e);
     }
-  }, []);
+  }, [headers]);
 
   useEffect(() => {
     fetchDevices();

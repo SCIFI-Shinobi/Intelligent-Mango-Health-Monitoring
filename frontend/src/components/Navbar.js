@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import MangoLeafLogo from './MangoLeafLogo';
 import ProfileDropdown from './ProfileDropdown';
 import { formatTimeAgo } from '../utils/formatTime';
@@ -30,7 +30,7 @@ export default function Navbar({ activeTab, onTabChange }) {
   const panelRef = useRef(null);
   const token = localStorage.getItem('token');
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/notifications`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -43,13 +43,13 @@ export default function Navbar({ activeTab, onTabChange }) {
     } catch (e) {
       console.error('Failed to fetch notifications:', e);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchNotifications]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {

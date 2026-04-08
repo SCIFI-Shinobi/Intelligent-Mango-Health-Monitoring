@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -6,6 +6,11 @@ export function useAPI(endpoint, options = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Memoize options dependencies to prevent unnecessary refetches
+  const optionsMethod = options.method || 'GET';
+  const optionsBody = useMemo(() => JSON.stringify(options.body), [options.body]);
+  const optionsHeaders = useMemo(() => JSON.stringify(options.headers || {}), [options.headers]);
 
   useEffect(() => {
     let isMounted = true;
@@ -23,7 +28,7 @@ export function useAPI(endpoint, options = {}) {
         };
 
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-          method: options.method || 'GET',
+          method: optionsMethod,
           headers,
           body: options.body ? JSON.stringify(options.body) : undefined,
         });
@@ -60,7 +65,7 @@ export function useAPI(endpoint, options = {}) {
     return () => {
       isMounted = false;
     };
-  }, [endpoint, options.method, JSON.stringify(options.body)]);
+  }, [endpoint, optionsMethod, optionsBody, optionsHeaders]);
 
   return { data, loading, error };
 }
