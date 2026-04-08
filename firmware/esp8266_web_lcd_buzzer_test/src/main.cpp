@@ -23,14 +23,14 @@ static const uint8_t LCD_I2C_ADDR = 0x27;
 static const uint8_t LCD_COLUMNS = 16;
 static const uint8_t LCD_ROWS = 2;
 
-static const unsigned long WEBSITE_TEST_INTERVAL_MS = 10000;
+static const unsigned long DATA_UPLOAD_INTERVAL_MS = 10000;
 static const unsigned long WIFI_RECONNECT_INTERVAL_MS = 8000;
 static const unsigned long DHT_READ_INTERVAL_MS = 2000;
 
 LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLUMNS, LCD_ROWS);
 DHT dht(DHT_PIN, DHT_TYPE);
 
-unsigned long lastWebsiteTestMs = 0;
+unsigned long lastDataUploadMs = 0;
 unsigned long lastReconnectAttemptMs = 0;
 unsigned long lastDhtReadMs = 0;
 
@@ -38,7 +38,7 @@ float lastTemperatureC = NAN;
 float lastHumidityPct = NAN;
 String lastHttpStatus = "HTTP: N/A";
 
-// ✅ Escape characters that would break a JSON string value
+
 String jsonEscape(const String& s) {
     String out;
     out.reserve(s.length() + 8);
@@ -98,7 +98,7 @@ void readAndDisplayDht() {
         lastTemperatureC = t;
         lastHumidityPct = h;
 
-        // ✅ Log sensor reading to server
+        
         String msg = "Temp=" + String(t, 1) + "C Humidity=" + String(h, 0) + "%";
         sendLog(msg);
     }
@@ -106,7 +106,7 @@ void readAndDisplayDht() {
     String line1;
     if (isnan(lastTemperatureC) || isnan(lastHumidityPct)) {
         line1 = "DHT read failed";
-        sendLog("DHT read failed"); // ✅ Log failure too
+        sendLog("DHT read failed"); 
     } else {
         line1 = "T:" + String(lastTemperatureC, 1) + "C H:" + String(lastHumidityPct, 0) + "%";
     }
@@ -144,7 +144,7 @@ void connectWiFi() {
     }
 }
 
-void testWebsite() {
+void sendSensorData() {
     if (WiFi.status() != WL_CONNECTED) {
         showOnLcd("WiFi Disconn", "Reconnecting...");
         return;
@@ -165,9 +165,9 @@ void testWebsite() {
     // ✅ Random seed (put in setup ideally)
     randomSeed(analogRead(0));
 
-    // ✅ Random sensor data
-    float humidity = random(3000, 9000) / 100.0;
-    float temperature = random(1500, 3500) / 100.0;
+    // ✅ Use actual sensor data if available, else random
+    float humidity = isnan(lastHumidityPct) ? random(3000, 9000) / 100.0 : lastHumidityPct;
+    float temperature = isnan(lastTemperatureC) ? random(1500, 3500) / 100.0 : lastTemperatureC;
 
     // ✅ Random disease types
     String diseases[] = {"healthy", "leaf_blight", "rust", "powdery_mildew"};
@@ -188,6 +188,7 @@ void testWebsite() {
     Serial.println("Sending: " + payload);
 
     int code = http.POST(payload);
+    lastHttpStatus = "HTTP: " + String(code > 0 ? code : 0);
 
     if (code > 0) {
         String response = http.getString();
@@ -216,7 +217,7 @@ void setup() {
     delay(1200);
 
     connectWiFi();
-    sendLog("Device booted"); // ✅
+    sendLog("Device booted"); 
 }
 
 void loop() {
@@ -236,9 +237,9 @@ void loop() {
         readAndDisplayDht();
     }
 
-    if (now - lastWebsiteTestMs >= WEBSITE_TEST_INTERVAL_MS) {
-        lastWebsiteTestMs = now;
-        testWebsite();
+    if (now - lastDataUploadMs >= DATA_UPLOAD_INTERVAL_MS) {
+        lastDataUploadMs = now;
+        sendSensorData();
     }
 
     delay(50);
