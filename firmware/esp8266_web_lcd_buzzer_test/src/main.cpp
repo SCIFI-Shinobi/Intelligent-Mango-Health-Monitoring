@@ -9,8 +9,8 @@
 static const char* WIFI_SSID = "Belago";
 static const char* WIFI_PASSWORD = "aaaaaaaa";
 
-static const char* TEST_SERVER_URL = "http://10.42.0.118:8000/upload";
-static const char* LOG_SERVER_URL = "http://10.42.0.10:4000";
+static const char* TEST_SERVER_URL = "http://10.161.119.162:8000/upload";
+static const char* LOG_SERVER_URL = "http://10.161.119.162:4000";
 
 // ---------- NODEMCU PINS ----------
 static const uint8_t BUZZER_PIN = D0;

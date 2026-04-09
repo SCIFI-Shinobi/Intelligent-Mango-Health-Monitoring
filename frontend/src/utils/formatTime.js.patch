@@ -1,0 +1,8 @@
+export function formatTimeAgo(timestamp, lang = 'en', timeFormat = 'relative') {
+  if (!timestamp) return 'N/A';
+
+  if (timeFormat === 'absolute') {
+    return formatDateEAT(timestamp, lang);
+  }
+
+  // existing code

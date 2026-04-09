@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useAPI } from '../hooks/useAPI';
-import { formatDateEAT } from '../utils/formatTime';
+import { formatTimeAgo, formatDateEAT } from '../utils/formatTime';
 import { exportDetectionLogs } from '../utils/exportCSV';
 import { useLanguage } from '../context/LanguageContext';
+import { useSettings } from '../context/SettingsContext';
 
 export default function LogsPage() {
   const { lang, t } = useLanguage();
+  const { settings, formatTemp } = useSettings();
   const [page, setPage] = useState(1);
   const limit = 10;
 
@@ -73,12 +75,13 @@ export default function LogsPage() {
                   const isHealthy = dtype === 'healthy';
                   const badgeClass = isHealthy ? 'healthy' : dtype.includes('powdery') ? 'mildew' : 'anthracnose';
                   const diseaseKey = isHealthy ? 'healthy' : dtype.includes('powdery') ? 'powderyMildew' : 'anthracnose';
+                  const iconClass = isHealthy ? 'fa-seedling' : dtype.includes('powdery') ? 'fa-smog' : 'fa-bug';
                   return (
                     <tr key={index}>
-                      <td>{formatDateEAT(detection.timestamp, lang)}</td>
+                      <td>{settings.timeFormat === 'relative' ? formatTimeAgo(detection.timestamp, lang) : formatDateEAT(detection.timestamp, lang)}</td>
                       <td>
                         <span className={`disease-chip ${badgeClass}`}>
-                          <i className={`fa-solid ${isHealthy ? 'fa-shield-halved' : 'fa-virus'}`}></i>
+                          <i className={`fa-solid ${iconClass}`}></i>
                           {t('disease', diseaseKey)}
                         </span>
                       </td>
@@ -93,7 +96,7 @@ export default function LogsPage() {
                           <span className="confidence-text">{(detection.confidence_score * 100).toFixed(1)}%</span>
                         </div>
                       </td>
-                      <td>{detection.temperature ? `${detection.temperature.toFixed(1)}°C` : 'N/A'}</td>
+                      <td>{detection.temperature ? `${formatTemp(detection.temperature)}${settings.temperatureUnit === 'fahrenheit' ? '°F' : '°C'}` : 'N/A'}</td>
                       <td>{detection.humidity ? `${detection.humidity.toFixed(1)}%` : 'N/A'}</td>
                     </tr>
                   );

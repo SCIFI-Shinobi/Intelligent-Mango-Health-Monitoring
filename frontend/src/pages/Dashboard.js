@@ -12,12 +12,14 @@ import SettingsPage from './SettingsPage';
 import AnalysisPage from './AnalysisPage';
 import { useTimeRange } from '../hooks/useTimeRange';
 import { useLanguage } from '../context/LanguageContext';
+import { useSettings } from '../context/SettingsContext';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 export default function Dashboard() {
   const { token } = useContext(AuthContext);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const { settings, formatTemp } = useSettings();
 
   // Tab state
   const [activeTab, setActiveTab] = useState('home');
@@ -170,8 +172,8 @@ export default function Dashboard() {
               <div className={isDesktop ? "sensor-grid-desktop" : "sensor-row"}>
                 <SensorCard
                   name={t('sensor', 'temperature')}
-                  value={sensorLatest?.temperature?.toFixed(1) || '-'}
-                  unit="°C"
+                  value={formatTemp(sensorLatest?.temperature)}
+                  unit={settings.temperatureUnit === 'fahrenheit' ? '°F' : '°C'}
                   icon="temp"
                 />
                 <SensorCard

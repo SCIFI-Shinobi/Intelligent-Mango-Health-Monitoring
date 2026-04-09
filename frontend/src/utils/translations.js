@@ -147,7 +147,29 @@ const translations = {
     deviceId: { en: 'Device ID:', am: 'የመሳሪያ ኮድ:' },
     firmware: { en: 'Firmware Version:', am: 'የስርዓት ስሪት:' },
     lastSync: { en: 'Last Sync (EAT):', am: 'የመጨረሻ ማመሳሰል:' },
+
+
     save: { en: 'Save Settings', am: 'ቅንብሮችን አስቀምጥ' },
+    general: { en: 'General Settings', am: 'አጠቃላይ ቅንብሮች' },
+    language: { en: 'Language', am: 'ቋንቋ' },
+    displayPreferences: { en: 'Display Preferences', am: 'የማሳያ ምርጫዎች' },
+    temperatureUnit: { en: 'Temperature Unit', am: 'የሙቀት መለኪያ' },
+    timeFormat: { en: 'Time Format', am: 'የሰዓት አቀራረብ' },
+    timeFormatHint: { en: 'How timestamps are displayed on charts and logs.', am: 'የጊዜ ምልክቶች በቻርትና ሎግ ላይ እንዴት እንደሚታዩ።' },
+    dataSync: { en: 'Data Synchronization', am: 'የውሂብ ማመሳሰል' },
+    autoRefresh: { en: 'Dashboard Auto-Refresh Interval', am: 'ዳሽቦርድ በራስ ሰር የማደሻ ጊዜ' },
+    autoRefreshHint: { en: 'How often the dashboard should automatically pull new sensor data.', am: 'ዳሽቦርዱ አዲስ የሴንሰር መረጃዎችን ምን ያህል ጊዜ በራስ-ሰር ማሳየት እንዳለበት።' },
+
+    general: { en: 'General Settings', am: 'አጠቃላይ ቅንብሮች' },
+    language: { en: 'Language', am: 'ቋንቋ' },
+    displayPreferences: { en: 'Display Preferences', am: 'የማሳያ ምርጫዎች' },
+    temperatureUnit: { en: 'Temperature Unit', am: 'የሙቀት መለኪያ' },
+    timeFormat: { en: 'Time Format', am: 'የሰዓት አቀራረብ' },
+    timeFormatHint: { en: 'How timestamps are displayed on charts and logs.', am: 'የጊዜ ምልክቶች በቻርትና ሎግ ላይ እንዴት እንደሚታዩ።' },
+    dataSync: { en: 'Data Synchronization', am: 'የውሂብ ማመሳሰል' },
+    autoRefresh: { en: 'Dashboard Auto-Refresh Interval', am: 'ዳሽቦርድ በራስ ሰር የማደሻ ጊዜ' },
+    autoRefreshHint: { en: 'How often the dashboard should automatically pull new sensor data.', am: 'ዳሽቦርዱ አዲስ የሴንሰር መረጃዎችን ምን ያህል ጊዜ በራስ-ሰር ማሳየት እንዳለበት።' },
+
     saved: { en: 'Settings saved', am: 'ቅንብሮች ተቀምጠዋል' },
     deviceConnection: { en: 'Device Connection', am: 'የመሳሪያ ግንኙነት' },
     apiEndpoint: { en: 'API Endpoint', am: 'API መንገድ' },
@@ -209,8 +231,8 @@ const translations = {
   // ---- Footer ----
   footer: {
     text: {
-      en: '© 2026 MangoGuard - Intelligent Mango Health Monitoring. Ethiopian Time (EAT).',
-      am: '© 2026 MangoGuard - ብልህ የማንጎ ጤና ክትትል። የኢትዮጵያ ሰዓት።',
+      en: '© 2026 MangoGuard - Intelligent Mango Health Monitoring.',
+      am: '© 2026 MangoGuard - ብልህ የማንጎ ጤና ክትትል።',
     },
   },
 

@@ -217,6 +217,7 @@ void readSensors() {
         
         Serial.print("DHT - Temp: ");
         Serial.print(t);
+        
         Serial.print("°C, Humidity: ");
         Serial.print(h);
         Serial.println("%");

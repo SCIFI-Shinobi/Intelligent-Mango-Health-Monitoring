@@ -522,8 +522,13 @@ body {
   background: linear-gradient(135deg, #059669 0%, #10b981 50%, #06b6d4 100%);
 }
 
-.disease-status-card.status-warning {
+.disease-status-card.status-warning,
+.disease-status-card.status-mildew {
   background: linear-gradient(135deg, #d97706 0%, #f59e0b 50%, #fbbf24 100%);
+}
+
+.disease-status-card.status-anthracnose {
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 50%, #fca5a5 100%);
 }
 
 .disease-status-card.status-unknown {

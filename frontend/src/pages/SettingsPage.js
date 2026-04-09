@@ -1,215 +1,113 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { formatTimeAgo } from '../utils/formatTime';
-
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+import { useSettings } from '../context/SettingsContext';
 
 export default function SettingsPage() {
-  const { lang, t } = useLanguage();
+  const { lang, switchLang, t } = useLanguage();
+  const { settings, updateSettings } = useSettings();
   const token = localStorage.getItem('token');
 
-  const [settings, setSettings] = useState({
-    enableNotifications: true,
-    diseaseConfidenceThreshold: 70
-  });
+  // Local state to hold changes until 'Save' is pressed
+  const [localSettings, setLocalSettings] = useState(settings);
 
   const [saved, setSaved] = useState(false);
-  const [devices, setDevices] = useState([]);
-  const [deviceLoading, setDeviceLoading] = useState(false);
-  const [copied, setCopied] = useState(null);
-
-  const headers = {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  };
 
   useEffect(() => {
-    const savedSettings = localStorage.getItem('mangaguard-settings');
-    if (savedSettings) {
-      try {
-        setSettings(JSON.parse(savedSettings));
-      } catch (e) {
-        console.error('Failed to load settings:', e);
-      }
-    }
-  }, []);
-
-  const fetchDevices = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/devices/my`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setDevices(data.data || []);
-      }
-    } catch (e) {
-      console.error('Failed to fetch devices:', e);
-    }
-  }, [headers]);
-
-  useEffect(() => {
-    fetchDevices();
-  }, [fetchDevices]);
+    setLocalSettings(settings);
+  }, [settings]);
 
   const handleSettingChange = (key, value) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
+    setLocalSettings((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
   };
 
   const handleSaveSettings = () => {
-    localStorage.setItem('mangaguard-settings', JSON.stringify(settings));
+    updateSettings(localSettings);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
 
-  const handleRegisterDevice = async () => {
-    setDeviceLoading(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/devices/register`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ device_name: 'ESP32 Gateway' })
-      });
-      if (res.ok) {
-        await fetchDevices();
-      }
-    } catch (e) {
-      console.error('Failed to register device:', e);
-    } finally {
-      setDeviceLoading(false);
-    }
-  };
-
-  const handleRegenerateKey = async (deviceId) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/devices/${deviceId}/regenerate-key`, {
-        method: 'POST',
-        headers
-      });
-      if (res.ok) {
-        await fetchDevices();
-      }
-    } catch (e) {
-      console.error('Failed to regenerate key:', e);
-    }
-  };
-
-  const handleDeleteDevice = async (deviceId) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/devices/${deviceId}`, {
-        method: 'DELETE',
-        headers
-      });
-      if (res.ok) {
-        await fetchDevices();
-      }
-    } catch (e) {
-      console.error('Failed to delete device:', e);
-    }
-  };
-
-  const copyToClipboard = (text, id) => {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
-  const apiUrl = `${API_BASE_URL}/data/ingest`;
-
   return (
     <div className="settings-page">
-      {/* Device Connection Section */}
+      {/* General Settings */}
       <div className="settings-section">
-        <h3 className="settings-title">
-          <i className="fa-solid fa-microchip"></i> {t('settings', 'deviceConnection')}
-        </h3>
+        <h3 className="settings-title"><i className="fa-solid fa-globe"></i> {t('settings', 'general') || 'General Settings'}</h3>
+        <div className="setting-group">
+          <label>{t('settings', 'language') || 'Language'}</label>
+          <select 
+            value={lang} 
+            onChange={(e) => switchLang(e.target.value)} 
+            className="form-input" 
+            style={{width: '100%', background: '#0d1117', border: '1px solid #30363d', color: '#fff', padding: '10px 12px', borderRadius: '6px'}}
+          >
+            <option value="en">ENGLISH</option>
+            <option value="am">አማርኛ (AMHARIC)</option>
+          </select>
+        </div>
+      </div>
 
-        <div className="device-api-info">
-          <div className="device-field">
-            <label>{t('settings', 'apiEndpoint')}</label>
-            <div className="copyable-field">
-              <code>{apiUrl}</code>
-              <button className="copy-btn" onClick={() => copyToClipboard(apiUrl, 'url')}>
-                <i className={`fa-solid ${copied === 'url' ? 'fa-check' : 'fa-copy'}`}></i>
-              </button>
-            </div>
+      {/* Display Preferences */}
+      <div className="settings-section">
+        <h3 className="settings-title"><i className="fa-solid fa-paintbrush"></i> {t('settings', 'displayPreferences') || 'Display Preferences'}</h3>
+        
+        <div className="setting-group">
+          <label>{t('settings', 'temperatureUnit') || 'Temperature Unit'}</label>
+          <div style={{display: 'flex', gap: '10px', marginTop: '8px'}}>
+            <label className="checkbox-label">
+              <input type="radio" checked={localSettings.temperatureUnit === 'celsius'} onChange={() => handleSettingChange('temperatureUnit', 'celsius')} className="checkbox" style={{borderRadius: '50%'}} />
+              <span>Celsius (°C)</span>
+            </label>
+            <label className="checkbox-label" style={{marginLeft: '20px'}}>
+              <input type="radio" checked={localSettings.temperatureUnit === 'fahrenheit'} onChange={() => handleSettingChange('temperatureUnit', 'fahrenheit')} className="checkbox" style={{borderRadius: '50%'}} />
+              <span>Fahrenheit (°F)</span>
+            </label>
           </div>
         </div>
 
-        {devices.length === 0 ? (
-          <div className="no-devices">
-            <i className="fa-solid fa-plug-circle-xmark"></i>
-            <p>{t('settings', 'noDevices')}</p>
-            <button className="primary-btn" onClick={handleRegisterDevice} disabled={deviceLoading}>
-              <i className="fa-solid fa-plus"></i> {t('settings', 'generateKey')}
-            </button>
+        <div className="setting-group" style={{marginTop: '20px'}}>
+          <label>{t('settings', 'timeFormat') || 'Time Format'}</label>
+          <p className="setting-hint">{t('settings', 'timeFormatHint') || 'How timestamps are displayed on charts and logs.'}</p>
+          <div style={{display: 'flex', gap: '10px', marginTop: '8px'}}>
+            <label className="checkbox-label">
+              <input type="radio" checked={localSettings.timeFormat === 'relative'} onChange={() => handleSettingChange('timeFormat', 'relative')} className="checkbox" style={{borderRadius: '50%'}} />
+              <span>Relative (e.g. 5 mins ago)</span>
+            </label>
+            <label className="checkbox-label" style={{marginLeft: '20px'}}>
+              <input type="radio" checked={localSettings.timeFormat === 'absolute'} onChange={() => handleSettingChange('timeFormat', 'absolute')} className="checkbox" style={{borderRadius: '50%'}} />
+              <span>Absolute (e.g. 4:30 PM)</span>
+            </label>
           </div>
-        ) : (
-          <div className="device-list">
-            {devices.map((device) => (
-              <div key={device.id} className="device-card">
-                <div className="device-card-header">
-                  <div className="device-name-row">
-                    <i className="fa-solid fa-microchip device-chip-icon"></i>
-                    <span className="device-card-name">{device.device_name}</span>
-                  </div>
-                  <div className={`device-status ${device.last_seen ? 'online' : 'offline'}`}>
-                    <span className="status-indicator"></span>
-                    {device.last_seen ? t('settings', 'connected') : t('settings', 'neverConnected')}
-                  </div>
-                </div>
+        </div>
+      </div>
 
-                <div className="device-field">
-                  <label>{t('settings', 'deviceApiKey')}</label>
-                  <div className="copyable-field key-field">
-                    <code>{device.api_key}</code>
-                    <button className="copy-btn" onClick={() => copyToClipboard(device.api_key, `key-${device.id}`)}>
-                      <i className={`fa-solid ${copied === `key-${device.id}` ? 'fa-check' : 'fa-copy'}`}></i>
-                    </button>
-                  </div>
-                </div>
-
-                {device.last_seen && (
-                  <div className="device-last-seen">
-                    <i className="fa-solid fa-clock"></i>
-                    {t('settings', 'lastSeen')}: {formatTimeAgo(device.last_seen, lang)}
-                  </div>
-                )}
-
-                <div className="device-config-hint">
-                  <label>{t('settings', 'esp32Config')}</label>
-                  <pre className="config-snippet">
-{`#define API_URL    "${apiUrl}"
-#define DEVICE_KEY "${device.api_key}"
-
-// Add header in HTTP POST:
-// http.addHeader("X-Device-Key", DEVICE_KEY);`}
-                  </pre>
-                </div>
-
-                <div className="device-actions">
-                  <button className="secondary-btn small" onClick={() => handleRegenerateKey(device.id)}>
-                    <i className="fa-solid fa-rotate"></i> {t('settings', 'regenerateKey')}
-                  </button>
-                  <button className="danger-btn small" onClick={() => handleDeleteDevice(device.id)}>
-                    <i className="fa-solid fa-trash"></i> {t('settings', 'removeDevice')}
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            <button className="secondary-btn add-device-btn" onClick={handleRegisterDevice} disabled={deviceLoading}>
-              <i className="fa-solid fa-plus"></i> {t('settings', 'addAnother')}
-            </button>
-          </div>
-        )}
+      {/* Data Synchronization */}
+      <div className="settings-section">
+        <h3 className="settings-title"><i className="fa-solid fa-rotate"></i> {t('settings', 'dataSync') || 'Data Synchronization'}</h3>
+        <div className="setting-group">
+          <label>{t('settings', 'autoRefresh') || 'Dashboard Auto-Refresh Interval'}</label>
+          <p className="setting-hint">{t('settings', 'autoRefreshHint') || 'How often the dashboard should automatically pull new sensor data.'}</p>
+          <select 
+            value={localSettings.autoRefreshInterval} 
+            onChange={(e) => handleSettingChange('autoRefreshInterval', parseInt(e.target.value))} 
+            className="form-input" 
+            style={{width: '100%', background: '#0d1117', border: '1px solid #30363d', color: '#fff', padding: '10px 12px', borderRadius: '6px'}}
+          >
+            <option value={1}>Every 1 minute</option>
+            <option value={5}>Every 5 minutes</option>
+            <option value={15}>Every 15 minutes</option>
+            <option value={30}>Every 30 minutes</option>
+            <option value={60}>Every 1 hour</option>
+            <option value={0}>Manual refresh only</option>
+          </select>
+        </div>
       </div>
 
       {/* Notifications */}
       <div className="settings-section">
-        <h3 className="settings-title">{t('settings', 'notifications')}</h3>
+        <h3 className="settings-title"><i className="fa-solid fa-bell"></i> {t('settings', 'notifications')}</h3>
         <div className="setting-group">
           <label className="checkbox-label">
-            <input type="checkbox" checked={settings.enableNotifications} onChange={(e) => handleSettingChange('enableNotifications', e.target.checked)} className="checkbox" />
+            <input type="checkbox" checked={localSettings.enableNotifications} onChange={(e) => handleSettingChange('enableNotifications', e.target.checked)} className="checkbox" />
             <span>{t('settings', 'enablePush')}</span>
           </label>
         </div>
@@ -223,7 +121,7 @@ export default function SettingsPage() {
               min="50"
               max="95"
               step="1"
-              value={settings.diseaseConfidenceThreshold}
+              value={localSettings.diseaseConfidenceThreshold}
               onChange={(e) => handleSettingChange('diseaseConfidenceThreshold', parseInt(e.target.value))}
               className="slider"
             />
@@ -232,7 +130,7 @@ export default function SettingsPage() {
                 type="number"
                 min="50"
                 max="95"
-                value={settings.diseaseConfidenceThreshold}
+                value={localSettings.diseaseConfidenceThreshold}
                 onChange={(e) => {
                   const val = Math.min(95, Math.max(50, parseInt(e.target.value) || 50));
                   handleSettingChange('diseaseConfidenceThreshold', val);
@@ -245,11 +143,11 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="settings-actions">
-        <button className="primary-btn" onClick={handleSaveSettings}>
-          {t('settings', 'save')}
+      <div className="settings-actions" style={{position: 'sticky', bottom: 0, paddingBottom: 20, paddingTop: 10, background: 'linear-gradient(transparent, #161b22 30%)'}}>
+        <button className="primary-btn" onClick={handleSaveSettings} style={{width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '14px', fontSize: '16px'}}>
+          <i className="fa-solid fa-floppy-disk"></i> {t('settings', 'save')}
         </button>
-        {saved && <span className="save-confirmation">✓ {t('settings', 'saved')}</span>}
+        {saved && <span className="save-confirmation" style={{textAlign: 'center', display: 'block', marginTop: '10px'}}>✓ {t('settings', 'saved')}</span>}
       </div>
     </div>
   );

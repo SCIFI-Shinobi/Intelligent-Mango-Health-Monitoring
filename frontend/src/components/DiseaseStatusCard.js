@@ -40,7 +40,16 @@ export default function DiseaseStatusCard({ detection, loading }) {
   }
 
   const isHealthy = detection.disease_type === 'Healthy';
-  const statusClass = isHealthy ? 'optimal' : 'warning';
+  
+  let statusClass = 'optimal';
+  if (detection.disease_type === 'Powdery Mildew' || (detection.disease_type && detection.disease_type.toLowerCase().includes('powdery'))) {
+    statusClass = 'mildew';
+  } else if (detection.disease_type === 'Anthracnose' || (detection.disease_type && detection.disease_type.toLowerCase().includes('anthracnose'))) {
+    statusClass = 'anthracnose';
+  } else if (!isHealthy) {
+    statusClass = 'warning';
+  }
+
   const diseaseKey = DISEASE_NAMES[detection.disease_type];
   const diseaseName = diseaseKey ? t('disease', diseaseKey) : detection.disease_type;
 

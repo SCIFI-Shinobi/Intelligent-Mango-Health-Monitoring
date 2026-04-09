@@ -36,9 +36,9 @@ export default function ForecastCard({ forecast, loading }) {
   };
 
   const RISK_MAP = {
-    stable:      { color: '#3fb950', icon: 'fa-shield-halved',        labelKey: 'stable' },
-    anthracnose: { color: '#f85149', icon: 'fa-circle-exclamation',   labelKey: 'anthracnoseRisk' },
-    mildew:      { color: '#d29922', icon: 'fa-triangle-exclamation', labelKey: 'mildewRisk' },
+    stable:      { color: '#3fb950', icon: 'fa-seedling',        labelKey: 'stable' },
+    anthracnose: { color: '#f85149', icon: 'fa-bug',   labelKey: 'anthracnoseRisk' },
+    mildew:      { color: '#d29922', icon: 'fa-smog', labelKey: 'mildewRisk' },
   };
 
   const getRisk = (riskLevel) => RISK_MAP[normalizeRisk(riskLevel)] || RISK_MAP.stable;
@@ -77,7 +77,7 @@ export default function ForecastCard({ forecast, loading }) {
     <div className="forecast-section">
       <div className="forecast-header">
         <div className="forecast-title-row">
-          <i className="fa-solid fa-chart-line forecast-title-icon"></i>
+          <i className="fa-solid fa-cloud-sun forecast-title-icon"></i>
           <span className="section-title">{t('forecast', 'title')}</span>
         </div>
       </div>

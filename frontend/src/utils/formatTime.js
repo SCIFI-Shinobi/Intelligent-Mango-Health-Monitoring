@@ -11,8 +11,18 @@ const TIME_AGO = {
   am: { justNow: 'አሁን', m: 'ደቂቃ በፊት', h: 'ሰዓት በፊት', d: 'ቀን በፊት' },
 };
 
-export function formatTimeAgo(timestamp, lang = 'en') {
+export function formatTimeAgo(timestamp, lang = 'en', timeFormat = 'relative') {
   if (!timestamp) return 'N/A';
+
+  if (timeFormat === 'absolute') {
+    const d = new Date(timestamp);
+    const options = {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Africa/Addis_Ababa'
+    };
+    return d.toLocaleString(getLocale(lang), options);
+  }
 
   const date = new Date(timestamp);
   const now = new Date();

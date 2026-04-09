@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Form, Header
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Form, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -17,6 +17,12 @@ from .database import engine, get_db
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
+
+def send_alert_email(email: str, subject: str, message: str):
+    """
+    Simulates sending an email alert when a threshold is triggered.
+    """
+    print(f"\n[EMAIL SENT to {email}]\nSubject: {subject}\n{message}\n")
 
 app = FastAPI(title="Intelligent Plant Health Monitoring API")
 
@@ -571,6 +577,7 @@ def get_recommendations_latest(db: Session = Depends(get_db), limit: int = 5):
 @app.post("/data/ingest")
 async def data_ingest(
     payload: schemas.DataIngestPayload,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     x_device_key: Optional[str] = Header(None)
 ):
@@ -675,28 +682,12 @@ async def data_ingest(
             # Disease alert - only if confidence exceeds threshold (default 70%)
             CONFIDENCE_THRESHOLD = 0.70
             if payload.disease_type != "Healthy" and payload.confidence_score >= CONFIDENCE_THRESHOLD:
-                db.add(models.Notification(
-                    user_id=user.id,
-                    title=f"{payload.disease_type} Detected",
-                    message=f"{payload.disease_type} detected with {payload.confidence_score*100:.1f}% confidence. Check your mango plants.",
-                    type="disease_alert"
-                ))
-            # High temperature warning
-            if payload.temperature > 35:
-                db.add(models.Notification(
-                    user_id=user.id,
-                    title="High Temperature Alert",
-                    message=f"Temperature reached {payload.temperature}°C. This may stress your plants.",
-                    type="sensor_warning"
-                ))
-            # High humidity warning
-            if payload.humidity > 90:
-                db.add(models.Notification(
-                    user_id=user.id,
-                    title="High Humidity Alert",
-                    message=f"Humidity at {payload.humidity}%. High humidity increases fungal disease risk.",
-                    type="sensor_warning"
-                ))
+                title = f"{payload.disease_type} Detected"
+                message = f"{payload.disease_type} detected with {payload.confidence_score*100:.1f}% confidence. Check your mango plants."
+                db.add(models.Notification(user_id=user.id, title=title, message=message, type="disease_alert"))
+                if user.email:
+                    background_tasks.add_task(send_alert_email, user.email, title, message)
+                    
             # Forecast alerts for high-risk predictions
             if payload.forecast:
                 for i, day_forecast in enumerate(payload.forecast):
@@ -710,12 +701,13 @@ async def data_ingest(
                         else:
                             risk_name = "Disease"
                         day_num = i + 1
-                        db.add(models.Notification(
-                            user_id=user.id,
-                            title=f"Day {day_num} Forecast: High {risk_name} Risk",
-                            message=f"Forecast predicts high {risk_name.lower()} risk in {day_num} day(s). Consider preventive measures.",
-                            type="forecast_alert"
-                        ))
+                        title = f"Day {day_num} Forecast: High {risk_name} Risk"
+                        message = f"Forecast predicts high {risk_name.lower()} risk in {day_num} day(s). Consider preventive measures."
+                        
+                        db.add(models.Notification(user_id=user.id, title=title, message=message, type="forecast_alert"))
+                        if user.email:
+                            background_tasks.add_task(send_alert_email, user.email, title, message)
+                            
         db.commit()
 
         return {

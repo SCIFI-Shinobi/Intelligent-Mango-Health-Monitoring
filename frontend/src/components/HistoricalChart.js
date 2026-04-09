@@ -12,11 +12,13 @@ import {
   Filler
 } from 'chart.js';
 import { useLanguage } from '../context/LanguageContext';
+import { useSettings } from '../context/SettingsContext';
 
 ChartJS.register(LineElement, BarElement, CategoryScale, LinearScale, PointElement, Tooltip, Legend, Filler);
 
 export default function HistoricalChart({ data, loading, onRangeChange, currentRange }) {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
+  const { settings } = useSettings();
 
   if (loading || !data || data.length === 0) {
     return (
@@ -36,19 +38,25 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
     );
   }
 
-  const labels = data.map((d) => {
+const labels = data.map((d) => {
     const date = new Date(d.timestamp);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    if (settings.timeFormat === 'relative') {
+      // For charts, relative doesn't make as much sense on multiple points, but let's honor the spirit:
+      // Actually standardizing to EAT options:
+      return date.toLocaleTimeString(lang === 'am' ? 'am-ET' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Addis_Ababa' });
+    }
+    // Absolute could include date or just standard time:
+    return date.toLocaleTimeString(lang === 'am' ? 'am-ET' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Addis_Ababa' });
   });
 
-  const temps = data.map((d) => d.temperature);
+  const temps = data.map((d) => settings.temperatureUnit === 'fahrenheit' ? parseFloat(((d.temperature * 9) / 5 + 32).toFixed(1)) : parseFloat(d.temperature.toFixed(1)));
   const humidities = data.map((d) => d.humidity);
 
   const chartData = {
     labels,
     datasets: [
       {
-        label: t('chart', 'tempLabel'),
+        label: settings.temperatureUnit === 'fahrenheit' ? t('chart', 'tempLabel').replace('(°C)', '(°F)') : t('chart', 'tempLabel'),
         data: temps,
         borderColor: '#f97316',
         backgroundColor: 'rgba(249, 115, 22, 0.1)',
@@ -85,7 +93,7 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
         type: 'linear', position: 'left',
         grid: { color: '#30363d', drawBorder: false },
         ticks: { color: '#7b8bbd' },
-        title: { display: true, text: t('chart', 'tempAxis'), color: '#7b8bbd', font: { size: 11 } }
+        title: { display: true, text: settings.temperatureUnit === 'fahrenheit' ? t('chart', 'tempAxis').replace('(°C)', '(°F)') : t('chart', 'tempAxis'), color: '#7b8bbd', font: { size: 11 } }
       },
       x: { grid: { display: false }, ticks: { color: '#7b8bbd' } }
     }

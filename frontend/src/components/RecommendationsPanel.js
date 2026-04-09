@@ -15,26 +15,35 @@ export default function RecommendationsPanel({ recommendations, loading }) {
     return rec.description;
   };
 
-  const getRecommendationIcon = (title) => {
-    const s = (title || '').toLowerCase();
-    if (s.includes('anthracnose') || s.includes('አንትራክኖዝ')) return 'fa-virus';
-    if (s.includes('powdery') || s.includes('mildew') || s.includes('ሻጋታ') || s.includes('ዱቄት')) return 'fa-cloud';
-    if (s.includes('humidity') || s.includes('እርጥበት')) return 'fa-droplet';
-    if (s.includes('temperature') || s.includes('ሙቀት')) return 'fa-temperature-high';
-    if (s.includes('prune') || s.includes('pruning') || s.includes('መግረዝ')) return 'fa-scissors';
-    if (s.includes('fungicide') || s.includes('ማጥፊያ') || s.includes('መርጨት')) return 'fa-spray-can-sparkles';
-    if (s.includes('soil') || s.includes('drainage') || s.includes('አፈር')) return 'fa-water';
-    if (s.includes('harvest') || s.includes('መከር')) return 'fa-apple-whole';
-    if (s.includes('healthy') || s.includes('ጤናማ') || s.includes('monitor') || s.includes('ክትትል')) return 'fa-heart-pulse';
+  const getRecommendationIcon = (rec) => {
+    const s = ((rec.title || '') + ' ' + (rec.description || '') + ' ' + (rec.title_am || '') + ' ' + (rec.description_am || '')).toLowerCase();
+    
+    // Explicit matches from ESP32 Firmware profiles
+    if (s.includes('anthracnose') || s.includes('አንትራክኖዝ')) return 'fa-bug';
+    if (s.includes('powdery') || s.includes('mildew') || s.includes('ሻጋታ')) return 'fa-smog';
+    if (s.includes('healthy') || s.includes('ጤናማ')) return 'fa-seedling';
+    
+    // Action matches
+    if (s.includes('copper') || s.includes('sulfur') || s.includes('fungicide') || s.includes('ማጥፊያ') || s.includes('መርጨት') || s.includes('spray')) return 'fa-bottle-droplet';
+    if (s.includes('prune') || s.includes('branches') || s.includes('ቅርንጫፎች') || s.includes('መግረዝ')) return 'fa-scissors';
+    if (s.includes('sanitation') || s.includes('ጽዳት') || s.includes('maintenance')) return 'fa-broom';
+    if (s.includes('monitor') || s.includes('ክትትል')) return 'fa-eye';
+
     return 'fa-lightbulb';
   };
 
-  const getIconColor = (title) => {
-    const s = (title || '').toLowerCase();
+  const getIconColor = (rec) => {
+    const s = ((rec.title || '') + ' ' + (rec.description || '') + ' ' + (rec.title_am || '') + ' ' + (rec.description_am || '')).toLowerCase();
+    
+    // Disease specific colors
     if (s.includes('anthracnose') || s.includes('አንትራክኖዝ')) return '#f85149';
     if (s.includes('powdery') || s.includes('mildew') || s.includes('ሻጋታ')) return '#d29922';
-    if (s.includes('humidity') || s.includes('እርጥበት')) return '#3b82f6';
+    
+    // Status
     if (s.includes('healthy') || s.includes('ጤናማ')) return '#3fb950';
+    if (s.includes('risk') || s.includes('ስጋት')) return '#d29922';
+    if (s.includes('monitor') || s.includes('ክትትል')) return '#2f81f7';
+    
     return '#2f81f7';
   };
 
@@ -69,10 +78,10 @@ export default function RecommendationsPanel({ recommendations, loading }) {
           return (
             <div key={index} className="recommendation-card">
               <div className="recommendation-header">
-                <div className="rec-icon-circle" style={{ background: `${getIconColor(title)}15` }}>
+                <div className="rec-icon-circle" style={{ background: `${getIconColor(rec)}15` }}>
                   <i
-                    className={`fa-solid ${getRecommendationIcon(title)}`}
-                    style={{ color: getIconColor(title) }}
+                    className={`fa-solid ${getRecommendationIcon(rec)}`}
+                    style={{ color: getIconColor(rec) }}
                   ></i>
                 </div>
                 <div className="rec-content">

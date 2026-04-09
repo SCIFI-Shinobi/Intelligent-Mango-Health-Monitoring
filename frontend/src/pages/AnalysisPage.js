@@ -1,9 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useContext } from 'react';
 import { useAPI } from '../hooks/useAPI';
 import { useLanguage } from '../context/LanguageContext';
+import { SettingsContext } from '../context/SettingsContext';
 
 export default function AnalysisPage() {
   const { t, lang } = useLanguage();
+  const { settings, formatTemp } = useContext(SettingsContext);
+
+  const isFahrenheit = settings?.temperatureUnit === 'fahrenheit';
+  const tempUnitString = isFahrenheit ? 'F' : 'C';
 
   const { data: detectionData, loading: detectionLoading, error: detectionError } = useAPI('/detection/history?page=1&limit=200');
   const { data: sensorHistoryData, loading: sensorLoading } = useAPI('/sensors/history?range=30d');
@@ -288,11 +293,11 @@ export default function AnalysisPage() {
               <p>{t('analysis', 'envCorrelationsDesc')}</p>
               <div className="analysis-metric-row">
                 <span>{t('analysis', 'healthyAvgTemp')}</span>
-                <strong>{formatNumber(analysis.healthyTempAvg)} degC</strong>
+                <strong>{analysis.healthyTempAvg != null ? `${formatTemp(analysis.healthyTempAvg)} °${tempUnitString}` : noDataText}</strong>
               </div>
               <div className="analysis-metric-row">
                 <span>{t('analysis', 'diseaseAvgTemp')}</span>
-                <strong>{formatNumber(analysis.diseasedTempAvg)} degC</strong>
+                <strong>{analysis.diseasedTempAvg != null ? `${formatTemp(analysis.diseasedTempAvg)} °${tempUnitString}` : noDataText}</strong>
               </div>
               <div className="analysis-metric-row">
                 <span>{t('analysis', 'healthyAvgHumidity')}</span>
