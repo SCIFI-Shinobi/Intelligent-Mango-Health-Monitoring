@@ -69,7 +69,7 @@
 
 ### On-Device TinyML Inference
 - Runs a **quantized MobileNetV1** model directly on the Arduino Nano 33 BLE Sense — no cloud needed for inference.
-- Trained on **5,210 high-resolution images** from the *Woramit Horticultural Research Center*, Ethiopia.
+- Trained on **11,375 high-resolution images** from the *Woramit Horticultural Research Center*, Ethiopia.
 - Detects **Anthracnose**, **Powdery Mildew**, and **Healthy** leaf states.
 
 ### Wireless BLE Communication
@@ -320,7 +320,7 @@ REACT_APP_API_BASE_URL=http://localhost:8000
 | :--- | :--- |
 | Architecture | MobileNetV1 (8-bit quantized) |
 | Input size | 160 x 160 px |
-| Training images | 5,210 |
+| Training images | 11,375 |
 | Accuracy | **86.45%** |
 | Classes | Anthracnose, Powdery Mildew, Healthy |
 | Dataset source | Woramit Horticultural Research Center, Ethiopia |
