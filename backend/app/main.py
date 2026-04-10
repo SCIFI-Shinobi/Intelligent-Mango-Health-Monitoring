@@ -286,26 +286,6 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
 
 
 # ------------------------------------------------------------------
-# Run Scan  —  fetches latest data and returns + broadcasts it
-# ------------------------------------------------------------------
-
-@app.post("/run-scan")
-async def run_scan():
-    db = database.SessionLocal()
-    try:
-        sensor = db.query(models.SensorData).order_by(models.SensorData.timestamp.desc()).first()
-        inference = db.query(models.InferenceResult).order_by(models.InferenceResult.timestamp.desc()).first()
-        if not sensor or not inference:
-            return {"status": "no_data", "message": "No sensor data available yet."}
-        payload = build_dashboard_payload(sensor, inference, db)
-        # Broadcast to all connected WebSocket clients
-        await broadcast_to_clients(payload)
-        return {"status": "success", **payload}
-    finally:
-        db.close()
-
-
-# ------------------------------------------------------------------
 # Existing endpoints
 # ------------------------------------------------------------------
 
