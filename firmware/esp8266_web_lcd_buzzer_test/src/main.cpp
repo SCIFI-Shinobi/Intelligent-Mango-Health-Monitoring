@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
 #include <ESP8266HTTPClient.h>
 #include <DHT.h>
 
@@ -61,12 +62,22 @@ String jsonEscape(const String& s) {
 void sendLog(const String& message) {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    WiFiClient client;
     HTTPClient http;
     http.setTimeout(3000);
 
     String url = String(LOG_SERVER_URL) + "/log";
-    if (!http.begin(client, url)) return;
+    bool beginSuccess = false;
+
+    if (url.startsWith("https")) {
+        WiFiClientSecure clientSecure;
+        clientSecure.setInsecure(); // Accept any SSL certificate
+        beginSuccess = http.begin(clientSecure, url);
+    } else {
+        WiFiClient client;
+        beginSuccess = http.begin(client, url);
+    }
+
+    if (!beginSuccess) return;
 
     http.addHeader("Content-Type", "application/json");
 
@@ -154,11 +165,22 @@ void sendSensorData() {
         return;
     }
 
-    WiFiClient client;
     HTTPClient http;
     http.setTimeout(5000);
 
-    if (!http.begin(client, TEST_SERVER_URL)) {
+    bool beginSuccess = false;
+    String url = String(TEST_SERVER_URL);
+
+    if (url.startsWith("https")) {
+        WiFiClientSecure clientSecure;
+        clientSecure.setInsecure(); // Required for Render HTTPS domains
+        beginSuccess = http.begin(clientSecure, url);
+    } else {
+        WiFiClient client;
+        beginSuccess = http.begin(client, url);
+    }
+
+    if (!beginSuccess) {
         showOnLcd("HTTP Begin Err", "Bad URL?");
         beep(120, 120, 2);
         return;
