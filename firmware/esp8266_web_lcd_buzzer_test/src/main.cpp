@@ -66,14 +66,16 @@ void sendLog(const String& message) {
     http.setTimeout(3000);
 
     String url = String(LOG_SERVER_URL) + "/log";
+    bool isHttps = url.startsWith("https");
+    
+    WiFiClientSecure clientSecure;
+    WiFiClient client;
     bool beginSuccess = false;
 
-    if (url.startsWith("https")) {
-        WiFiClientSecure clientSecure;
+    if (isHttps) {
         clientSecure.setInsecure(); // Accept any SSL certificate
         beginSuccess = http.begin(clientSecure, url);
     } else {
-        WiFiClient client;
         beginSuccess = http.begin(client, url);
     }
 
@@ -168,15 +170,17 @@ void sendSensorData() {
     HTTPClient http;
     http.setTimeout(5000);
 
+String url = String(TEST_SERVER_URL);
+    bool isHttps = url.startsWith("https");
+    
+    WiFiClientSecure clientSecure;
+    WiFiClient client;
     bool beginSuccess = false;
-    String url = String(TEST_SERVER_URL);
 
-    if (url.startsWith("https")) {
-        WiFiClientSecure clientSecure;
-        clientSecure.setInsecure(); // Required for Render HTTPS domains
+    if (isHttps) {
+        clientSecure.setInsecure(); // Required for Render HTTPS domains        
         beginSuccess = http.begin(clientSecure, url);
     } else {
-        WiFiClient client;
         beginSuccess = http.begin(client, url);
     }
 
