@@ -48,19 +48,50 @@ app.add_middleware(
 )
 
 # --- Active WebSocket connections ---
-connected_clients: list[WebSocket] = []
+connected_clients: list[dict] = []
 
 
-async def broadcast_to_clients(message: dict):
-    """Send a message to all connected WebSocket clients."""
+def scoped_device_id(device: models.Device) -> str:
+    """Build a stable internal device id used for user-scoped data storage."""
+    return f"device:{device.id}"
+
+
+def get_user_scoped_device_ids(db: Session, user_id: int) -> list[str]:
+    """Return all internal device ids that belong to a user."""
+    devices = db.query(models.Device).filter(models.Device.user_id == user_id).all()
+    return [scoped_device_id(d) for d in devices]
+
+
+def decode_user_from_token(token: str, db: Session) -> Optional[models.User]:
+    """Decode JWT token and return the matching user if valid."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            return None
+        return db.query(models.User).filter(models.User.username == username).first()
+    except JWTError:
+        return None
+
+
+async def broadcast_to_clients(message: dict, owner_id: Optional[int] = None):
+    """Send a message only to the owner's active WebSocket clients."""
     dead = []
-    for ws in connected_clients:
+    for client in connected_clients:
+        ws = client["ws"]
+        ws_owner_id = client["user_id"]
+
+        if owner_id is not None and ws_owner_id != owner_id:
+            continue
+
         try:
             await ws.send_json(message)
         except Exception:
-            dead.append(ws)
-    for ws in dead:
-        connected_clients.remove(ws)
+            dead.append(client)
+
+    for client in dead:
+        if client in connected_clients:
+            connected_clients.remove(client)
 
 
 def build_dashboard_payload(sensor, inference, db: Session) -> dict:
@@ -255,20 +286,40 @@ def change_password(
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = None):
+    if not token:
+        await websocket.close(code=1008)
+        return
+
+    db = database.SessionLocal()
+    user = decode_user_from_token(token, db)
+    if not user:
+        db.close()
+        await websocket.close(code=1008)
+        return
+
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
+
     await websocket.accept()
-    connected_clients.append(websocket)
+    client_entry = {"ws": websocket, "user_id": user.id}
+    connected_clients.append(client_entry)
     try:
         # Send current state immediately on connect
-        db = database.SessionLocal()
         try:
-            inference = db.query(models.InferenceResult).order_by(models.InferenceResult.timestamp.desc()).first()
+            inference_query = db.query(models.InferenceResult)
+            if user_device_ids:
+                inference_query = inference_query.filter(models.InferenceResult.device_id.in_(user_device_ids))
+            inference = inference_query.order_by(models.InferenceResult.timestamp.desc()).first()
             if inference:
                 # Get sensor data at the time of detection (to match dashboard/logs)
                 sensor = db.query(models.SensorData).filter(
-                    models.SensorData.timestamp <= inference.timestamp
+                    models.SensorData.timestamp <= inference.timestamp,
+                    models.SensorData.device_id == inference.device_id
                 ).order_by(models.SensorData.timestamp.desc()).first()
                 if not sensor:
-                    sensor = db.query(models.SensorData).order_by(models.SensorData.timestamp.asc()).first()
+                    sensor_query = db.query(models.SensorData)
+                    if user_device_ids:
+                        sensor_query = sensor_query.filter(models.SensorData.device_id.in_(user_device_ids))
+                    sensor = sensor_query.order_by(models.SensorData.timestamp.asc()).first()
                 if sensor:
                     payload = build_dashboard_payload(sensor, inference, db)
                     await websocket.send_json(payload)
@@ -281,8 +332,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     except WebSocketDisconnect:
         pass
     finally:
-        if websocket in connected_clients:
-            connected_clients.remove(websocket)
+        if client_entry in connected_clients:
+            connected_clients.remove(client_entry)
 
 
 # ------------------------------------------------------------------
@@ -295,10 +346,26 @@ def read_root():
 
 
 @app.post("/upload", response_model=dict)
-async def upload_data(payload: schemas.UploadPayload, db: Session = Depends(get_db)):
+async def upload_data(
+    payload: schemas.UploadPayload,
+    db: Session = Depends(get_db),
+    x_device_key: Optional[str] = Header(None)
+):
+    if not x_device_key:
+        raise HTTPException(status_code=401, detail="X-Device-Key header is required")
+
+    device = db.query(models.Device).filter(models.Device.api_key == x_device_key).first()
+    if not device:
+        raise HTTPException(status_code=401, detail="Invalid device API key")
+
+    owner_id = device.user_id
+    device.last_seen = datetime.utcnow()
+    db.commit()
+    internal_device_id = scoped_device_id(device)
+
     # Create Sensor Data record
     new_sensor_data = models.SensorData(
-        device_id=payload.device_id,
+        device_id=internal_device_id,
         temperature=payload.temperature,
         humidity=payload.humidity
     )
@@ -306,7 +373,7 @@ async def upload_data(payload: schemas.UploadPayload, db: Session = Depends(get_
 
     # Create Inference Result record
     new_inference = models.InferenceResult(
-        device_id=payload.device_id,
+        device_id=internal_device_id,
         disease_type=payload.disease_type,
         confidence_score=payload.confidence_score
     )
@@ -320,9 +387,9 @@ async def upload_data(payload: schemas.UploadPayload, db: Session = Depends(get_
     risk = logic.evaluate_risk(payload.disease_type, payload.temperature, payload.humidity)
     forecast_alert = logic.get_forecast_alert(payload.temperature, payload.humidity)
 
-    # Broadcast to all connected dashboard clients
+    # Broadcast only to the owning user's dashboard clients
     dashboard_payload = build_dashboard_payload(new_sensor_data, new_inference, db)
-    await broadcast_to_clients(dashboard_payload)
+    await broadcast_to_clients(dashboard_payload, owner_id=owner_id)
 
     return {
         "status": "success",
@@ -335,9 +402,22 @@ async def upload_data(payload: schemas.UploadPayload, db: Session = Depends(get_
 
 
 @app.get("/history", response_model=schemas.HistoricalData)
-def get_history(db: Session = Depends(get_db), limit: int = 100):
-    sensor_data = db.query(models.SensorData).order_by(models.SensorData.timestamp.desc()).limit(limit).all()
-    inference_results = db.query(models.InferenceResult).order_by(models.InferenceResult.timestamp.desc()).limit(limit).all()
+def get_history(
+    db: Session = Depends(get_db),
+    limit: int = 100,
+    user: models.User = Depends(get_current_user)
+):
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
+    if not user_device_ids:
+        return {"sensor_data": [], "inference_results": []}
+
+    sensor_data = db.query(models.SensorData).filter(
+        models.SensorData.device_id.in_(user_device_ids)
+    ).order_by(models.SensorData.timestamp.desc()).limit(limit).all()
+
+    inference_results = db.query(models.InferenceResult).filter(
+        models.InferenceResult.device_id.in_(user_device_ids)
+    ).order_by(models.InferenceResult.timestamp.desc()).limit(limit).all()
 
     return {
         "sensor_data": sensor_data,
@@ -350,9 +430,15 @@ def get_history(db: Session = Depends(get_db), limit: int = 100):
 # ------------------------------------------------------------------
 
 @app.get("/sensors/latest", response_model=schemas.SensorLatest)
-def get_sensors_latest(db: Session = Depends(get_db)):
+def get_sensors_latest(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Get the latest sensor reading (temperature and humidity)."""
-    sensor = db.query(models.SensorData).order_by(models.SensorData.timestamp.desc()).first()
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
+    if not user_device_ids:
+        raise HTTPException(status_code=404, detail="No sensor data available")
+
+    sensor = db.query(models.SensorData).filter(
+        models.SensorData.device_id.in_(user_device_ids)
+    ).order_by(models.SensorData.timestamp.desc()).first()
     if not sensor:
         raise HTTPException(status_code=404, detail="No sensor data available")
     return {
@@ -363,7 +449,11 @@ def get_sensors_latest(db: Session = Depends(get_db)):
 
 
 @app.get("/sensors/history")
-def get_sensors_history(range: str = "24h", db: Session = Depends(get_db)):
+def get_sensors_history(
+    range: str = "24h",
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user)
+):
     """
     Get sensor history for a specified time range.
     range: '24h', '7d', or '30d'
@@ -379,8 +469,13 @@ def get_sensors_history(range: str = "24h", db: Session = Depends(get_db)):
     else:
         start_time = now - timedelta(hours=24)  # default to 24h
 
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
+    if not user_device_ids:
+        return {"range": range, "data": []}
+
     data = db.query(models.SensorData).filter(
-        models.SensorData.timestamp >= start_time
+        models.SensorData.timestamp >= start_time,
+        models.SensorData.device_id.in_(user_device_ids)
     ).order_by(models.SensorData.timestamp.asc()).all()
 
     return {
@@ -396,23 +491,30 @@ def get_sensors_history(range: str = "24h", db: Session = Depends(get_db)):
 
 
 @app.get("/detection/latest")
-def get_detection_latest(db: Session = Depends(get_db)):
+def get_detection_latest(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Get the absolute latest disease detection result with matching sensor data."""
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
+    if not user_device_ids:
+        raise HTTPException(status_code=404, detail="No detection data available")
+
     detection = db.query(models.InferenceResult).order_by(
         models.InferenceResult.timestamp.desc()
-    ).first()
+    ).filter(models.InferenceResult.device_id.in_(user_device_ids)).first()
 
     if not detection:
         raise HTTPException(status_code=404, detail="No detection data available")
 
     # Get sensor data at the time of detection (same as /detection/history does)
     sensor = db.query(models.SensorData).filter(
-        models.SensorData.timestamp <= detection.timestamp
+        models.SensorData.timestamp <= detection.timestamp,
+        models.SensorData.device_id == detection.device_id
     ).order_by(models.SensorData.timestamp.desc()).first()
 
     # Fallback to nearest sensor if none before
     if not sensor:
-        sensor = db.query(models.SensorData).order_by(models.SensorData.timestamp.asc()).first()
+        sensor = db.query(models.SensorData).filter(
+            models.SensorData.device_id.in_(user_device_ids)
+        ).order_by(models.SensorData.timestamp.asc()).first()
 
     return {
         "disease_type": detection.disease_type,
@@ -429,13 +531,26 @@ def get_detection_history(
     limit: int = 10,
     disease_first: bool = False,
     db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
 ):
     """
     Get paginated detection history with sensor readings at time of detection.
     """
     skip = (page - 1) * limit
 
-    query = db.query(models.InferenceResult)
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
+    if not user_device_ids:
+        return {
+            "page": page,
+            "limit": limit,
+            "total": 0,
+            "total_pages": 0,
+            "data": []
+        }
+
+    query = db.query(models.InferenceResult).filter(
+        models.InferenceResult.device_id.in_(user_device_ids)
+    )
 
     if disease_first:
         # Prioritize non-healthy detections, then newest timestamp.
@@ -448,18 +563,23 @@ def get_detection_history(
 
     detections = query.offset(skip).limit(limit).all()
 
-    total = db.query(models.InferenceResult).count()
+    total = db.query(models.InferenceResult).filter(
+        models.InferenceResult.device_id.in_(user_device_ids)
+    ).count()
 
     result = []
     for detection in detections:
         # Find the most recent sensor data at or before detection time
         sensor = db.query(models.SensorData).filter(
-            models.SensorData.timestamp <= detection.timestamp
+            models.SensorData.timestamp <= detection.timestamp,
+            models.SensorData.device_id == detection.device_id
         ).order_by(models.SensorData.timestamp.desc()).first()
 
         # Fallback: get nearest sensor reading if none before
         if not sensor:
-            sensor = db.query(models.SensorData).order_by(models.SensorData.timestamp.asc()).first()
+            sensor = db.query(models.SensorData).filter(
+                models.SensorData.device_id.in_(user_device_ids)
+            ).order_by(models.SensorData.timestamp.asc()).first()
 
         result.append({
             "id": detection.id,
@@ -480,14 +600,18 @@ def get_detection_history(
 
 
 @app.get("/forecast/latest")
-def get_forecast_latest(db: Session = Depends(get_db)):
+def get_forecast_latest(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """
     Get the latest 5-day forecast with available context.
     """
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
+    if not user_device_ids:
+        raise HTTPException(status_code=404, detail="No forecast data available")
+
     # Get the most recent forecast context
-    context = db.query(models.ForecastContext).order_by(
-        models.ForecastContext.timestamp.desc()
-    ).first()
+    context = db.query(models.ForecastContext).filter(
+        models.ForecastContext.device_id.in_(user_device_ids)
+    ).order_by(models.ForecastContext.timestamp.desc()).first()
 
     if not context:
         raise HTTPException(status_code=404, detail="No forecast data available")
@@ -513,13 +637,23 @@ def get_forecast_latest(db: Session = Depends(get_db)):
 
 
 @app.post("/forecast/context")
-def post_forecast_context(payload: schemas.ForecastContextPayload, db: Session = Depends(get_db)):
+def post_forecast_context(
+    payload: schemas.ForecastContextPayload,
+    db: Session = Depends(get_db),
+    x_device_key: Optional[str] = Header(None)
+):
     """
     Accept forecast context from ESP32.
     """
-    new_context = models.ForecastContext(
-        device_id=payload.device_id
-    )
+    if not x_device_key:
+        raise HTTPException(status_code=401, detail="X-Device-Key header is required")
+
+    device = db.query(models.Device).filter(models.Device.api_key == x_device_key).first()
+    if not device:
+        raise HTTPException(status_code=401, detail="Invalid device API key")
+
+    internal_device_id = scoped_device_id(device)
+    new_context = models.ForecastContext(device_id=internal_device_id)
     db.add(new_context)
     db.commit()
     db.refresh(new_context)
@@ -532,11 +666,21 @@ def post_forecast_context(payload: schemas.ForecastContextPayload, db: Session =
 
 
 @app.get("/recommendations/latest")
-def get_recommendations_latest(db: Session = Depends(get_db), limit: int = 5):
+def get_recommendations_latest(
+    db: Session = Depends(get_db),
+    limit: int = 5,
+    user: models.User = Depends(get_current_user)
+):
     """
     Get the latest recommendations.
     """
-    recommendations = db.query(models.Recommendation).order_by(
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
+    if not user_device_ids:
+        return {"data": []}
+
+    recommendations = db.query(models.Recommendation).filter(
+        models.Recommendation.device_id.in_(user_device_ids)
+    ).order_by(
         models.Recommendation.timestamp.desc()
     ).limit(limit).all()
 
@@ -563,29 +707,27 @@ async def data_ingest(
 ):
     """
     Combined endpoint for ESP32 to submit all data in one call.
-    Authenticates via X-Device-Key header (links data to device owner).
-    Falls back to no-auth for backward compatibility.
+    Authenticates via X-Device-Key header and stores data under the
+    owner's internal device scope so users only see their own device data.
     """
-    owner_id = None
+    if not x_device_key:
+        raise HTTPException(status_code=401, detail="X-Device-Key header is required")
 
-    # Authenticate via device API key
-    if x_device_key:
-        device = db.query(models.Device).filter(
-            models.Device.api_key == x_device_key
-        ).first()
-        if not device:
-            raise HTTPException(status_code=401, detail="Invalid device API key")
-        # Update last_seen
-        device.last_seen = datetime.utcnow()
-        owner_id = device.user_id
-        db.commit()
+    device = db.query(models.Device).filter(models.Device.api_key == x_device_key).first()
+    if not device:
+        raise HTTPException(status_code=401, detail="Invalid device API key")
+
+    owner_id = device.user_id
+    device.last_seen = datetime.utcnow()
+    db.commit()
+    internal_device_id = scoped_device_id(device)
 
     try:
         server_now = datetime.now(timezone.utc)
 
         # 1. Store sensor data
         new_sensor = models.SensorData(
-            device_id=payload.device_id,
+            device_id=internal_device_id,
             temperature=payload.temperature,
             humidity=payload.humidity,
             timestamp=server_now
@@ -594,7 +736,7 @@ async def data_ingest(
 
         # 2. Store detection result
         new_detection = models.InferenceResult(
-            device_id=payload.device_id,
+            device_id=internal_device_id,
             disease_type=payload.disease_type,
             confidence_score=payload.confidence_score,
             timestamp=server_now
@@ -603,7 +745,7 @@ async def data_ingest(
 
         # 3. Store forecast context
         new_context = models.ForecastContext(
-            device_id=payload.device_id,
+            device_id=internal_device_id,
             timestamp=server_now
         )
         db.add(new_context)
@@ -617,7 +759,7 @@ async def data_ingest(
         if payload.recommendations:
             for rec in payload.recommendations:
                 new_rec = models.Recommendation(
-                    device_id=payload.device_id,
+                    device_id=internal_device_id,
                     title=rec.title,
                     description=rec.description,
                     title_am=rec.title_am,
@@ -632,7 +774,7 @@ async def data_ingest(
             for i, day_forecast in enumerate(payload.forecast):
                 forecast_date = server_now + timedelta(days=i + 1)
                 new_forecast = models.ForecastData(
-                    device_id=payload.device_id,
+                    device_id=internal_device_id,
                     day_index=i,
                     risk_level=day_forecast.get("risk_level", "Stable"),
                     forecast_date=forecast_date,
@@ -650,14 +792,11 @@ async def data_ingest(
             "timestamp": new_detection.timestamp.isoformat() if new_detection.timestamp else datetime.now(timezone.utc).isoformat()
         }
 
-        await broadcast_to_clients(dashboard_payload)
+        await broadcast_to_clients(dashboard_payload, owner_id=owner_id)
 
-        # 6. Auto-generate notifications for device owner (or all users if no key)
-        if owner_id:
-            users = [db.query(models.User).filter(models.User.id == owner_id).first()]
-            users = [u for u in users if u]
-        else:
-            users = db.query(models.User).all()
+        # 6. Auto-generate notifications only for the device owner
+        users = [db.query(models.User).filter(models.User.id == owner_id).first()]
+        users = [u for u in users if u]
         for user in users:
             # Disease alert - only if confidence exceeds threshold (default 70%)
             CONFIDENCE_THRESHOLD = 0.70
