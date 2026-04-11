@@ -219,7 +219,14 @@ export default function SettingsPage() {
             maxWidth: devices.length === 1 ? '400px' : '100%',
             margin: devices.length === 1 ? '0 auto' : '0'
           }}>
-            {devices.map(device => (
+            {devices.map(device => {
+              const lastSeenDate = device.last_seen ? new Date(device.last_seen.endsWith('Z') ? device.last_seen : device.last_seen + 'Z') : null;
+              const isOnline = lastSeenDate && (new Date() - lastSeenDate) < 5 * 60 * 1000;
+              const statusColor = isOnline ? '#3fb950' : '#8b949e';
+              const statusBg = isOnline ? 'rgba(63, 185, 80, 0.15)' : 'rgba(139, 148, 158, 0.15)';
+              const statusText = isOnline ? ts('online') : (lastSeenDate ? ts('offline') : ts('ready'));
+
+              return (
               <div
                 key={device.id}
                 style={{
@@ -249,14 +256,14 @@ export default function SettingsPage() {
                   alignItems: 'center',
                   gap: '6px',
                   padding: '6px 12px',
-                  background: 'rgba(63, 185, 80, 0.15)',
-                  border: '1px solid #3fb950',
+                  background: statusBg,
+                  border: `1px solid ${statusColor}`,
                   borderRadius: '20px',
                   fontSize: '12px',
-                  color: '#3fb950'
-                }}>
-                  <span style={{width: '6px', height: '6px', borderRadius: '50%', background: '#3fb950', display: 'inline-block'}}></span>
-                  {ts('ready')}
+                  color: statusColor
+                }} title={lastSeenDate ? `${ts('lastSeen')} ${lastSeenDate.toLocaleString()}` : ''}>
+                  <span style={{width: '6px', height: '6px', borderRadius: '50%', background: statusColor, display: 'inline-block'}}></span>
+                  {statusText}
                 </div>
 
                 {/* Device Header */}
@@ -414,7 +421,8 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
