@@ -12,9 +12,24 @@ except ImportError:
     import urllib.request
     import urllib.error
 
-API_URL = "http://localhost:8000/data/ingest"
+API_URL = os.getenv("API_URL", "http://localhost:8000/data/ingest")
 DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
 
+def get_config():
+    global API_URL, DEVICE_API_KEY
+    print("=" * 50)
+    print("  Forecast Alert Test  ")
+    print("=" * 50)
+    
+    user_url = input(f"Enter Backend API URL [{API_URL}]: ").strip()
+    if user_url:
+        if not user_url.endswith("/data/ingest"):
+            user_url = user_url.rstrip("/") + "/data/ingest"
+        API_URL = user_url
+        
+    user_key = input(f"Enter Device API Key (Starts with mg_) [{DEVICE_API_KEY}]: ").strip()
+    if user_key:
+        DEVICE_API_KEY = user_key
 
 def post_json(url, payload):
     """POST JSON using requests when available, else urllib (no extra dependency)."""
@@ -57,21 +72,24 @@ payload = {
     ]
 }
 
-print("Simulating ESP32 forecast with anomaly detection...")
-print(f"Sending to: {API_URL}")
+if __name__ == "__main__":
+    get_config()
+
+    print("\nSimulating ESP32 forecast with anomaly detection...")
+    print(f"Sending to: {API_URL}")
 print("Using X-Device-Key header:" + (" yes" if DEVICE_API_KEY else " no (set DEVICE_API_KEY env var)"))
 print(f"Forecast includes HIGH RISK on Day 2 (Anthracnose) and Day 3 (Mildew)")
-print("-" * 50)
+    print("-" * 50)
 
-try:
-    status_code, response_text = post_json(API_URL, payload)
-    if status_code == 200:
-        print("SUCCESS! Forecast alerts created.")
-        print("Check the notification bell in the dashboard!")
-        print(response_text)
-    else:
-        print(f"Error: {status_code}")
-        print(response_text)
-except Exception as e:
-    print(f"Connection error: {e}")
-    print("Make sure the backend is running!")
+    try:
+        status_code, response_text = post_json(API_URL, payload)
+        if status_code == 200:
+            print("SUCCESS! Forecast alerts created.")
+            print("Check the notification bell in the dashboard!")
+            print(response_text)
+        else:
+            print(f"Error: {status_code}")
+            print(response_text)
+    except Exception as e:
+        print(f"Connection error: {e}")
+        print("Make sure the backend is running!")

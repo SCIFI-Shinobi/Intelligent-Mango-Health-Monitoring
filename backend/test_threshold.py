@@ -13,11 +13,22 @@ except ImportError:
     import urllib.request
     import urllib.error
 
-API_URL = "http://localhost:8000/data/ingest"
+API_URL = os.getenv("API_URL", "http://localhost:8000/data/ingest")
 DEFAULT_DEVICE_ID = "esp32-demo"
 THRESHOLD = 0.70
 DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
 
+def get_config():
+    global API_URL, DEVICE_API_KEY
+    user_url = input(f"Enter Backend API URL (default: {API_URL}): ").strip()
+    if user_url:
+        if not user_url.endswith("/data/ingest"):
+            user_url = user_url.rstrip("/") + "/data/ingest"
+        API_URL = user_url
+        
+    user_key = input(f"Enter Device API Key (Starts with mg_) [{DEVICE_API_KEY}]: ").strip()
+    if user_key:
+        DEVICE_API_KEY = user_key
 
 def post_json(url, payload):
     """POST JSON using requests when available, else urllib (no extra dependency)."""
