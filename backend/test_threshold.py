@@ -250,7 +250,10 @@ if __name__ == "__main__":
     print("\n" + "="*50)
     print("  MANGAGUARD - INTERACTIVE TEST TOOL")
     print("="*50)
-    print("\nMake sure backend is running on localhost:8000")
+    
+    get_config()
+
+    print("\nMake sure backend is running on the URL you specified.")
     print("Set DEVICE_API_KEY env var before running to match deployed auth")
     print("Choose exactly what to send from the menu.\n")
 
