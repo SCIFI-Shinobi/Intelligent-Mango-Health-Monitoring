@@ -6,11 +6,15 @@
 #include <DHT.h>
 
 // ---------- USER SETTINGS ----------
-static const char* WIFI_SSID = "Belago";
-static const char* WIFI_PASSWORD = "aaaaaaaa";
+static const char* WIFI_SSID = "YOUR_WIFI_SSID";
+static const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
+// TODO: Replace with your actual Render API URL or keep local for testing
 static const char* TEST_SERVER_URL = "http://10.161.119.162:8000/upload";
 static const char* LOG_SERVER_URL = "http://10.161.119.162:4000";
+
+// TODO: Get this generated API key from your frontend dashboard Settings > Add Gateway
+static const char* DEVICE_API_KEY = "YOUR_DEVICE_API_KEY";
 
 // ---------- NODEMCU PINS ----------
 static const uint8_t BUZZER_PIN = D0;
@@ -161,6 +165,7 @@ void sendSensorData() {
     }
 
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("x-device-key", DEVICE_API_KEY); // ✅ Required for backend Authentication filter
 
     // ✅ Random seed (put in setup ideally)
     randomSeed(analogRead(0));
