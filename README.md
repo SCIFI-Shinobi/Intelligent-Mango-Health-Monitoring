@@ -210,9 +210,14 @@ Intelligent-Plant-Health-Monitoring/
 ```cpp
 #define WIFI_SSID     "your_wifi_name"
 #define WIFI_PASSWORD "your_wifi_password"
-#define API_URL       "http://<your-server-ip>:8000/data/ingest"
+#define API_BASE_URL  "https://your-deployed-backend.example.com"
+#define API_INGEST_PATH "/data/ingest"
+#define DEVICE_API_KEY "mg_your_api_key_here"
 #define DEVICE_ID     "esp32_gateway_001"
 ```
+
+`DEVICE_API_KEY` is required by backend ingestion endpoints.
+Generate it from dashboard: Settings -> Devices -> Register Device.
 
 **Flash both boards:**
 ```bash

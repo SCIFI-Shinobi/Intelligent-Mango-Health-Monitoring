@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <DHT.h>
 #include <Adafruit_Sensor.h>
@@ -313,15 +314,30 @@ void updateDisplay() {
 // ================= CLOUD UPLOAD =================
 void sendDataToCloud() {
     if (WiFi.status() != WL_CONNECTED) return;
+    if (String(DEVICE_API_KEY) == "mg_your_api_key_here") {
+        Serial.println("Cloud sync skipped: set DEVICE_API_KEY in Config.h");
+        return;
+    }
 
     HTTPClient http;
-    http.begin(String(API_BASE_URL) + "/data/ingest");
-    http.addHeader("Content-Type", "application/json");
+    String url = String(API_BASE_URL) + String(API_INGEST_PATH);
+    bool began = false;
+    WiFiClientSecure secureClient;
 
-    // Add device API key header if configured
-    #ifdef DEVICE_API_KEY
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        began = http.begin(secureClient, url);
+    } else {
+        began = http.begin(url);
+    }
+
+    if (!began) {
+        Serial.println("Cloud sync failed: could not initialize HTTP client");
+        return;
+    }
+
+    http.addHeader("Content-Type", "application/json");
     http.addHeader("X-Device-Key", DEVICE_API_KEY);
-    #endif
 
     // Build JSON payload matching DataIngestPayload schema
     String json = "{";

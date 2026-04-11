@@ -3,6 +3,7 @@ Demo script for defense day - simulates ESP32 sending forecast with anomaly dete
 Run: python test_forecast_alert.py
 """
 import json
+import os
 
 try:
     import requests  # type: ignore
@@ -12,19 +13,24 @@ except ImportError:
     import urllib.error
 
 API_URL = "http://localhost:8000/data/ingest"
+DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
 
 
 def post_json(url, payload):
     """POST JSON using requests when available, else urllib (no extra dependency)."""
+    headers = {"Content-Type": "application/json"}
+    if DEVICE_API_KEY:
+        headers["X-Device-Key"] = DEVICE_API_KEY
+
     if requests is not None:
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
         return response.status_code, response.text
 
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
@@ -53,6 +59,7 @@ payload = {
 
 print("Simulating ESP32 forecast with anomaly detection...")
 print(f"Sending to: {API_URL}")
+print("Using X-Device-Key header:" + (" yes" if DEVICE_API_KEY else " no (set DEVICE_API_KEY env var)"))
 print(f"Forecast includes HIGH RISK on Day 2 (Anthracnose) and Day 3 (Mildew)")
 print("-" * 50)
 

@@ -490,8 +490,16 @@ body {
 .top-grid {
   display: grid;
   grid-template-columns: 1fr 2fr;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 32px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+
+.mobile-top-section {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  margin-bottom: 16px;
 }
 
 /* ================= DISEASE STATUS CARD ================= */
@@ -719,7 +727,7 @@ body {
 .sensor-grid-desktop {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  gap: 24px;
 }
 
 .sensor-value {
@@ -795,9 +803,8 @@ body {
 
 .sensor-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
 }
 
 /* ================= STATUS CARD ================= */
@@ -908,8 +915,15 @@ body {
 .middle-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 32px;
+  margin-bottom: 32px;
+}
+
+.mobile-middle-section {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  margin-bottom: 32px;
 }
 
 .chart-container {
@@ -1489,6 +1503,60 @@ body {
   font-weight: 600;
   color: #2f81f7;
   margin-bottom: 16px;
+}
+
+/* Gateway Section Styling */
+.gateway-section {
+  background: linear-gradient(135deg, #0d1117 0%, #161b22 100%) !important;
+  border: 1px solid #30363d !important;
+  border-radius: 16px !important;
+  padding: 28px !important;
+}
+
+.gateway-add-btn {
+  animation: buttonPulse 2s ease-in-out infinite;
+}
+
+@keyframes buttonPulse {
+  0% {
+    box-shadow: 0 4px 12px rgba(47, 129, 247, 0.3);
+  }
+  50% {
+    box-shadow: 0 6px 20px rgba(47, 129, 247, 0.5);
+  }
+  100% {
+    box-shadow: 0 4px 12px rgba(47, 129, 247, 0.3);
+  }
+}
+
+.gateway-add-btn:hover {
+  background: linear-gradient(135deg, #3d8fff 0%, #2570dd 100%) !important;
+  transform: translateY(-2px);
+}
+
+.gateway-add-btn:active {
+  transform: translateY(0);
+}
+
+/* Settings Card Styling */
+.settings-card {
+  background: linear-gradient(135deg, #161b22 0%, #0d1117 100%) !important;
+  border: 1px solid #30363d !important;
+  border-radius: 12px !important;
+  padding: 24px !important;
+  transition: all 0.3s ease;
+}
+
+.settings-card:hover {
+  border-color: #2f81f7 !important;
+  box-shadow: 0 8px 24px rgba(47, 129, 247, 0.1) !important;
+}
+
+/* Settings page background */
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .setting-group {
@@ -2074,8 +2142,9 @@ body {
   }
 
   .navbar {
-    padding: 12px 16px;
-    margin-bottom: 16px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    gap: 8px;
   }
 
   .navbar-center {
@@ -2083,11 +2152,11 @@ body {
   }
 
   .app-title {
-    font-size: 18px;
+    font-size: 17px;
   }
 
   .navbar-right {
-    gap: 8px;
+    gap: 6px;
   }
 
   .secondary-btn {
@@ -2095,27 +2164,140 @@ body {
   }
 
   .dashboard-wrapper {
-    padding-bottom: 80px;
+    padding-bottom: 70px;
+    overflow-x: hidden;
+  }
+
+  .subpage-wrapper {
+    padding: 0;
+  }
+
+  .dashboard-content {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
   }
 
   .top-grid {
     grid-template-columns: 1fr;
     gap: 12px;
-    margin-bottom: 16px;
+    margin-bottom: 0;
+  }
+
+  .middle-grid {
+    gap: 32px;
   }
 
   .disease-status-card {
-    min-height: 160px;
+    min-height: 120px;
+    padding: 16px;
+    border-radius: 10px;
+  }
+
+  .disease-status-content {
+    gap: 10px;
+    align-items: flex-start;
+    flex-direction: row;
+  }
+
+  .disease-status-title {
+    font-size: 10px;
+    margin-bottom: 4px;
+  }
+
+  .disease-status-value {
+    font-size: 24px;
+    line-height: 1;
+    margin: 0 0 6px 0;
+  }
+
+  .disease-status-details {
+    gap: 3px;
+  }
+
+  .disease-status-details .confidence,
+  .disease-status-details .time-ago {
+    font-size: 10px;
+  }
+
+  .disease-status-icon-wrapper {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+  }
+
+  .disease-status-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 36px;
+  }
+
+  .disease-status-checkmark {
+    width: 18px;
+    height: 18px;
+    right: -2px;
+    bottom: -2px;
+  }
+
+  .disease-checkmark-icon {
+    width: 10px;
+    height: 10px;
+    font-size: 10px;
+  }
+
+  .sensor-grid-desktop {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .sensor-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin-bottom: 16px;
   }
 
   .sensor-card {
-    padding: 16px;
+    padding: 14px;
+    border-radius: 10px;
+    gap: 10px;
+    min-height: unset;
+  }
+
+  .card-header {
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .sensor-icon-container {
+    width: 26px;
+    height: 26px;
+  }
+
+  .sensor-icon-svg {
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
+  }
+
+  .sensor-value {
+    gap: 4px;
+  }
+
+  .sensor-value .value {
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .sensor-value .unit {
+    font-size: 11px;
   }
 
   .middle-grid {
     grid-template-columns: 1fr;
-    gap: 12px;
-    margin-bottom: 16px;
+    gap: 20px;
+    margin-bottom: 0;
   }
 
   .chart-container,
@@ -2125,28 +2307,28 @@ body {
 
   .forecast-section {
     padding: 16px;
-    margin-bottom: 16px;
+    margin-bottom: 0;
   }
 
   .forecast-header {
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     align-items: flex-start;
   }
 
   .forecast-context-strip {
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
   }
 
   .forecast-grid {
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    gap: 6px;
   }
 
   .forecast-footer {
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     align-items: flex-start;
   }
 
@@ -2156,68 +2338,232 @@ body {
 
   .mobile-nav {
     display: flex;
+    height: 56px;
+  }
+
+  .mobile-nav-btn {
+    font-size: 10px;
+    gap: 3px;
+  }
+
+  .mobile-nav-btn i {
+    font-size: 18px;
   }
 
   .settings-page,
   .logs-page,
   .analysis-page {
-    padding: 16px;
+    padding: 12px;
+    border-radius: 10px;
+    gap: 12px;
+  }
+
+  .settings-section {
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+  }
+
+  .gateway-section {
+    padding: 14px !important;
+    border-radius: 10px !important;
+  }
+
+  .gateway-section > div:first-child {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px;
+    margin-bottom: 12px !important;
+  }
+
+  .gateway-header-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px;
+  }
+
+  .gateway-devices-grid {
+    grid-template-columns: 1fr !important;
+    max-width: 100% !important;
+  }
+
+  .gateway-add-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .section-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .section-title {
+    font-size: 15px;
+  }
+
+  .export-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .table-container {
+    margin-bottom: 10px;
+  }
+
+  .detection-table th,
+  .detection-table td {
+    padding: 9px 6px;
+    white-space: nowrap;
+    font-size: 12px;
   }
 
   .settings-section,
   .detection-table {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .analysis-content {
     grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 0;
   }
 
   .analysis-kpi-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .analysis-kpi-card,
+  .analysis-card {
+    padding: 10px;
   }
 
   .footer {
-    padding: 8px 0 16px 0;
-    font-size: 11px;
+    padding: 6px 0 12px 0;
+    font-size: 10px;
   }
 }
 
 /* ================= SMALL MOBILE ================= */
 
 @media (max-width: 480px) {
+  .dashboard {
+    padding: 10px;
+  }
+
+  .dashboard-wrapper {
+    padding-bottom: 66px;
+  }
+
   .navbar {
     padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    gap: 6px;
   }
 
   .app-title {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .icon-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 16px;
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
   }
 
   .disease-name {
     font-size: 20px;
   }
 
+  .settings-page,
+  .logs-page,
+  .analysis-page,
+  .chart-container,
+  .recommendation-container,
+  .forecast-section {
+    padding: 10px;
+  }
+
+  .disease-status-card {
+    padding: 12px;
+    min-height: 100px;
+  }
+
+  .disease-status-value {
+    font-size: 22px;
+  }
+
+  .disease-status-icon-wrapper {
+    width: 42px;
+    height: 42px;
+  }
+
+  .disease-status-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 32px;
+  }
+
+  .sensor-card {
+    padding: 10px;
+  }
+
   .sensor-value .value {
-    font-size: 28px;
+    font-size: 24px;
+  }
+
+  .analysis-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gateway-section {
+    padding: 12px !important;
+  }
+
+  .gateway-devices-grid {
+    gap: 8px !important;
+  }
+
+  .mobile-nav {
+    height: 54px;
+  }
+
+  .mobile-nav-btn {
+    font-size: 9px;
+  }
+
+  .mobile-nav-btn i {
+    font-size: 16px;
+  }
+
+  .sensor-value .value {
+    font-size: 24px;
   }
 
   .recommendation-card {
-    padding: 10px 12px;
+    padding: 9px 10px;
   }
 
   .settings-title {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .setting-group label {
-    font-size: 12px;
+    font-size: 11px;
+  }
+
+  .dashboard-content {
+    gap: 24px;
+  }
+
+  .top-grid {
+    gap: 10px;
+  }
+
+  .middle-grid {
+    gap: 24px;
   }
 }
 

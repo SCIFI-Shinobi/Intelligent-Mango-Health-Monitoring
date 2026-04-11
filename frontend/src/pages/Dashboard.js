@@ -13,8 +13,10 @@ import AnalysisPage from './AnalysisPage';
 import { useTimeRange } from '../hooks/useTimeRange';
 import { useLanguage } from '../context/LanguageContext';
 import { useSettings } from '../context/SettingsContext';
+import { getApiBaseUrl, getWsBaseUrl } from '../utils/apiBase';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = getApiBaseUrl();
+const WS_BASE_URL = getWsBaseUrl();
 
 export default function Dashboard() {
   const { token } = useContext(AuthContext);
@@ -42,8 +44,7 @@ export default function Dashboard() {
   const connectWebSocket = useCallback(() => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
 
-    const wsProto = API_BASE_URL.startsWith('https://') ? 'wss://' : 'ws://';
-    ws.current = new WebSocket(`${wsProto}${API_BASE_URL.replace(/^https?:\/\//, '')}/ws?token=${token}`);
+    ws.current = new WebSocket(`${WS_BASE_URL}/ws?token=${token}`);
 
     ws.current.onopen = () => {
       console.log('WebSocket connected');
@@ -167,7 +168,7 @@ export default function Dashboard() {
         return (
           <div className="dashboard-content">
             {/* Top Grid: Disease Status + Sensors */}
-            <div className={isDesktop ? "top-grid" : ""}>
+            <div className={isDesktop ? "top-grid" : "mobile-top-section"}>
               <DiseaseStatusCard detection={detection} loading={loading} />
               <div className={isDesktop ? "sensor-grid-desktop" : "sensor-row"}>
                 <SensorCard
@@ -186,7 +187,7 @@ export default function Dashboard() {
             </div>
 
             {/* Chart + Recommendations */}
-            <div className={isDesktop ? "middle-grid" : ""}>
+            <div className={isDesktop ? "middle-grid" : "mobile-middle-section"}>
               <HistoricalChart
                 data={historyData}
                 loading={historyLoading}

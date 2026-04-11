@@ -3,6 +3,7 @@
 #include <LiquidCrystal_I2C.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <WiFiClientSecureBearSSL.h>
 #include <DHT.h>
 #include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
@@ -298,11 +299,31 @@ void triggerAlert(const DiseaseProfile& profile) {
     
     // Send alert to backend
     if (WiFi.status() == WL_CONNECTED) {
-        WiFiClient wifiClient;
         HTTPClient http;
-        String url = String(API_BASE_URL) + "/upload";
-        http.begin(wifiClient, url);
+        String url = String(API_BASE_URL) + String(API_INGEST_PATH);
+        bool began = false;
+        WiFiClient wifiClient;
+        BearSSL::WiFiClientSecure secureClient;
+
+        if (String(DEVICE_API_KEY) == "mg_your_api_key_here") {
+            Serial.println("Alert upload skipped: set DEVICE_API_KEY in Config.h");
+            return;
+        }
+
+        if (url.startsWith("https://")) {
+            secureClient.setInsecure();
+            began = http.begin(secureClient, url);
+        } else {
+            began = http.begin(wifiClient, url);
+        }
+
+        if (!began) {
+            Serial.println("Alert upload failed: could not initialize HTTP client");
+            return;
+        }
+
         http.addHeader("Content-Type", "application/json");
+        http.addHeader("X-Device-Key", DEVICE_API_KEY);
         
         DynamicJsonDocument alertDoc(512);
         alertDoc["device_id"] = DEVICE_ID;
@@ -344,11 +365,31 @@ void handleBuzzerAlert() {
 // ================= CLOUD SYNC =================
 void syncToCloud() {
     if (WiFi.status() == WL_CONNECTED) {
-        WiFiClient wifiClient;
+        if (String(DEVICE_API_KEY) == "mg_your_api_key_here") {
+            Serial.println("Cloud sync skipped: set DEVICE_API_KEY in Config.h");
+            return;
+        }
+
         HTTPClient http;
-        String url = String(API_BASE_URL) + "/upload";
-        http.begin(wifiClient, url);
+        String url = String(API_BASE_URL) + String(API_INGEST_PATH);
+        bool began = false;
+        WiFiClient wifiClient;
+        BearSSL::WiFiClientSecure secureClient;
+
+        if (url.startsWith("https://")) {
+            secureClient.setInsecure();
+            began = http.begin(secureClient, url);
+        } else {
+            began = http.begin(wifiClient, url);
+        }
+
+        if (!began) {
+            Serial.println("Cloud sync failed: could not initialize HTTP client");
+            return;
+        }
+
         http.addHeader("Content-Type", "application/json");
+        http.addHeader("X-Device-Key", DEVICE_API_KEY);
         
         DynamicJsonDocument doc(256);
         String diseaseType = (lastClassification.className.length() && lastClassification.className != "None")

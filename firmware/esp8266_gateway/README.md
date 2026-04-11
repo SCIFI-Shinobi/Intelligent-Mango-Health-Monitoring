@@ -62,8 +62,16 @@ Edit `src/Config.h`:
 ```cpp
 #define WIFI_SSID "YOUR_SSID"
 #define WIFI_PASSWORD "YOUR_PASSWORD"
-#define API_BASE_URL "http://your-backend-api.com"
+#define API_BASE_URL "https://your-backend-api.com"
+#define API_INGEST_PATH "/data/ingest"
+#define DEVICE_API_KEY "mg_your_api_key_here"
 ```
+
+Get `DEVICE_API_KEY` from dashboard:
+- Login to dashboard
+- Open Settings -> Devices
+- Register device (or regenerate existing key)
+- Copy key into `Config.h`
 
 ## Communication Protocol
 
@@ -81,10 +89,8 @@ Edit `src/Config.h`:
   "device_id": "esp8266_gateway_001",
   "temperature": 25.5,
   "humidity": 65.2,
-  "rain_intensity": 256,
-  "is_raining": false,
-  "last_disease": "Anthracnose",
-  "confidence": 0.85
+  "disease_type": "Anthracnose",
+  "confidence_score": 0.85
 }
 ```
 

@@ -10,11 +10,14 @@
 
 // ================= API CONFIGURATION =================
 // TODO: User must update this URL to their backend
-#define API_BASE_URL  "http://your-backend-api.com"
+#define API_BASE_URL  "https://your-backend-api.com"
 #define DEVICE_ID     "esp8266_gateway_001"
 
-// Optional: Device API key for authenticated data submission
-// #define DEVICE_API_KEY "mg_your_api_key_here"
+// API endpoint for gateway uploads
+#define API_INGEST_PATH "/data/ingest"
+
+// Device API key for authenticated data submission
+#define DEVICE_API_KEY "mg_your_api_key_here"
 
 // ================= TIMEZONE CONFIGURATION =================
 // Ethiopian Time (EAT) is UTC+3

@@ -3,6 +3,7 @@ Interactive test tool for disease confidence threshold alerts.
 Run: python test_threshold.py
 """
 import json
+import os
 import time
 
 try:
@@ -15,19 +16,24 @@ except ImportError:
 API_URL = "http://localhost:8000/data/ingest"
 DEFAULT_DEVICE_ID = "esp32-demo"
 THRESHOLD = 0.70
+DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
 
 
 def post_json(url, payload):
     """POST JSON using requests when available, else urllib (no extra dependency)."""
+    headers = {"Content-Type": "application/json"}
+    if DEVICE_API_KEY:
+        headers["X-Device-Key"] = DEVICE_API_KEY
+
     if requests is not None:
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
         return response.status_code, response.text
 
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
@@ -234,6 +240,7 @@ if __name__ == "__main__":
     print("  MANGAGUARD - INTERACTIVE TEST TOOL")
     print("="*50)
     print("\nMake sure backend is running on localhost:8000")
+    print("Set DEVICE_API_KEY env var before running to match deployed auth")
     print("Choose exactly what to send from the menu.\n")
 
     run_interactive_menu()

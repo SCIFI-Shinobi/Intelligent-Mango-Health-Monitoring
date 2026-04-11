@@ -3,6 +3,9 @@ import { AuthContext } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import { useNavigate } from "react-router-dom";
 import MangoLeafLogo from "../components/MangoLeafLogo";
+import { getApiBaseUrl } from "../utils/apiBase";
+
+const API_BASE_URL = getApiBaseUrl();
 
 function Login() {
   const [username, setUsername] = useState("");
@@ -30,7 +33,6 @@ function Login() {
         formData.append("email", email);
       }
 
-      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },

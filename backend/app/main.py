@@ -934,7 +934,7 @@ def get_my_devices(db: Session = Depends(get_db), user: models.User = Depends(ge
     return {
         "data": [
             {
-                "id": d.id,
+                "id": str(d.id),
                 "device_name": d.device_name,
                 "api_key": d.api_key,
                 "last_seen": d.last_seen,
@@ -955,6 +955,7 @@ def regenerate_device_key(
         models.Device.id == device_id,
         models.Device.user_id == user.id
     ).first()
+
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     device.api_key = f"mg_{secrets.token_hex(24)}"
