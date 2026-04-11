@@ -12,9 +12,10 @@ static const char* WIFI_SSID = "YOUR_WIFI_SSID";
 static const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
 // Server Endpoints
-// Use your Render/Vercel URLs for deployment, e.g., "https://your-backend.onrender.com/upload"
-static const char* TEST_SERVER_URL = "http://10.161.119.162:8000/upload";
-static const char* LOG_SERVER_URL = "http://10.161.119.162:4000"; // Can be left as is if not in use
+// Use your Render/Vercel URLs for deployment
+static const char* TEST_SERVER_URL = "https://mango-guard-backend.onrender.com/upload";
+static const char* LOG_SERVER_URL = "http://localhost:4000"; // Dummy URL since you don't have a log server deployed
+
 
 // Device Authentication
 // Get this API key from your frontend dashboard Settings > Add Gateway
