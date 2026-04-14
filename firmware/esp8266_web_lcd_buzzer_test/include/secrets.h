@@ -17,6 +17,7 @@ static const char* TEST_SERVER_URL = "https://mango-guard-backend.onrender.com/u
 static const char* LOG_SERVER_URL = "http://localhost:4000"; // Dummy URL since you don't have a log server deployed
 
 
+
 // Device Authentication
 // Get this API key from your frontend dashboard Settings > Add Gateway
 static const char* DEVICE_API_KEY = "YOUR_DEVICE_API_KEY";
