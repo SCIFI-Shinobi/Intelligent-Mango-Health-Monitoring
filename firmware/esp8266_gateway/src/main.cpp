@@ -1,4 +1,17 @@
+#include <Arduino.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
+#include <ESP8266HTTPClient.h>
+#include <DHT.h>
+#include "secrets.h"
 #include <Ticker.h>
+
+// Declare these at the very top so all functions can use them
+float lastTemperatureC = NAN;
+float lastHumidityPct = NAN;
+
 // ================= DISEASE PROFILES =================
 struct DiseaseProfile {
     const char* name;
@@ -50,9 +63,8 @@ bool showAmharic = false;
 unsigned long lastLangSwitch = 0;
 const unsigned long RECOMMENDATION_DISPLAY_MS = 6000;
 const unsigned long LANG_SWITCH_MS = 2000;
-// Simulate a classification result (replace with real model/classifier if available)
+
 void simulateClassification() {
-    // For demonstration, randomly pick a disease or healthy
     String diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
     int idx = random(0, 3);
     lastClassification.className = diseases[idx];
@@ -60,8 +72,7 @@ void simulateClassification() {
         lastClassification.confidence = 1.0;
         lastClassification.classIndex = -1;
     } else {
-        lastClassification.confidence = random(70, 100) / 100.0; // 0.70 - 0.99
-        // Find profile index
+        lastClassification.confidence = random(70, 100) / 100.0;
         lastClassification.classIndex = -1;
         for (size_t i = 0; i < sizeof(profiles)/sizeof(profiles[0]); ++i) {
             if (lastClassification.className == profiles[i].name) {
@@ -91,24 +102,15 @@ void checkAndShowRecommendation() {
     showRecommendation = false;
     recommendationProfileIdx = -1;
 }
-#include <Arduino.h>
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-#include <ESP8266WiFi.h>
-#include <WiFiClientSecure.h>
-#include <ESP8266HTTPClient.h>
-#include <DHT.h>
-#include "secrets.h" 
-
 
 // ---------- NODEMCU PINS ----------
 static const uint8_t BUZZER_PIN = D0;
 static const uint8_t DHT_PIN = D4;
 static const uint8_t SDA_PIN = D2;
 static const uint8_t SCL_PIN = D1;
-static const uint8_t RED_LED_PIN = D5;    // Disease detected
-static const uint8_t GREEN_LED_PIN = D6;  // Healthy/Connected
-static const uint8_t YELLOW_LED_PIN = D7; // Warning/Connection error
+static const uint8_t RED_LED_PIN = D5;
+static const uint8_t GREEN_LED_PIN = D6;
+static const uint8_t YELLOW_LED_PIN = D7;
 
 static const uint8_t DHT_TYPE = DHT22;
 static const uint8_t LCD_I2C_ADDR = 0x3f;
@@ -126,10 +128,7 @@ unsigned long lastDataUploadMs = 0;
 unsigned long lastReconnectAttemptMs = 0;
 unsigned long lastDhtReadMs = 0;
 
-float lastTemperatureC = NAN;
-float lastHumidityPct = NAN;
 String lastHttpStatus = "HTTP: N/A";
-
 
 String jsonEscape(const String& s) {
     String out;
@@ -154,13 +153,13 @@ void sendLog(const String& message) {
 
     String url = String(LOG_SERVER_URL) + "/log";
     bool isHttps = url.startsWith("https");
-    
+
     WiFiClientSecure clientSecure;
     WiFiClient client;
     bool beginSuccess = false;
 
     if (isHttps) {
-        clientSecure.setInsecure(); // Accept any SSL certificate
+        clientSecure.setInsecure();
         beginSuccess = http.begin(clientSecure, url);
     } else {
         beginSuccess = http.begin(client, url);
@@ -169,14 +168,12 @@ void sendLog(const String& message) {
     if (!beginSuccess) return;
 
     http.addHeader("Content-Type", "application/json");
-
-
     String body = "{\"device\":\"ESP8266\",\"message\":\"" + jsonEscape(message) + "\"}";
-
     int code = http.POST(body);
     Serial.printf("[sendLog] HTTP %d\n", code > 0 ? code : 0);
     http.end();
 }
+
 void beep(unsigned int onMs, unsigned int offMs, int repeat) {
     for (int i = 0; i < repeat; ++i) {
         digitalWrite(BUZZER_PIN, HIGH);
@@ -201,8 +198,6 @@ void readAndDisplayDht() {
     if (!isnan(h) && !isnan(t)) {
         lastTemperatureC = t;
         lastHumidityPct = h;
-
-        
         String msg = "Temp=" + String(t, 1) + "C Humidity=" + String(h, 0) + "%";
         sendLog(msg);
     }
@@ -210,7 +205,7 @@ void readAndDisplayDht() {
     String line1;
     if (isnan(lastTemperatureC) || isnan(lastHumidityPct)) {
         line1 = "DHT read failed";
-        sendLog("DHT read failed"); 
+        sendLog("DHT read failed");
     } else {
         line1 = "T:" + String(lastTemperatureC, 1) + "C H:" + String(lastHumidityPct, 0) + "%";
     }
@@ -226,8 +221,8 @@ void connectWiFi() {
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     showOnLcd("WiFi connecting", "Please wait...");
-    digitalWrite(GREEN_LED_PIN, LOW);   // Not healthy yet
-    digitalWrite(YELLOW_LED_PIN, LOW);  // Not sending
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(YELLOW_LED_PIN, LOW);
     Serial.print("Connecting to WiFi: ");
     Serial.println(WIFI_SSID);
 
@@ -244,8 +239,7 @@ void connectWiFi() {
         showOnLcd("WiFi Connected", ip);
         Serial.print("Connected. IP: ");
         Serial.println(ip);
-        // No LED change here; handled in sendSensorData
-        sendLog("WiFi connected, IP=" + ip); // ✅
+        sendLog("WiFi connected, IP=" + ip);
     } else {
         showOnLcd("WiFi Failed", "Check SSID/PASS");
         Serial.println("WiFi connection failed.");
@@ -266,15 +260,15 @@ void sendSensorData() {
     HTTPClient http;
     http.setTimeout(5000);
 
-String url = String(TEST_SERVER_URL);
+    String url = String(TEST_SERVER_URL);
     bool isHttps = url.startsWith("https");
-    
+
     WiFiClientSecure clientSecure;
     WiFiClient client;
     bool beginSuccess = false;
 
     if (isHttps) {
-        clientSecure.setInsecure(); // Required for Render HTTPS domains        
+        clientSecure.setInsecure();
         beginSuccess = http.begin(clientSecure, url);
     } else {
         beginSuccess = http.begin(client, url);
@@ -287,26 +281,21 @@ String url = String(TEST_SERVER_URL);
     }
 
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("x-device-key", DEVICE_API_KEY); 
+    http.addHeader("x-device-key", DEVICE_API_KEY);
     randomSeed(analogRead(0));
 
     float humidity = isnan(lastHumidityPct) ? random(3000, 9000) / 100.0 : lastHumidityPct;
     float temperature = isnan(lastTemperatureC) ? random(1500, 3500) / 100.0 : lastTemperatureC;
 
-
     String diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
     String disease_type = diseases[random(0, 3)];
 
-    // Default: all LEDs off
     digitalWrite(RED_LED_PIN, LOW);
     digitalWrite(GREEN_LED_PIN, LOW);
     digitalWrite(YELLOW_LED_PIN, LOW);
-
-    // Yellow ON while sending
     digitalWrite(YELLOW_LED_PIN, HIGH);
 
     float confidence_score = random(500, 1000) / 1000.0;
-
 
     String payload = "{";
     payload += "\"device_id\":\"ESP32_001\",";
@@ -318,12 +307,10 @@ String url = String(TEST_SERVER_URL);
 
     Serial.println("Sending: " + payload);
 
-    // Green ON only if healthy
     if (disease_type == "Healthy") {
         digitalWrite(GREEN_LED_PIN, HIGH);
     }
 
-    // 🔔 Beep and blink red LED only if disease detected and confidence_score >= 0.7
     if (disease_type != "Healthy" && confidence_score >= 0.7) {
         for (int i = 0; i < 2; ++i) {
             digitalWrite(RED_LED_PIN, HIGH);
@@ -335,8 +322,6 @@ String url = String(TEST_SERVER_URL);
 
     int code = http.POST(payload);
     lastHttpStatus = "HTTP: " + String(code > 0 ? code : 0);
-
-    // Turn off yellow after sending
     digitalWrite(YELLOW_LED_PIN, LOW);
 
     if (code > 0) {
@@ -349,10 +334,10 @@ String url = String(TEST_SERVER_URL);
 
     http.end();
 }
+
 void setup() {
     Serial.begin(9600);
     delay(500);
-
 
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
@@ -373,7 +358,7 @@ void setup() {
     delay(1200);
 
     connectWiFi();
-    sendLog("Device booted"); 
+    sendLog("Device booted");
 }
 
 void loop() {
@@ -393,7 +378,6 @@ void loop() {
         readAndDisplayDht();
     }
 
-    // Show recommendation if active
     if (showRecommendation && recommendationProfileIdx >= 0) {
         if (now - recommendationStart < RECOMMENDATION_DISPLAY_MS) {
             if (now - lastLangSwitch > LANG_SWITCH_MS) {
