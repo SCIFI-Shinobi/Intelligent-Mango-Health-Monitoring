@@ -5,7 +5,7 @@
 #include <WiFiClientSecure.h>
 #include <ESP8266HTTPClient.h>
 #include <DHT.h>
-#include "secrets.h" // <-- Environment variables stored here
+#include "secrets.h" 
 
 // ---------- NODEMCU PINS ----------
 static const uint8_t BUZZER_PIN = D0;
@@ -14,7 +14,7 @@ static const uint8_t SDA_PIN = D2;
 static const uint8_t SCL_PIN = D1;
 
 static const uint8_t DHT_TYPE = DHT22;
-static const uint8_t LCD_I2C_ADDR = 0x27;
+static const uint8_t LCD_I2C_ADDR = 0x3f;
 static const uint8_t LCD_COLUMNS = 16;
 static const uint8_t LCD_ROWS = 2;
 
@@ -142,6 +142,7 @@ void connectWiFi() {
         showOnLcd("WiFi Connected", ip);
         Serial.print("Connected. IP: ");
         Serial.println(ip);
+        // Move beep after LCD update
         beep(120, 100, 1);
         sendLog("WiFi connected, IP=" + ip); // ✅
     } else {
@@ -181,23 +182,19 @@ String url = String(TEST_SERVER_URL);
     }
 
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("x-device-key", DEVICE_API_KEY); // ✅ Required for backend Authentication filter
-
-    // ✅ Random seed (put in setup ideally)
+    http.addHeader("x-device-key", DEVICE_API_KEY); 
     randomSeed(analogRead(0));
 
-    // ✅ Use actual sensor data if available, else random
     float humidity = isnan(lastHumidityPct) ? random(3000, 9000) / 100.0 : lastHumidityPct;
     float temperature = isnan(lastTemperatureC) ? random(1500, 3500) / 100.0 : lastTemperatureC;
 
-    // ✅ Random disease types
-    String diseases[] = {"healthy", "leaf_blight", "rust", "powdery_mildew"};
-    String disease_type = diseases[random(0, 4)];
 
-    // ✅ Random confidence (0.00 – 1.00)
+    String diseases[] = {"healthy", "anthracnose", "powdery_mildew"};
+    String disease_type = diseases[random(0, 3)];
+
     float confidence_score = random(500, 1000) / 1000.0;
 
-    // ✅ Build JSON payload
+
     String payload = "{";
     payload += "\"device_id\":\"ESP32_001\",";
     payload += "\"humidity\":" + String(humidity, 2) + ",";
@@ -207,6 +204,11 @@ String url = String(TEST_SERVER_URL);
     payload += "}";
 
     Serial.println("Sending: " + payload);
+
+    // 🔔 Beep if confidence_score >= 0.7
+    if (confidence_score >= 0.7) {
+        beep(800, 200, 2); // Long beep, 2 times
+    }
 
     int code = http.POST(payload);
     lastHttpStatus = "HTTP: " + String(code > 0 ? code : 0);
