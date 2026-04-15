@@ -1,3 +1,96 @@
+#include <Ticker.h>
+// ================= DISEASE PROFILES =================
+struct DiseaseProfile {
+    const char* name;
+    float minTemp;
+    float maxTemp;
+    float humidityThreshold;
+    const char* targetedActionEn;
+    const char* preventiveActionEn;
+    const char* targetedActionAm;
+    const char* preventiveActionAm;
+    const char* titleEn;
+    const char* titleAm;
+};
+
+const DiseaseProfile profiles[] = {
+    {
+        "Anthracnose", 24.0, 30.0, 80.0,
+        "Spray copper fungicide.",
+        "Remove diseased branches.",
+        "ፈንገስ ማጥፊያ ይርጩ",
+        "የታመሙ ቅርንጫፎችን ያስወግዱ",
+        "Anthracnose Detected",
+        "አንትራክኖዝ ተገኝቷል"
+    },
+    {
+        "Powdery_Mildew", 18.0, 26.0, 60.0,
+        "Apply sulfur fungicide.",
+        "Prune overcrowded branches.",
+        "ሶልፈር ሊሊት ይሳሩ",
+        "ተክሎችን ዙሪያ የአየር ስርጭት ይሻሻሉ",
+        "Powdery Mildew Alert",
+        "ነጩ ሽንት አስጠንቅ"
+    }
+};
+
+// Recommendation engine state
+struct ClassificationResult {
+    String className;
+    float confidence;
+    int classIndex;
+};
+
+ClassificationResult lastClassification = {"Healthy", 1.0, -1};
+const float ALERT_THRESHOLD = 0.7;
+bool showRecommendation = false;
+unsigned long recommendationStart = 0;
+int recommendationProfileIdx = -1;
+bool showAmharic = false;
+unsigned long lastLangSwitch = 0;
+const unsigned long RECOMMENDATION_DISPLAY_MS = 6000;
+const unsigned long LANG_SWITCH_MS = 2000;
+// Simulate a classification result (replace with real model/classifier if available)
+void simulateClassification() {
+    // For demonstration, randomly pick a disease or healthy
+    String diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
+    int idx = random(0, 3);
+    lastClassification.className = diseases[idx];
+    if (lastClassification.className == "Healthy") {
+        lastClassification.confidence = 1.0;
+        lastClassification.classIndex = -1;
+    } else {
+        lastClassification.confidence = random(70, 100) / 100.0; // 0.70 - 0.99
+        // Find profile index
+        lastClassification.classIndex = -1;
+        for (size_t i = 0; i < sizeof(profiles)/sizeof(profiles[0]); ++i) {
+            if (lastClassification.className == profiles[i].name) {
+                lastClassification.classIndex = i;
+                break;
+            }
+        }
+    }
+}
+
+void checkAndShowRecommendation() {
+    if (isnan(lastTemperatureC) || isnan(lastHumidityPct)) return;
+    simulateClassification();
+    if (lastClassification.className != "Healthy" &&
+        lastClassification.confidence >= ALERT_THRESHOLD &&
+        lastClassification.classIndex >= 0) {
+        const DiseaseProfile& prof = profiles[lastClassification.classIndex];
+        if (lastTemperatureC >= prof.minTemp && lastTemperatureC <= prof.maxTemp && lastHumidityPct >= prof.humidityThreshold) {
+            showRecommendation = true;
+            recommendationStart = millis();
+            recommendationProfileIdx = lastClassification.classIndex;
+            lastLangSwitch = millis();
+            showAmharic = false;
+            return;
+        }
+    }
+    showRecommendation = false;
+    recommendationProfileIdx = -1;
+}
 #include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -122,7 +215,10 @@ void readAndDisplayDht() {
         line1 = "T:" + String(lastTemperatureC, 1) + "C H:" + String(lastHumidityPct, 0) + "%";
     }
 
-    showOnLcd(line1, lastHttpStatus);
+    checkAndShowRecommendation();
+    if (!showRecommendation) {
+        showOnLcd(line1, lastHttpStatus);
+    }
 }
 
 void connectWiFi() {
@@ -295,6 +391,23 @@ void loop() {
     if (now - lastDhtReadMs >= DHT_READ_INTERVAL_MS) {
         lastDhtReadMs = now;
         readAndDisplayDht();
+    }
+
+    // Show recommendation if active
+    if (showRecommendation && recommendationProfileIdx >= 0) {
+        if (now - recommendationStart < RECOMMENDATION_DISPLAY_MS) {
+            if (now - lastLangSwitch > LANG_SWITCH_MS) {
+                showAmharic = !showAmharic;
+                lastLangSwitch = now;
+            }
+            const DiseaseProfile& prof = profiles[recommendationProfileIdx];
+            String l1 = showAmharic ? prof.titleAm : prof.titleEn;
+            String l2 = showAmharic ? prof.targetedActionAm : prof.targetedActionEn;
+            showOnLcd(l1, l2);
+        } else {
+            showRecommendation = false;
+            recommendationProfileIdx = -1;
+        }
     }
 
     if (now - lastDataUploadMs >= DATA_UPLOAD_INTERVAL_MS) {
