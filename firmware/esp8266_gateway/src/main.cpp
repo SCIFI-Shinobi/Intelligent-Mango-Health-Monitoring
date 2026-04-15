@@ -2,458 +2,305 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
 #include <ESP8266HTTPClient.h>
-#include <WiFiClientSecureBearSSL.h>
 #include <DHT.h>
-#include <Adafruit_Sensor.h>
-#include <ArduinoJson.h>
-#include <time.h>
-#include <SoftwareSerial.h>
-#include "Config.h"
+#include "secrets.h" 
 
-// ================= HARDWARE INITIALIZATION =================
+
+// ---------- NODEMCU PINS ----------
+static const uint8_t BUZZER_PIN = D0;
+static const uint8_t DHT_PIN = D4;
+static const uint8_t SDA_PIN = D2;
+static const uint8_t SCL_PIN = D1;
+static const uint8_t RED_LED_PIN = D5;    // Disease detected
+static const uint8_t GREEN_LED_PIN = D6;  // Healthy/Connected
+static const uint8_t YELLOW_LED_PIN = D7; // Warning/Connection error
+
+static const uint8_t DHT_TYPE = DHT22;
+static const uint8_t LCD_I2C_ADDR = 0x3f;
+static const uint8_t LCD_COLUMNS = 16;
+static const uint8_t LCD_ROWS = 2;
+
+static const unsigned long DATA_UPLOAD_INTERVAL_MS = 10000;
+static const unsigned long WIFI_RECONNECT_INTERVAL_MS = 8000;
+static const unsigned long DHT_READ_INTERVAL_MS = 2000;
+
 LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLUMNS, LCD_ROWS);
 DHT dht(DHT_PIN, DHT_TYPE);
-SoftwareSerial serialToNano(RX_PIN, TX_PIN);  // RX, TX
 
-// ================= DISEASE PROFILES =================
-struct DiseaseProfile {
-    const char* name;
-    float minTemp;
-    float maxTemp;
-    float humidityThreshold;
-    const char* targetedActionEn;
-    const char* preventiveActionEn;
-    const char* targetedActionAm;
-    const char* preventiveActionAm;
-    const char* titleEn;
-    const char* titleAm;
-};
+unsigned long lastDataUploadMs = 0;
+unsigned long lastReconnectAttemptMs = 0;
+unsigned long lastDhtReadMs = 0;
 
-const DiseaseProfile profiles[] = {
-    {
-        "Anthracnose", 24.0, 30.0, 80.0,
-        "Spray with copper-based fungicide (Copper oxychloride). High risk conditions detected.",
-        "Remove diseased branches and improve air circulation.",
-        "ፈንገስ ማጥፊያ (Copper) ይርጩ",
-        "የታመሙ ቅርንጫፎችን ያስወግዱ",
-        "Anthracnose Detected",
-        "አንትራክኖዝ ተገኝቷል"
-    },
-    {
-        "Powdery Mildew", 18.0, 26.0, 60.0,
-        "Apply sulfur-based fungicide. Improve ventilation around plants.",
-        "Prune overcrowded branches to reduce humidity.",
-        "ሶልፈር ሊሊት ይሳሩ",
-        "ተክሎችን ዙሪያ የአየር ስርጭት ይሻሻሉ",
-        "Powdery Mildew Alert",
-        "ነጩ ሽንት አስጠንቅ"
+float lastTemperatureC = NAN;
+float lastHumidityPct = NAN;
+String lastHttpStatus = "HTTP: N/A";
+
+
+String jsonEscape(const String& s) {
+    String out;
+    out.reserve(s.length() + 8);
+    for (int i = 0; i < (int)s.length(); i++) {
+        char c = s[i];
+        if      (c == '"')  out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else if (c == '\t') out += "\\t";
+        else                out += c;
     }
-};
+    return out;
+}
 
-// ================= STATE & SENSORS =================
-struct SensorData {
-    float temperature;
-    float humidity;
-    float rainIntensity;
-    bool isRaining;
-    unsigned long timestamp;
-};
+void sendLog(const String& message) {
+    if (WiFi.status() != WL_CONNECTED) return;
 
-struct ClassificationResult {
-    String className;
-    float confidence;
-    int classIndex;
-};
+    HTTPClient http;
+    http.setTimeout(3000);
 
-SensorData currentSensorData;
-ClassificationResult lastClassification = {"None", 0.0, -1};
-unsigned long lastDHTRead = 0;
-unsigned long lastRainCheck = 0;
-unsigned long lastCloudSync = 0;
-unsigned long alertStartTime = 0;
-bool alertActive = false;
-int alertBuzzerPattern = 0;  // Pattern counter for buzzer
-
-// ================= FUNCTION DECLARATIONS =================
-void setupWiFi();
-void setupSerial();
-void readSensors();
-void checkRainSensor();
-void handleSerialData();
-void displayStatus();
-void displayAlert();
-void triggerAlert(const DiseaseProfile& profile);
-void syncToCloud();
-void playBuzzer(int pattern);
-void handleBuzzerAlert();
-void setupTime();
-
-// ================= SETUP =================
-void setup() {
-    Serial.begin(115200);
-    delay(1000);
+    String url = String(LOG_SERVER_URL) + "/log";
+    bool isHttps = url.startsWith("https");
     
-    Serial.println("\n\nESP8266 Gateway Initializing...");
-    
-    // Initialize hardware
-    pinMode(BUZZER_PIN, OUTPUT);
-    pinMode(RAIN_SENSOR_ANALOG_PIN, INPUT);
-    digitalWrite(BUZZER_PIN, LOW);
-    
-    // Initialize I2C and display
-    Wire.begin(SDA_PIN, SCL_PIN);
-    lcd.init();
-    lcd.backlight();
+    WiFiClientSecure clientSecure;
+    WiFiClient client;
+    bool beginSuccess = false;
+
+    if (isHttps) {
+        clientSecure.setInsecure(); // Accept any SSL certificate
+        beginSuccess = http.begin(clientSecure, url);
+    } else {
+        beginSuccess = http.begin(client, url);
+    }
+
+    if (!beginSuccess) return;
+
+    http.addHeader("Content-Type", "application/json");
+
+
+    String body = "{\"device\":\"ESP8266\",\"message\":\"" + jsonEscape(message) + "\"}";
+
+    int code = http.POST(body);
+    Serial.printf("[sendLog] HTTP %d\n", code > 0 ? code : 0);
+    http.end();
+}
+void beep(unsigned int onMs, unsigned int offMs, int repeat) {
+    for (int i = 0; i < repeat; ++i) {
+        digitalWrite(BUZZER_PIN, HIGH);
+        delay(onMs);
+        digitalWrite(BUZZER_PIN, LOW);
+        if (i < repeat - 1) delay(offMs);
+    }
+}
+
+void showOnLcd(const String& line1, const String& line2) {
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print("ESP8266 Gateway");
+    lcd.print(line1.substring(0, LCD_COLUMNS));
     lcd.setCursor(0, 1);
-    lcd.print("Booting...");
-    
-    // Initialize sensors
-    dht.begin();
-    
-    // Initialize UART to Nano
-    setupSerial();
-    
-    // Initialize WiFi and time
-    setupWiFi();
-    setupTime();
-    
-    Serial.println("Setup complete. Waiting for serial data...");
-    displayStatus();
+    lcd.print(line2.substring(0, LCD_COLUMNS));
 }
 
-// ================= MAIN LOOP =================
-void loop() {
-    unsigned long now = millis();
-    
-    // Read sensors at intervals
-    if (now - lastDHTRead >= DHT_READ_INTERVAL) {
-        readSensors();
-        lastDHTRead = now;
+void readAndDisplayDht() {
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+
+    if (!isnan(h) && !isnan(t)) {
+        lastTemperatureC = t;
+        lastHumidityPct = h;
+
+        
+        String msg = "Temp=" + String(t, 1) + "C Humidity=" + String(h, 0) + "%";
+        sendLog(msg);
     }
-    
-    // Check rain sensor
-    if (now - lastRainCheck >= RAIN_CHECK_INTERVAL) {
-        checkRainSensor();
-        lastRainCheck = now;
+
+    String line1;
+    if (isnan(lastTemperatureC) || isnan(lastHumidityPct)) {
+        line1 = "DHT read failed";
+        sendLog("DHT read failed"); 
+    } else {
+        line1 = "T:" + String(lastTemperatureC, 1) + "C H:" + String(lastHumidityPct, 0) + "%";
     }
-    
-    // Handle incoming serial data from Nano
-    handleSerialData();
-    
-    // Handle alert buzzer pattern
-    handleBuzzerAlert();
-    
-    // Sync to cloud periodically
-    if (now - lastCloudSync >= CLOUD_SYNC_INTERVAL_MS) {
-        syncToCloud();
-        lastCloudSync = now;
-    }
-    
-    // Update display
-    displayStatus();
-    
-    delay(50);  // Small delay to prevent watchdog trigger
+
+    showOnLcd(line1, lastHttpStatus);
 }
 
-// ================= WIFI & TIME SETUP =================
-void setupWiFi() {
-    Serial.print("Connecting to WiFi: ");
-    Serial.println(WIFI_SSID);
-    
+void connectWiFi() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(500);
-        Serial.print(".");
-        attempts++;
-    }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\nWiFi connected!");
-        Serial.print("IP: ");
-        Serial.println(WiFi.localIP());
-    } else {
-        Serial.println("\nWiFi failed. Continuing offline...");
-    }
-}
 
-void setupTime() {
-    // Configure time with NTP
-    configTime(GMT_OFFSET, DST_OFFSET, NTP_SERVER);
-    Serial.println("Waiting for NTP time sync...");
-    time_t now = time(nullptr);
+    showOnLcd("WiFi connecting", "Please wait...");
+    digitalWrite(GREEN_LED_PIN, LOW);   // Not healthy yet
+    digitalWrite(YELLOW_LED_PIN, LOW);  // Not sending
+    Serial.print("Connecting to WiFi: ");
+    Serial.println(WIFI_SSID);
+
     int attempts = 0;
-    while (now < 24 * 3600 && attempts < 20) {
-        delay(500);
+    while (WiFi.status() != WL_CONNECTED && attempts < 25) {
+        delay(400);
         Serial.print(".");
-        now = time(nullptr);
         attempts++;
     }
     Serial.println();
-    Serial.print("NTP time set: ");
-    Serial.println(ctime(&now));
-}
 
-void setupSerial() {
-    serialToNano.begin(UART_BAUD_RATE);
-    Serial.println("UART initialized at 115200 baud");
-}
-
-// ================= SENSOR READING =================
-void readSensors() {
-    // Read DHT22
-    float h = dht.readHumidity();
-    float t = dht.readTemperature();
-    
-    if (!isnan(h) && !isnan(t)) {
-        currentSensorData.temperature = t;
-        currentSensorData.humidity = h;
-        currentSensorData.timestamp = millis();
-        
-        Serial.print("DHT - Temp: ");
-        Serial.print(t);
-        
-        Serial.print("°C, Humidity: ");
-        Serial.print(h);
-        Serial.println("%");
-    } else {
-        Serial.println("DHT read failed!");
-    }
-}
-
-void checkRainSensor() {
-    int rainAnalog = analogRead(RAIN_SENSOR_ANALOG_PIN);
-    currentSensorData.rainIntensity = rainAnalog;
-    currentSensorData.isRaining = (rainAnalog < RAIN_INTENSITY_THRESHOLD);
-    
-    if (currentSensorData.isRaining) {
-        Serial.println("Rain detected!");
-    }
-}
-
-// ================= SERIAL COMMUNICATION WITH NANO =================
-void handleSerialData() {
-    if (serialToNano.available()) {
-        // Read incoming JSON from Nano 33 BLE
-        String jsonString = serialToNano.readStringUntil('\n');
-        
-        if (jsonString.length() > 0) {
-            Serial.print("Received from Nano: ");
-            Serial.println(jsonString);
-            
-            // Parse JSON
-            DynamicJsonDocument doc(256);
-            DeserializationError error = deserializeJson(doc, jsonString);
-            
-            if (!error) {
-                // Extract classification result
-                if (doc.containsKey("class") && doc.containsKey("confidence")) {
-                    lastClassification.className = doc["class"].as<String>();
-                    lastClassification.confidence = doc["confidence"].as<float>();
-                    
-                    Serial.print("Classification: ");
-                    Serial.print(lastClassification.className);
-                    Serial.print(" (");
-                    Serial.print(lastClassification.confidence);
-                    Serial.println(")");
-                    
-                    // Check if classification exceeds threshold and matches a disease
-                    if (lastClassification.confidence >= ALERT_THRESHOLD) {
-                        for (size_t i = 0; i < sizeof(profiles) / sizeof(profiles[0]); i++) {
-                            if (lastClassification.className == profiles[i].name) {
-                                lastClassification.classIndex = static_cast<int>(i);
-                                // Check environmental conditions match disease profile
-                                if (currentSensorData.temperature >= profiles[i].minTemp &&
-                                    currentSensorData.temperature <= profiles[i].maxTemp &&
-                                    currentSensorData.humidity >= profiles[i].humidityThreshold) {
-                                    triggerAlert(profiles[i]);
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-            } else {
-                Serial.print("JSON parse error: ");
-                Serial.println(error.c_str());
-            }
-        }
-    }
-}
-
-// ================= ALERT HANDLING =================
-void triggerAlert(const DiseaseProfile& profile) {
-    alertActive = true;
-    alertStartTime = millis();
-    alertBuzzerPattern = 0;
-    
-    Serial.println("ALERT TRIGGERED!");
-    Serial.print("Disease: ");
-    Serial.println(profile.name);
-    
-    // Send alert to backend
     if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http;
-        String url = String(API_BASE_URL) + String(API_INGEST_PATH);
-        bool began = false;
-        WiFiClient wifiClient;
-        BearSSL::WiFiClientSecure secureClient;
-
-        if (String(DEVICE_API_KEY) == "mg_your_api_key_here") {
-            Serial.println("Alert upload skipped: set DEVICE_API_KEY in Config.h");
-            return;
-        }
-
-        if (url.startsWith("https://")) {
-            secureClient.setInsecure();
-            began = http.begin(secureClient, url);
-        } else {
-            began = http.begin(wifiClient, url);
-        }
-
-        if (!began) {
-            Serial.println("Alert upload failed: could not initialize HTTP client");
-            return;
-        }
-
-        http.addHeader("Content-Type", "application/json");
-        http.addHeader("X-Device-Key", DEVICE_API_KEY);
-        
-        DynamicJsonDocument alertDoc(512);
-        alertDoc["device_id"] = DEVICE_ID;
-        alertDoc["disease_type"] = profile.name;
-        alertDoc["confidence_score"] = lastClassification.confidence;
-        alertDoc["temperature"] = currentSensorData.temperature;
-        alertDoc["humidity"] = currentSensorData.humidity;
-        
-        String jsonString;
-        serializeJson(alertDoc, jsonString);
-        
-        int httpCode = http.POST(jsonString);
-        Serial.print("Alert POST response: ");
-        Serial.println(httpCode);
-        
-        http.end();
-    }
-}
-
-void handleBuzzerAlert() {
-    if (alertActive) {
-        unsigned long alertDuration = millis() - alertStartTime;
-        
-        if (alertDuration < ALERT_DURATION_MS) {
-            // Buzzer pattern: 3 short beeps
-            int patternPhase = (alertDuration % 600) / 100;
-            if (patternPhase < 3) {
-                digitalWrite(BUZZER_PIN, HIGH);
-            } else {
-                digitalWrite(BUZZER_PIN, LOW);
-            }
-        } else {
-            alertActive = false;
-            digitalWrite(BUZZER_PIN, LOW);
-        }
-    }
-}
-
-// ================= CLOUD SYNC =================
-void syncToCloud() {
-    if (WiFi.status() == WL_CONNECTED) {
-        if (String(DEVICE_API_KEY) == "mg_your_api_key_here") {
-            Serial.println("Cloud sync skipped: set DEVICE_API_KEY in Config.h");
-            return;
-        }
-
-        HTTPClient http;
-        String url = String(API_BASE_URL) + String(API_INGEST_PATH);
-        bool began = false;
-        WiFiClient wifiClient;
-        BearSSL::WiFiClientSecure secureClient;
-
-        if (url.startsWith("https://")) {
-            secureClient.setInsecure();
-            began = http.begin(secureClient, url);
-        } else {
-            began = http.begin(wifiClient, url);
-        }
-
-        if (!began) {
-            Serial.println("Cloud sync failed: could not initialize HTTP client");
-            return;
-        }
-
-        http.addHeader("Content-Type", "application/json");
-        http.addHeader("X-Device-Key", DEVICE_API_KEY);
-        
-        DynamicJsonDocument doc(256);
-        String diseaseType = (lastClassification.className.length() && lastClassification.className != "None")
-            ? lastClassification.className
-            : "Healthy";
-        float confidenceScore = (diseaseType == "Healthy") ? 1.0 : lastClassification.confidence;
-
-        doc["device_id"] = DEVICE_ID;
-        doc["temperature"] = currentSensorData.temperature;
-        doc["humidity"] = currentSensorData.humidity;
-        doc["disease_type"] = diseaseType;
-        doc["confidence_score"] = confidenceScore;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        
-        int httpCode = http.POST(jsonString);
-        Serial.print("Cloud sync response: ");
-        Serial.println(httpCode);
-        
-        http.end();
-    }
-}
-
-// ================= DISPLAY =================
-void displayStatus() {
-    if (alertActive) {
-        displayAlert();
+        String ip = WiFi.localIP().toString();
+        showOnLcd("WiFi Connected", ip);
+        Serial.print("Connected. IP: ");
+        Serial.println(ip);
+        // No LED change here; handled in sendSensorData
+        sendLog("WiFi connected, IP=" + ip); // ✅
     } else {
-        char line1[17];
-        snprintf(line1, sizeof(line1), "T:%2.1fC H:%2.0f%%", currentSensorData.temperature, currentSensorData.humidity);
-
-        String disease = lastClassification.className.length() ? lastClassification.className : "None";
-        String line2Text = (currentSensorData.isRaining ? "Rain " : "") + disease;
-        if (line2Text.length() > LCD_COLUMNS) {
-            line2Text = line2Text.substring(0, LCD_COLUMNS);
-        }
-
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print(line1);
-        lcd.setCursor(0, 1);
-        lcd.print(line2Text);
+        showOnLcd("WiFi Failed", "Check SSID/PASS");
+        Serial.println("WiFi connection failed.");
+        digitalWrite(GREEN_LED_PIN, LOW);
+        digitalWrite(YELLOW_LED_PIN, LOW);
+        beep(80, 80, 3);
     }
 }
 
-void displayAlert() {
-    String line1 = "ALERT " + lastClassification.className;
-    if (line1.length() > LCD_COLUMNS) {
-        line1 = line1.substring(0, LCD_COLUMNS);
+void sendSensorData() {
+    if (WiFi.status() != WL_CONNECTED) {
+        showOnLcd("WiFi Disconn", "Reconnecting...");
+        digitalWrite(GREEN_LED_PIN, LOW);
+        digitalWrite(YELLOW_LED_PIN, LOW);
+        return;
     }
 
-    String line2 = "Check app action";
-    if (lastClassification.classIndex >= 0) {
-        const DiseaseProfile& profile = profiles[lastClassification.classIndex];
-        line2 = profile.name;
-    }
-    if (line2.length() > LCD_COLUMNS) {
-        line2 = line2.substring(0, LCD_COLUMNS);
+    HTTPClient http;
+    http.setTimeout(5000);
+
+String url = String(TEST_SERVER_URL);
+    bool isHttps = url.startsWith("https");
+    
+    WiFiClientSecure clientSecure;
+    WiFiClient client;
+    bool beginSuccess = false;
+
+    if (isHttps) {
+        clientSecure.setInsecure(); // Required for Render HTTPS domains        
+        beginSuccess = http.begin(clientSecure, url);
+    } else {
+        beginSuccess = http.begin(client, url);
     }
 
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print(line1);
-    lcd.setCursor(0, 1);
-    lcd.print(line2);
+    if (!beginSuccess) {
+        showOnLcd("HTTP Begin Err", "Bad URL?");
+        beep(120, 120, 2);
+        return;
+    }
+
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("x-device-key", DEVICE_API_KEY); 
+    randomSeed(analogRead(0));
+
+    float humidity = isnan(lastHumidityPct) ? random(3000, 9000) / 100.0 : lastHumidityPct;
+    float temperature = isnan(lastTemperatureC) ? random(1500, 3500) / 100.0 : lastTemperatureC;
+
+
+    String diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
+    String disease_type = diseases[random(0, 3)];
+
+    // Default: all LEDs off
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(YELLOW_LED_PIN, LOW);
+
+    // Yellow ON while sending
+    digitalWrite(YELLOW_LED_PIN, HIGH);
+
+    float confidence_score = random(500, 1000) / 1000.0;
+
+
+    String payload = "{";
+    payload += "\"device_id\":\"ESP32_001\",";
+    payload += "\"humidity\":" + String(humidity, 2) + ",";
+    payload += "\"temperature\":" + String(temperature, 2) + ",";
+    payload += "\"disease_type\":\"" + disease_type + "\",";
+    payload += "\"confidence_score\":" + String(confidence_score, 3);
+    payload += "}";
+
+    Serial.println("Sending: " + payload);
+
+    // Green ON only if healthy
+    if (disease_type == "Healthy") {
+        digitalWrite(GREEN_LED_PIN, HIGH);
+    }
+
+    // 🔔 Beep and blink red LED only if disease detected and confidence_score >= 0.7
+    if (disease_type != "Healthy" && confidence_score >= 0.7) {
+        for (int i = 0; i < 2; ++i) {
+            digitalWrite(RED_LED_PIN, HIGH);
+            beep(800, 200, 1);
+            digitalWrite(RED_LED_PIN, LOW);
+            delay(200);
+        }
+    }
+
+    int code = http.POST(payload);
+    lastHttpStatus = "HTTP: " + String(code > 0 ? code : 0);
+
+    // Turn off yellow after sending
+    digitalWrite(YELLOW_LED_PIN, LOW);
+
+    if (code > 0) {
+        String response = http.getString();
+        Serial.println("HTTP " + String(code));
+        Serial.println(response);
+    } else {
+        Serial.println("Error: " + http.errorToString(code));
+    }
+
+    http.end();
+}
+void setup() {
+    Serial.begin(9600);
+    delay(500);
+
+
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
+    pinMode(RED_LED_PIN, OUTPUT);
+    pinMode(GREEN_LED_PIN, OUTPUT);
+    pinMode(YELLOW_LED_PIN, OUTPUT);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(YELLOW_LED_PIN, LOW);
+
+    dht.begin();
+    Wire.begin(SDA_PIN, SCL_PIN);
+
+    lcd.init();
+    lcd.backlight();
+
+    showOnLcd("ESP8266 Test", "LCD+WiFi+Web+DHT");
+    delay(1200);
+
+    connectWiFi();
+    sendLog("Device booted"); 
+}
+
+void loop() {
+    unsigned long now = millis();
+
+    if (WiFi.status() != WL_CONNECTED) {
+        if (now - lastReconnectAttemptMs >= WIFI_RECONNECT_INTERVAL_MS) {
+            lastReconnectAttemptMs = now;
+            connectWiFi();
+        }
+        delay(100);
+        return;
+    }
+
+    if (now - lastDhtReadMs >= DHT_READ_INTERVAL_MS) {
+        lastDhtReadMs = now;
+        readAndDisplayDht();
+    }
+
+    if (now - lastDataUploadMs >= DATA_UPLOAD_INTERVAL_MS) {
+        lastDataUploadMs = now;
+        sendSensorData();
+    }
+
+    delay(50);
 }
