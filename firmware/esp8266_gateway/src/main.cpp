@@ -6,9 +6,7 @@
 #include <ESP8266HTTPClient.h>
 #include <DHT.h>
 #include "secrets.h"
-#include <Ticker.h>
 
-// Declare these at the very top so all functions can use them
 float lastTemperatureC = NAN;
 float lastHumidityPct = NAN;
 
@@ -55,6 +53,8 @@ struct ClassificationResult {
 };
 
 ClassificationResult lastClassification = {"Healthy", 1.0, -1};
+ClassificationResult nanoClassification = {"", 0.0, -1}; 
+bool nanoResultAvailable = false;
 const float ALERT_THRESHOLD = 0.7;
 bool showRecommendation = false;
 unsigned long recommendationStart = 0;
@@ -63,6 +63,26 @@ bool showAmharic = false;
 unsigned long lastLangSwitch = 0;
 const unsigned long RECOMMENDATION_DISPLAY_MS = 6000;
 const unsigned long LANG_SWITCH_MS = 2000;
+
+
+void parseNanoSerialLine(const String& line) {
+    int commaIdx = line.indexOf(',');
+    if (commaIdx > 0) {
+        String disease = line.substring(0, commaIdx);
+        String confStr = line.substring(commaIdx + 1);
+        float conf = confStr.toFloat();
+        nanoClassification.className = disease;
+        nanoClassification.confidence = conf;
+        nanoClassification.classIndex = -1;
+        for (size_t i = 0; i < sizeof(profiles)/sizeof(profiles[0]); ++i) {
+            if (disease == profiles[i].name) {
+                nanoClassification.classIndex = i;
+                break;
+            }
+        }
+        nanoResultAvailable = true;
+    }
+}
 
 void simulateClassification() {
     String diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
@@ -85,15 +105,20 @@ void simulateClassification() {
 
 void checkAndShowRecommendation() {
     if (isnan(lastTemperatureC) || isnan(lastHumidityPct)) return;
-    simulateClassification();
-    if (lastClassification.className != "Healthy" &&
-        lastClassification.confidence >= ALERT_THRESHOLD &&
-        lastClassification.classIndex >= 0) {
-        const DiseaseProfile& prof = profiles[lastClassification.classIndex];
+    ClassificationResult* result = &lastClassification;
+    if (nanoResultAvailable) {
+        result = &nanoClassification;
+    } else {
+        simulateClassification();
+    }
+    if (result->className != "Healthy" &&
+        result->confidence >= ALERT_THRESHOLD &&
+        result->classIndex >= 0) {
+        const DiseaseProfile& prof = profiles[result->classIndex];
         if (lastTemperatureC >= prof.minTemp && lastTemperatureC <= prof.maxTemp && lastHumidityPct >= prof.humidityThreshold) {
             showRecommendation = true;
             recommendationStart = millis();
-            recommendationProfileIdx = lastClassification.classIndex;
+            recommendationProfileIdx = result->classIndex;
             lastLangSwitch = millis();
             showAmharic = false;
             return;
@@ -284,18 +309,17 @@ void sendSensorData() {
     http.addHeader("x-device-key", DEVICE_API_KEY);
     randomSeed(analogRead(0));
 
-    float humidity = isnan(lastHumidityPct) ? random(3000, 9000) / 100.0 : lastHumidityPct;
-    float temperature = isnan(lastTemperatureC) ? random(1500, 3500) / 100.0 : lastTemperatureC;
+        float humidity = isnan(lastHumidityPct) ? 0.0 : lastHumidityPct;
+        float temperature = isnan(lastTemperatureC) ? 0.0 : lastTemperatureC;
 
-    String diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
-    String disease_type = diseases[random(0, 3)];
+        // Only send if we have a real result from Nano or forecasting model
+        if (!nanoResultAvailable) {
+            // No valid result, skip sending
+            return;
+        }
 
-    digitalWrite(RED_LED_PIN, LOW);
-    digitalWrite(GREEN_LED_PIN, LOW);
-    digitalWrite(YELLOW_LED_PIN, LOW);
-    digitalWrite(YELLOW_LED_PIN, HIGH);
-
-    float confidence_score = random(500, 1000) / 1000.0;
+        String disease_type = nanoClassification.className;
+        float confidence_score = nanoClassification.confidence;
 
     String payload = "{";
     payload += "\"device_id\":\"ESP32_001\",";
@@ -358,11 +382,35 @@ void setup() {
     delay(1200);
 
     connectWiFi();
-    sendLog("Device booted");
-}
+        float humidity = isnan(lastHumidityPct) ? random(3000, 9000) / 100.0 : lastHumidityPct;
+        float temperature = isnan(lastTemperatureC) ? random(1500, 3500) / 100.0 : lastTemperatureC;
 
+        String disease_type;
+        float confidence_score;
+        if (nanoResultAvailable) {
+            disease_type = nanoClassification.className;
+            confidence_score = nanoClassification.confidence;
+        } else {
+            String diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
+            disease_type = diseases[random(0, 3)];
+            confidence_score = random(500, 1000) / 1000.0;
+        }
 void loop() {
     unsigned long now = millis();
+
+    // --- Serial read from Nano ---
+    static String serialLine = "";
+    while (Serial.available() > 0) {
+        char c = Serial.read();
+        if (c == '\n' || c == '\r') {
+            if (serialLine.length() > 0) {
+                parseNanoSerialLine(serialLine);
+                serialLine = "";
+            }
+        } else {
+            serialLine += c;
+        }
+    }
 
     if (WiFi.status() != WL_CONNECTED) {
         if (now - lastReconnectAttemptMs >= WIFI_RECONNECT_INTERVAL_MS) {
@@ -394,10 +442,24 @@ void loop() {
         }
     }
 
-    if (now - lastDataUploadMs >= DATA_UPLOAD_INTERVAL_MS) {
-        lastDataUploadMs = now;
-        sendSensorData();
-    }
+        // Only send if we have a real result from Nano or forecasting model
+        if (nanoResultAvailable && (now - lastDataUploadMs >= DATA_UPLOAD_INTERVAL_MS)) {
+            lastDataUploadMs = now;
+            sendSensorData();
+            nanoResultAvailable = false; // Reset after sending
+        }
 
     delay(50);
 }
+
+    // ================== PLACE YOUR FORECASTING MODEL BELOW ==================
+    // Example: You can define your forecasting model as a function or class here.
+    // Call your model from loop() or another function, and set nanoClassification/classification result accordingly.
+    // Example stub:
+    // void runForecastingModel(float temp, float humidity) {
+    //     // ... your model code ...
+    //     nanoClassification.className = "Anthracnose";
+    //     nanoClassification.confidence = 0.88;
+    //     nanoClassification.classIndex = 0; // or appropriate index
+    //     nanoResultAvailable = true;
+    // }
