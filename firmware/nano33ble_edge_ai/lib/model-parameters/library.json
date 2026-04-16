@@ -1,7 +1,0 @@
-{
-    "name": "model-parameters",
-    "version": "1.0.0",
-    "build": {
-        "flags": "-Ilib/model-parameters"
-    }
-}
