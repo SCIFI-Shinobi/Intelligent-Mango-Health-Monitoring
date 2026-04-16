@@ -5,7 +5,50 @@
 #include <WiFiClientSecure.h>
 #include <ESP8266HTTPClient.h>
 #include <DHT.h>
+
 #include "secrets.h"
+#include "edge-impulse-sdk/classifier/ei_run_classifier.h"
+#include "model-parameters/model_metadata.h"
+#include "model-parameters/model_variables.h"
+// Run Edge Impulse model for forecasting
+void runEdgeImpulseModel(float temp, float humidity) {
+    float features[48];
+    for (int i = 0; i < 24; ++i) {
+        features[i * 2] = temp;
+        features[i * 2 + 1] = humidity;
+    }
+
+    ei_impulse_result_t result = { 0 };
+    signal_t signal;
+    signal.total_length = 48;
+    signal.get_data = [](size_t offset, size_t length, float *out_ptr) -> int {
+        memcpy(out_ptr, &features[offset], length * sizeof(float));
+        return 0;
+    };
+
+    ei_impulse_handle_t handle;
+    handle.impulse = &impulse_916176_2;
+    handle.state.clear();
+
+    EI_IMPULSE_ERROR res = process_impulse(&handle, &signal, &result, false);
+
+    if (res == EI_IMPULSE_OK && result.classification) {
+        float max_val = 0.0f;
+        int max_idx = -1;
+        for (size_t i = 0; i < 3; ++i) {
+            if (result.classification[i].value > max_val) {
+                max_val = result.classification[i].value;
+                max_idx = i;
+            }
+        }
+        if (max_idx >= 0) {
+            nanoClassification.className = ei_classifier_inferencing_categories_916176_2[max_idx];
+            nanoClassification.confidence = max_val;
+            nanoClassification.classIndex = max_idx;
+            nanoResultAvailable = true;
+        }
+    }
+}
 
 float lastTemperatureC = NAN;
 float lastHumidityPct = NAN;
@@ -225,6 +268,7 @@ void readAndDisplayDht() {
         lastHumidityPct = h;
         String msg = "Temp=" + String(t, 1) + "C Humidity=" + String(h, 0) + "%";
         sendLog(msg);
+        runEdgeImpulseModel(t, h); // Run the model after reading sensors
     }
 
     String line1;
@@ -235,9 +279,15 @@ void readAndDisplayDht() {
         line1 = "T:" + String(lastTemperatureC, 1) + "C H:" + String(lastHumidityPct, 0) + "%";
     }
 
+    // Show model result on LCD if available
+    String line2 = lastHttpStatus;
+    if (nanoResultAvailable) {
+        line2 = nanoClassification.className + ":" + String(nanoClassification.confidence, 2);
+    }
+
     checkAndShowRecommendation();
     if (!showRecommendation) {
-        showOnLcd(line1, lastHttpStatus);
+        showOnLcd(line1, line2);
     }
 }
 
