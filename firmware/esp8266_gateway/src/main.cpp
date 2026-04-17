@@ -10,49 +10,6 @@
 #include "edge-impulse-sdk/classifier/ei_run_classifier.h"
 #include "model-parameters/model_metadata.h"
 #include "model-parameters/model_variables.h"
-// Run Edge Impulse model for forecasting
-void runEdgeImpulseModel(float temp, float humidity) {
-    float features[48];
-    for (int i = 0; i < 24; ++i) {
-        features[i * 2] = temp;
-        features[i * 2 + 1] = humidity;
-    }
-
-    ei_impulse_result_t result = { 0 };
-    signal_t signal;
-    signal.total_length = 48;
-    signal.get_data = [](size_t offset, size_t length, float *out_ptr) -> int {
-        memcpy(out_ptr, &features[offset], length * sizeof(float));
-        return 0;
-    };
-
-    ei_impulse_handle_t handle;
-    handle.impulse = &impulse_916176_2;
-    handle.state.clear();
-
-    EI_IMPULSE_ERROR res = process_impulse(&handle, &signal, &result, false);
-
-    if (res == EI_IMPULSE_OK && result.classification) {
-        float max_val = 0.0f;
-        int max_idx = -1;
-        for (size_t i = 0; i < 3; ++i) {
-            if (result.classification[i].value > max_val) {
-                max_val = result.classification[i].value;
-                max_idx = i;
-            }
-        }
-        if (max_idx >= 0) {
-            nanoClassification.className = ei_classifier_inferencing_categories_916176_2[max_idx];
-            nanoClassification.confidence = max_val;
-            nanoClassification.classIndex = max_idx;
-            nanoResultAvailable = true;
-        }
-    }
-}
-
-float lastTemperatureC = NAN;
-float lastHumidityPct = NAN;
-
 // ================= DISEASE PROFILES =================
 struct DiseaseProfile {
     const char* name;
@@ -107,6 +64,46 @@ unsigned long lastLangSwitch = 0;
 const unsigned long RECOMMENDATION_DISPLAY_MS = 6000;
 const unsigned long LANG_SWITCH_MS = 2000;
 
+float lastTemperatureC = NAN;
+float lastHumidityPct = NAN;
+
+// Run Edge Impulse model for forecasting
+void runEdgeImpulseModel(float temp, float humidity) {
+    static float features[48];
+    for (int i = 0; i < 24; ++i) {
+        features[i * 2] = temp;
+        features[i * 2 + 1] = humidity;
+    }
+
+    ei_impulse_result_t result = { 0 };
+    signal_t signal;
+    signal.total_length = 48;
+    signal.get_data = [](size_t offset, size_t length, float *out_ptr) -> int {
+        memcpy(out_ptr, &features[offset], length * sizeof(float));
+        return 0;
+    };
+
+    ei_impulse_handle_t handle(&impulse_916176_2);
+
+    EI_IMPULSE_ERROR res = process_impulse(&handle, &signal, &result, false);
+
+    if (res == EI_IMPULSE_OK && result.classification) {
+        float max_val = 0.0f;
+        int max_idx = -1;
+        for (size_t i = 0; i < 3; ++i) {
+            if (result.classification[i].value > max_val) {
+                max_val = result.classification[i].value;
+                max_idx = i;
+            }
+        }
+        if (max_idx >= 0) {
+            nanoClassification.className = ei_classifier_inferencing_categories_916176_2[max_idx];
+            nanoClassification.confidence = max_val;
+            nanoClassification.classIndex = max_idx;
+            nanoResultAvailable = true;
+        }
+    }
+}
 
 void parseNanoSerialLine(const String& line) {
     int commaIdx = line.indexOf(',');
@@ -432,19 +429,7 @@ void setup() {
     delay(1200);
 
     connectWiFi();
-        float humidity = isnan(lastHumidityPct) ? random(3000, 9000) / 100.0 : lastHumidityPct;
-        float temperature = isnan(lastTemperatureC) ? random(1500, 3500) / 100.0 : lastTemperatureC;
-
-        String disease_type;
-        float confidence_score;
-        if (nanoResultAvailable) {
-            disease_type = nanoClassification.className;
-            confidence_score = nanoClassification.confidence;
-        } else {
-            String diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
-            disease_type = diseases[random(0, 3)];
-            confidence_score = random(500, 1000) / 1000.0;
-        }
+}
 void loop() {
     unsigned long now = millis();
 
