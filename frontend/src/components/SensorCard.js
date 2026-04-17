@@ -1,8 +1,29 @@
 import React from 'react';
 import { calculateTrend } from '../utils/formatTime';
 import { MdOutlineThermostat, MdOpacity, MdWaterDrop } from 'react-icons/md';
+import { useLanguage } from '../context/LanguageContext';
 
-export default function SensorCard({ name, value, unit, previousValue, icon }) {
+export default function SensorCard({ name, value, unit, previousValue, icon, loading, subtitle, updatedAt, statusLabel, statusClass = 'live' }) {
+  const { t } = useLanguage();
+
+  if (loading) {
+    return (
+      <div className={`sensor-card sensor-card-${icon === 'precip' ? 'moisture' : icon}`}>
+        <div className="card-header">
+          <div className="sensor-icon-container skeleton-box"></div>
+          <div className="skeleton-line skeleton-label"></div>
+        </div>
+        <div className="sensor-value">
+          <div className="skeleton-line skeleton-value"></div>
+        </div>
+        <div className="progress-bar">
+          <div className="skeleton-fill"></div>
+        </div>
+        <div className="skeleton-line skeleton-subline short"></div>
+      </div>
+    );
+  }
+
   const trend = calculateTrend(value, previousValue);
 
   const getTrendArrow = () => {
@@ -45,6 +66,7 @@ export default function SensorCard({ name, value, unit, previousValue, icon }) {
           {getIcon()}
         </div>
         <span className="sensor-name">{name}</span>
+        {statusLabel && <span className={`mini-status-pill ${statusClass}`}>{statusLabel}</span>}
       </div>
 
       <div className="sensor-value">
@@ -67,6 +89,11 @@ export default function SensorCard({ name, value, unit, previousValue, icon }) {
           <span className="change">{trend.percentage}%</span>
         </div>
       )}
+
+      <div className="sensor-meta">
+        <span>{subtitle || t('sensor', 'awaitingReading')}</span>
+        {updatedAt && <span>{updatedAt}</span>}
+      </div>
     </div>
   );
 }

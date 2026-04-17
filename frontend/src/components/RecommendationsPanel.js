@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { formatTimeAgo } from '../utils/formatTime';
+import { formatDateEAT, formatTimeAgo } from '../utils/formatTime';
 
 export default function RecommendationsPanel({ recommendations, loading }) {
   const { lang, t } = useLanguage();
@@ -53,10 +53,26 @@ export default function RecommendationsPanel({ recommendations, loading }) {
         <div className="section-header">
           <span className="section-title">{t('rec', 'title')}</span>
         </div>
-        <div className="loading-message">{t('rec', 'loading')}</div>
+        <div className="recommendation-skeleton-list">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="recommendation-card loading">
+              <div className="recommendation-header">
+                <div className="rec-icon-circle skeleton-box"></div>
+                <div className="rec-content">
+                  <div className="skeleton-line skeleton-subline"></div>
+                  <div className="skeleton-line skeleton-label"></div>
+                </div>
+              </div>
+              <div className="skeleton-line skeleton-body"></div>
+              <div className="skeleton-line skeleton-body short"></div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
+
+  const latestTimestamp = recommendations[0]?.timestamp ? formatDateEAT(recommendations[0].timestamp, lang) : null;
 
   return (
     <div className="recommendation-container">
@@ -66,11 +82,17 @@ export default function RecommendationsPanel({ recommendations, loading }) {
           {recommendations.length} {recommendations.length === 1 ? t('rec', 'tip') : t('rec', 'tips')}
         </span>
       </div>
+      {latestTimestamp && (
+        <div className="card-updated-label">
+          {t('common', 'lastUpdated')}: {latestTimestamp}
+        </div>
+      )}
 
       {recommendations.length === 0 ? (
         <div className="recommendation-card">
           <span className="recommendation-title">{t('rec', 'allHealthy')}</span>
           <span className="recommendation-desc">{t('rec', 'allHealthyDesc')}</span>
+          <span className="recommendation-help">{t('rec', 'noRecentAdvice')}</span>
         </div>
       ) : (
         recommendations.map((rec, index) => {

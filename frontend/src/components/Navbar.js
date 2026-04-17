@@ -6,6 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { getApiBaseUrl } from '../utils/apiBase';
 
 const API_BASE_URL = getApiBaseUrl();
+const NOTIFICATION_POLL_INTERVAL_MS = 120000;
 
 const NOTIF_ICONS = {
   disease_alert: 'fa-virus',
@@ -28,10 +29,13 @@ export default function Navbar({ activeTab, onTabChange }) {
   const [showPanel, setShowPanel] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [filterMode, setFilterMode] = useState('unread');
   const panelRef = useRef(null);
   const token = localStorage.getItem('token');
 
   const fetchNotifications = useCallback(async () => {
+    if (!token) return;
+
     try {
       const res = await fetch(`${API_BASE_URL}/notifications`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -48,8 +52,33 @@ export default function Navbar({ activeTab, onTabChange }) {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
+
+    const pollIfVisible = () => {
+      if (!document.hidden) {
+        fetchNotifications();
+      }
+    };
+
+    const interval = window.setInterval(pollIfVisible, NOTIFICATION_POLL_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchNotifications();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      fetchNotifications();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
   }, [fetchNotifications]);
 
   useEffect(() => {
@@ -101,6 +130,10 @@ export default function Navbar({ activeTab, onTabChange }) {
     { id: 'logs', labelKey: 'logs', icon: 'fa-clipboard-list' },
     { id: 'settings', labelKey: 'settings', icon: 'fa-sliders' },
   ];
+
+  const visibleNotifications = filterMode === 'unread'
+    ? notifications.filter((notification) => !notification.read)
+    : notifications;
 
   return (
     <div className="navbar">
@@ -156,14 +189,32 @@ export default function Navbar({ activeTab, onTabChange }) {
               )}
             </div>
 
+            <div className="notif-panel-toolbar">
+              <div className="notif-filter-group">
+                <button
+                  className={`notif-filter-btn ${filterMode === 'unread' ? 'active' : ''}`}
+                  onClick={() => setFilterMode('unread')}
+                >
+                  {t('nav', 'unreadOnly')}
+                </button>
+                <button
+                  className={`notif-filter-btn ${filterMode === 'all' ? 'active' : ''}`}
+                  onClick={() => setFilterMode('all')}
+                >
+                  {t('nav', 'allItems')}
+                </button>
+              </div>
+              <span className="notif-sync-note">{t('nav', 'notificationsSyncing')}</span>
+            </div>
+
             <div className="notif-list">
-              {notifications.length === 0 ? (
+              {visibleNotifications.length === 0 ? (
                 <div className="notif-empty">
                   <i className="fa-solid fa-bell-slash"></i>
-                  <span>{t('nav', 'noNotifications')}</span>
+                  <span>{filterMode === 'unread' ? t('nav', 'noNotifications') : t('nav', 'noNotifications')}</span>
                 </div>
               ) : (
-                notifications.map((n) => (
+                visibleNotifications.map((n) => (
                   <div
                     key={n.id}
                     className={`notif-item ${n.read ? '' : 'unread'}`}

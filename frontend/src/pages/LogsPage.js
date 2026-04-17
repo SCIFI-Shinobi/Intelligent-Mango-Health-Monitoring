@@ -62,9 +62,19 @@ export default function LogsPage() {
       )}
 
       {loading ? (
-        <div className="loading-message">{t('logs', 'loading')}</div>
+        <div className="loading-message logs-loading-state">
+          <div className="skeleton-line skeleton-subline"></div>
+          <div className="table-skeleton">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="table-skeleton-row"></div>
+            ))}
+          </div>
+        </div>
       ) : !data || !data.data || data.data.length === 0 ? (
-        <div className="empty-message">{t('logs', 'empty')}</div>
+        <div className="empty-message">
+          <strong>{t('logs', 'empty')}</strong>
+          <div className="message-hint">{t('logs', 'emptyHint')}</div>
+        </div>
       ) : (
         <>
           <div className="table-container">

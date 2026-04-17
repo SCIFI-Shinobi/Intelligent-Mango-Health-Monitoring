@@ -16,7 +16,7 @@ import { useSettings } from '../context/SettingsContext';
 
 ChartJS.register(LineElement, BarElement, CategoryScale, LinearScale, PointElement, Tooltip, Legend, Filler);
 
-export default function HistoricalChart({ data, loading, onRangeChange, currentRange }) {
+export default function HistoricalChart({ data, loading, onRangeChange, currentRange, lastUpdatedText }) {
   const { lang, t } = useLanguage();
   const { settings } = useSettings();
 
@@ -31,9 +31,21 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
             <button className={`tab-btn ${currentRange === '30d' ? 'active' : ''}`} onClick={() => onRangeChange('30d')}>30d</button>
           </div>
         </div>
-        <div style={{ padding: '20px', textAlign: 'center', color: '#7b8bbd' }}>
-          {loading ? t('chart', 'loadingData') : t('chart', 'noData')}
-        </div>
+        {loading ? (
+          <div className="chart-skeleton">
+            <div className="skeleton-line skeleton-subline"></div>
+            <div className="chart-skeleton-bars">
+              {Array.from({ length: 10 }).map((_, index) => (
+                <span key={index} className="chart-skeleton-bar"></span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="empty-message">
+            <strong>{t('chart', 'noData')}</strong>
+            <div className="message-hint">{t('chart', 'waitingForHistory')}</div>
+          </div>
+        )}
       </div>
     );
   }
@@ -109,6 +121,11 @@ const labels = data.map((d) => {
           <button className={`tab-btn ${currentRange === '30d' ? 'active' : ''}`} onClick={() => onRangeChange('30d')}>30d</button>
         </div>
       </div>
+      {lastUpdatedText && (
+        <div className="card-updated-label chart-updated-label">
+          {t('common', 'lastUpdated')}: {lastUpdatedText}
+        </div>
+      )}
       <Line data={chartData} options={chartOptions} />
     </div>
   );

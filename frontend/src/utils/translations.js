@@ -10,6 +10,9 @@ const translations = {
     notifications: { en: 'Notifications', am: 'ማሳወቂያዎች' },
     markAllRead: { en: 'Mark all read', am: 'ሁሉንም አንብብ' },
     noNotifications: { en: 'No notifications yet', am: 'ምንም ማሳወቂያ የለም' },
+    unreadOnly: { en: 'Unread', am: 'ያልተነበቡ' },
+    allItems: { en: 'All', am: 'ሁሉም' },
+    notificationsSyncing: { en: 'Background sync pauses when this tab is hidden.', am: 'ይህ ትር ሲደበቅ የጀርባ ማመሳሰል ይቆማል።' },
   },
 
   // ---- Login / Auth ----
@@ -70,12 +73,15 @@ const translations = {
     healthy: { en: 'Healthy', am: 'ጤናማ' },
     anthracnose: { en: 'Anthracnose', am: 'አንትራክኖዝ' },
     powderyMildew: { en: 'Powdery Mildew', am: 'የዱቄት ሻጋታ' },
+    waitingForDevice: { en: 'Waiting for device data', am: 'የመሳሪያ መረጃ በመጠባበቅ ላይ' },
+    noRecentDeviceData: { en: 'No recent device data in the last few minutes.', am: 'ባለፉት ጥቂት ደቂቃዎች አዲስ የመሳሪያ መረጃ የለም።' },
   },
 
   // ---- Sensor Cards ----
   sensor: {
     temperature: { en: 'Temperature', am: 'ሙቀት' },
     humidity: { en: 'Humidity', am: 'እርጥበት' },
+    awaitingReading: { en: 'Awaiting fresh reading', am: 'አዲስ ንባብ በመጠባበቅ ላይ' },
   },
 
   // ---- Historical Chart ----
@@ -83,6 +89,7 @@ const translations = {
     title: { en: 'Historical Trends', am: 'ታሪካዊ አዝማሚያዎች' },
     noData: { en: 'No data available', am: 'ምንም መረጃ የለም' },
     loadingData: { en: 'Loading data...', am: 'መረጃ እየጫነ ነው...' },
+    waitingForHistory: { en: 'Historical data will appear after your device sends more readings.', am: 'መሳሪያዎ ተጨማሪ ንባቦችን ካስገባ በኋላ ታሪካዊ መረጃ ይታያል።' },
     tempAxis: { en: 'Temp (°C) / Humidity (%)', am: 'ሙቀት (°C) / እርጥበት (%)' },
     tempLabel: { en: 'Temperature (°C)', am: 'ሙቀት (°C)' },
     humidityLabel: { en: 'Humidity (%)', am: 'እርጥበት (%)' },
@@ -99,6 +106,7 @@ const translations = {
       en: 'No active alerts. Continue monitoring and maintain regular maintenance.',
       am: 'ምንም ማንቂያዎች የሉም። መደበኛ ክትትልና ጽዳት ይቀጥሉ።',
     },
+    noRecentAdvice: { en: 'Fresh recommendations will appear after the next sync from your device.', am: 'ቀጣዩ የመሳሪያ ማመሳሰል በኋላ አዲስ ምክሮች ይታያሉ።' },
   },
 
   // ---- Forecast ----
@@ -112,6 +120,7 @@ const translations = {
     anthracnoseRisk: { en: 'Anthracnose Risk', am: 'የአንትራክኖዝ ስጋት' },
     mildewRisk: { en: 'Mildew Risk', am: 'የሻጋታ ስጋት' },
     source: { en: 'Generated on-device (ESP32 XGBoost)', am: 'በመሳሪያ ላይ የተፈጠረ (ESP32 XGBoost)' },
+    waitingForForecast: { en: 'Forecast data has not been uploaded yet. Run another device sync to generate outlook cards.', am: 'የትንበያ መረጃ ገና አልተላከም። የእይታ ካርዶችን ለመፍጠር ሌላ የመሳሪያ ማመሳሰል ያካሂዱ።' },
   },
 
   // ---- Logs Page ----
@@ -130,6 +139,7 @@ const translations = {
     of: { en: 'of', am: 'ከ' },
     total: { en: 'total', am: 'ጠቅላላ' },
     exportCSV: { en: 'Export CSV', am: 'CSV አውርድ' },
+    emptyHint: { en: 'Logs will start filling in after the next successful disease scan upload.', am: 'ቀጣዩ የተሳካ የበሽታ ስካን ማስገባት በኋላ ሎጎች ይሞላሉ።' },
   },
 
   // ---- Settings Page ----
@@ -178,6 +188,8 @@ const translations = {
     notificationsAlertsDesc: { en: 'Configure detection alerts and thresholds', am: 'የግኝት ማንቂያዎችን እና ወሰኖችን ያዋቅሩ' },
     pushNotifications: { en: 'Push Notifications', am: 'ፑሽ ማሳወቂያዎች' },
     pushNotificationsDesc: { en: 'Receive alerts on disease detection', am: 'በሽታ ሲገኝ ማንቂያ ይቀበሉ' },
+    browserOnlyNote: { en: 'Display, time, and refresh preferences only affect this browser.', am: 'የማሳያ፣ የሰዓት እና የማደሻ ምርጫዎች በዚህ አሳሽ ላይ ብቻ ይተገበራሉ።' },
+    serverDrivenNote: { en: 'Notifications depend on backend rules, device uploads, and your saved contact details.', am: 'ማሳወቂያዎች በጀርባ ስርዓት ህጎች፣ በመሳሪያ ማስገባቶች እና በተቀመጡ የመገኛ መረጃዎች ይወሰናሉ።' },
     low: { en: 'Low', am: 'ዝቅተኛ' },
     medium: { en: 'Medium', am: 'መካከለኛ' },
     high: { en: 'High', am: 'ከፍተኛ' },
@@ -291,6 +303,14 @@ const translations = {
     error: { en: 'Error', am: 'ስህተት' },
     retry: { en: 'Retry', am: 'ድገም' },
     errorLoading: { en: 'Error loading dashboard:', am: 'ዳሽቦርድ መጫን አልተሳካም:' },
+    lastUpdated: { en: 'Last updated', am: 'ለመጨረሻ ጊዜ የተዘመነ' },
+    live: { en: 'Live', am: 'በቀጥታ' },
+    delayed: { en: 'Delayed', am: 'የዘገየ' },
+    offline: { en: 'Offline', am: 'ከመስመር ውጭ' },
+    healthy: { en: 'Healthy', am: 'ጤናማ' },
+    unavailable: { en: 'Unavailable', am: 'አይገኝም' },
+    browserOnly: { en: 'Browser only', am: 'በአሳሽ ብቻ' },
+    backendDriven: { en: 'Backend driven', am: 'በጀርባ ስርዓት የሚተዳደር' },
   },
 };
 

@@ -10,7 +10,15 @@ export default function ForecastCard({ forecast, loading }) {
         <div className="section-header">
           <span className="section-title">{t('forecast', 'title')}</span>
         </div>
-        <div className="forecast-loading">{t('forecast', 'loading')}</div>
+        <div className="forecast-grid skeleton">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="forecast-day-card loading">
+              <div className="skeleton-line skeleton-label"></div>
+              <div className="skeleton-line skeleton-heading"></div>
+              <div className="skeleton-box forecast-pill-skeleton"></div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -21,7 +29,10 @@ export default function ForecastCard({ forecast, loading }) {
         <div className="section-header">
           <span className="section-title">{t('forecast', 'title')}</span>
         </div>
-        <div className="forecast-empty">{t('forecast', 'noData')}</div>
+        <div className="forecast-empty">
+          <strong>{t('forecast', 'noData')}</strong>
+          <div className="message-hint">{t('forecast', 'waitingForForecast')}</div>
+        </div>
       </div>
     );
   }

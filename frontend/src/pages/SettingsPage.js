@@ -5,6 +5,22 @@ import { getApiBaseUrl } from '../utils/apiBase';
 
 const API_BASE_URL = getApiBaseUrl();
 const DEVICE_ONLINE_WINDOW_MS = 5 * 60 * 1000;
+const TEMPERATURE_OPTIONS = [
+  { value: 'celsius', labelKey: 'celsius', icon: '°C', accentClass: 'cool' },
+  { value: 'fahrenheit', labelKey: 'fahrenheit', icon: '°F', accentClass: 'warm' }
+];
+const TIME_FORMAT_OPTIONS = [
+  { value: 'relative', labelKey: 'relative', exampleKey: 'relativeExample', iconClass: 'fa-solid fa-clock-rotate-left', accentClass: 'fresh' },
+  { value: 'absolute', labelKey: 'absolute', exampleKey: 'absoluteExample', iconClass: 'fa-solid fa-calendar-check', accentClass: 'calm' }
+];
+const REFRESH_OPTIONS = [
+  { value: 1, label: '1m', iconClass: 'fa-solid fa-stopwatch' },
+  { value: 5, label: '5m', iconClass: 'fa-solid fa-clock' },
+  { value: 15, label: '15m', iconClass: 'fa-solid fa-rotate' },
+  { value: 30, label: '30m', iconClass: 'fa-solid fa-hourglass-half' },
+  { value: 60, label: '1h', iconClass: 'fa-solid fa-business-time' },
+  { value: 0, dynamicLabelKey: 'manual', iconClass: 'fa-solid fa-hand-pointer' }
+];
 
 function parseApiDate(value) {
   if (!value) return null;
@@ -12,6 +28,20 @@ function parseApiDate(value) {
   const normalized = typeof value === 'string' && !value.endsWith('Z') ? `${value}Z` : value;
   const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function SectionIntro({ iconClass, title, description }) {
+  return (
+    <div className="settings-section-intro">
+      <div className="settings-section-icon">
+        <i className={iconClass} aria-hidden="true"></i>
+      </div>
+      <div>
+        <h3 className="settings-section-title">{title}</h3>
+        <p className="settings-section-description">{description}</p>
+      </div>
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -142,37 +172,41 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 3000);
   };
 
+  const selectedRefreshLabel = localSettings.autoRefreshInterval
+    ? `${ts('every')} ${localSettings.autoRefreshInterval}m`
+    : ts('manual');
+
   return (
     <div className="settings-page">
+      <div className="settings-page-header">
+        <div>
+          <p className="settings-page-eyebrow">{t('nav', 'settings')}</p>
+          <h2 className="settings-page-title">{ts('general')}</h2>
+          <p className="settings-page-description">
+            Adjust how MangoGuard looks in this browser, manage your connected hardware, and review how alerts are handled.
+          </p>
+        </div>
+        <div className="settings-page-status">
+          <span className={`status-pill ${saved ? 'healthy' : 'delayed'}`}>
+            {saved ? ts('saved') : t('common', 'browserOnly')}
+          </span>
+        </div>
+      </div>
+
       {/* Device Management - Redesigned */}
       <div className="settings-section gateway-section">
-        <div className="gateway-header-row" style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px'}}>
+        <div className="gateway-header-row">
           <div>
-            <h2 style={{margin: '0 0 4px 0', color: '#c9d1d9', fontSize: '24px', fontWeight: 600}}>
-              <i className="fa-solid fa-microchip" style={{marginRight: '12px', color: '#2f81f7'}}></i>{ts('hardwareGateways')}
+            <p className="settings-page-eyebrow">Hardware</p>
+            <h2 className="gateway-heading">
+              <i className="fa-solid fa-microchip" aria-hidden="true"></i>{ts('hardwareGateways')}
             </h2>
-            <p style={{margin: 0, fontSize: '13px', color: '#8b949e'}}>{ts('hardwareGatewaysDesc')}</p>
+            <p className="gateway-subheading">{ts('hardwareGatewaysDesc')}</p>
           </div>
           <button
             className="gateway-add-btn"
             onClick={handleRegisterDevice}
             disabled={deviceLoading}
-            style={{
-              padding: '12px 24px',
-              fontSize: '15px',
-              fontWeight: 600,
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              border: 'none',
-              background: 'linear-gradient(135deg, #2f81f7 0%, #1f61d7 100%)',
-              color: '#fff',
-              cursor: deviceLoading ? 'not-allowed' : 'pointer',
-              opacity: deviceLoading ? 0.7 : 1,
-              transition: 'all 0.3s ease',
-              boxShadow: '0 4px 12px rgba(47, 129, 247, 0.3)',
-            }}
           >
             {deviceLoading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-plus"></i>}
             {ts('addGateway')}
@@ -210,30 +244,14 @@ export default function SettingsPage() {
         )}
 
         {devices.length === 0 ? (
-          <div style={{
-            padding: '32px 24px',
-            background: 'linear-gradient(135deg, rgba(47, 129, 247, 0.08) 0%, rgba(47, 129, 247, 0.02) 100%)',
-            borderRadius: '12px',
-            border: '2px solid #2f81f7',
-            textAlign: 'center',
-          }}>
-            <div style={{marginBottom: '16px'}}>
-              <i className="fa-solid fa-wifi" style={{fontSize: '40px', color: '#2f81f7', opacity: 0.6}}></i>
+          <div className="gateway-empty-state">
+            <div className="gateway-empty-icon">
+              <i className="fa-solid fa-wifi"></i>
             </div>
-            <h3 style={{margin: '0 0 8px 0', color: '#c9d1d9'}}>{ts('noGatewaysConnectedYet')}</h3>
-            <p style={{margin: '0 0 16px 0', color: '#8b949e', fontSize: '14px'}}>
-              {ts('addGatewayHelp')}
-            </p>
+            <h3>{ts('noGatewaysConnectedYet')}</h3>
+            <p>{ts('addGatewayHelp')}</p>
             {error && (
-              <div style={{
-                marginTop: '12px',
-                padding: '12px',
-                background: 'rgba(248, 81, 73, 0.1)',
-                border: '1px solid #f85149',
-                borderRadius: '6px',
-                color: '#f85149',
-                fontSize: '12px'
-              }}>
+              <div className="gateway-inline-error">
                 ⚠️ {error}
               </div>
             )}
@@ -250,101 +268,41 @@ export default function SettingsPage() {
             {devices.map(device => {
               const lastSeenDate = parseApiDate(device.last_seen);
               const isOnline = Boolean(lastSeenDate) && (Date.now() - lastSeenDate.getTime()) < DEVICE_ONLINE_WINDOW_MS;
-              const statusColor = isOnline ? '#3fb950' : '#8b949e';
-              const statusBg = isOnline ? 'rgba(63, 185, 80, 0.15)' : 'rgba(139, 148, 158, 0.15)';
+              const deviceStatusClass = isOnline ? 'healthy' : (lastSeenDate ? 'offline' : 'delayed');
               const statusText = isOnline ? ts('online') : (lastSeenDate ? ts('offline') : ts('ready'));
 
               return (
-              <div
-                key={device.id}
-                style={{
-                  padding: '20px',
-                  background: 'linear-gradient(135deg, #161b22 0%, #0d1117 100%)',
-                  border: '1px solid #30363d',
-                  borderRadius: '12px',
-                  transition: 'all 0.3s ease',
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#2f81f7';
-                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(47, 129, 247, 0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#30363d';
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
+              <div key={device.id} className="gateway-device-card">
                 {/* Status Badge */}
-                <div style={{
-                  position: 'absolute',
-                  top: '12px',
-                  right: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 12px',
-                  background: statusBg,
-                  border: `1px solid ${statusColor}`,
-                  borderRadius: '20px',
-                  fontSize: '12px',
-                  color: statusColor
-                }} title={lastSeenDate ? `${ts('lastSeen')} ${lastSeenDate.toLocaleString()}` : ''}>
-                  <span style={{width: '6px', height: '6px', borderRadius: '50%', background: statusColor, display: 'inline-block'}}></span>
+                <div className={`gateway-status status-pill ${deviceStatusClass}`} title={lastSeenDate ? `${ts('lastSeen')} ${lastSeenDate.toLocaleString()}` : ''}>
                   {statusText}
                 </div>
 
                 {/* Device Header */}
-                <div style={{marginBottom: '16px', paddingRight: '80px'}}>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px'}}>
-                    <i className="fa-solid fa-server" style={{color: '#2f81f7', fontSize: '16px'}}></i>
-                    <h4 style={{margin: 0, color: '#c9d1d9', fontSize: '16px', fontWeight: 600}}>
+                <div className="gateway-device-header">
+                  <div className="gateway-device-title-row">
+                    <i className="fa-solid fa-server" aria-hidden="true"></i>
+                    <h4>
                       {device.device_name || ts('gatewayDevice')}
                     </h4>
                   </div>
-                  <p style={{margin: '4px 0 0 0', fontSize: '12px', color: '#8b949e'}}>
+                  <p>
                     {ts('idLabel')}: {device.id}
                   </p>
                 </div>
 
                 {/* API Key Section */}
-                <div style={{
-                  background: '#0d1117',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid #21262d',
-                  marginBottom: '16px',
-                }}>
-                  <p style={{margin: '0 0 8px 0', fontSize: '11px', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600}}>
+                <div className="gateway-key-box">
+                  <p className="gateway-key-label">
                     {ts('apiKey')}
                   </p>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                    <code style={{
-                      color: '#58a6ff',
-                      flex: 1,
-                      fontFamily: 'monospace',
-                      wordBreak: 'break-all',
-                      fontSize: '12px',
-                      background: '#161b22',
-                      padding: '8px',
-                      borderRadius: '4px',
-                      border: '1px solid #30363d'
-                    }}>
+                  <div className="gateway-key-row">
+                    <code className="gateway-key-value">
                       {device.api_key.substring(0, 20)}...
                     </code>
                     <button
                       onClick={() => copyToClipboard(device.api_key, device.id)}
-                      style={{
-                        background: copied === device.id ? '#3fb950' : 'transparent',
-                        border: `1px solid ${copied === device.id ? '#3fb950' : '#8b949e'}`,
-                        color: copied === device.id ? '#fff' : '#8b949e',
-                        cursor: 'pointer',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        transition: 'all 0.2s ease',
-                        fontWeight: 500
-                      }}
+                      className={`gateway-copy-btn ${copied === device.id ? 'copied' : ''}`}
                       title={ts('copyApiKey')}
                     >
                       <i className={`fa-solid ${copied === device.id ? 'fa-check' : 'fa-copy'}`}></i>
@@ -354,96 +312,35 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Setup Instructions */}
-                <details style={{
-                  marginBottom: '16px',
-                  fontSize: '12px'
-                }}>
-                  <summary style={{
-                    cursor: 'pointer',
-                    padding: '8px 0',
-                    color: '#58a6ff',
-                    fontWeight: 500,
-                    userSelect: 'none'
-                  }}>
+                <details className="gateway-setup">
+                  <summary>
                     <i className="fa-solid fa-code"></i> {ts('setupInstructions')}
                   </summary>
-                  <div style={{
-                    marginTop: '12px',
-                    padding: '12px',
-                    background: '#161b22',
-                    borderRadius: '6px',
-                    border: '1px solid #30363d',
-                    color: '#8b949e',
-                    fontSize: '11px',
-                    fontFamily: 'monospace'
-                  }}>
-                    <p style={{margin: '0 0 8px 0'}}>{ts('setupStep1')}</p>
-                    <code style={{display: 'block', margin: '0 0 8px 0', color: '#58a6ff'}}>
+                  <div className="gateway-setup-body">
+                    <p>{ts('setupStep1')}</p>
+                    <code>
                       #define API_BASE_URL "your-backend-url"
                     </code>
-                    <code style={{display: 'block', margin: '0 0 8px 0', color: '#58a6ff'}}>
+                    <code>
                       #define DEVICE_API_KEY "{device.api_key}"
                     </code>
-                    <p style={{margin: '8px 0 0 0'}}>{ts('setupStep2')}</p>
+                    <p>{ts('setupStep2')}</p>
                   </div>
                 </details>
 
                 {/* Action Buttons */}
-                <div style={{
-                  display: 'flex',
-                  gap: '8px',
-                  borderTop: '1px solid #30363d',
-                  paddingTop: '16px'
-                }}>
+                <div className="gateway-actions">
                   <button
                     onClick={() => handleRegenerateKey(device.id)}
-                    style={{
-                      flex: 1,
-                      background: 'transparent',
-                      border: '1px solid #8b949e',
-                      color: '#c9d1d9',
-                      cursor: 'pointer',
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      transition: 'all 0.2s ease'
-                    }}
+                    className="gateway-action-btn"
                     title={ts('generateNewApiKey')}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#2f81f7';
-                      e.currentTarget.style.borderColor = '#2f81f7';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.borderColor = '#8b949e';
-                    }}
                   >
                     <i className="fa-solid fa-rotate-right"></i> {ts('regenerate')}
                   </button>
                   <button
                     onClick={() => handleDeleteDevice(device.id)}
-                    style={{
-                      flex: 1,
-                      background: 'transparent',
-                      border: '1px solid #f85149',
-                      color: '#f85149',
-                      cursor: 'pointer',
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      transition: 'all 0.2s ease'
-                    }}
+                    className="gateway-action-btn danger"
                     title={ts('removeGateway')}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#f85149';
-                      e.currentTarget.style.color = '#fff';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = '#f85149';
-                    }}
                   >
                     <i className="fa-solid fa-trash"></i> {ts('remove')}
                   </button>
@@ -457,18 +354,14 @@ export default function SettingsPage() {
 
       {/* General Settings */}
       <div className="settings-section settings-card">
-        <div style={{display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px'}}>
-          <div style={{fontSize: '24px', color: '#2f81f7'}}>
-            <i className="fa-solid fa-globe"></i>
-          </div>
-          <div>
-            <h3 style={{margin: 0, color: '#c9d1d9', fontSize: '18px', fontWeight: 600}}>{ts('language')}</h3>
-            <p style={{margin: '4px 0 0 0', fontSize: '12px', color: '#8b949e'}}>{ts('chooseLanguage')}</p>
-          </div>
+        <SectionIntro iconClass="fa-solid fa-globe" title={ts('language')} description={ts('chooseLanguage')} />
+        <div className="settings-helper-banner browser-only">
+          <span className="settings-helper-badge">{t('common', 'browserOnly')}</span>
+          <span>{ts('browserOnlyNote')}</span>
         </div>
 
         {/* Language Toggle Buttons */}
-        <div style={{display: 'flex', gap: '12px', background: '#161b22', padding: '8px', borderRadius: '8px', border: '1px solid #30363d'}}>
+        <div className="settings-choice-grid two-up compact-frame">
           {[
             {value: 'en', label: ts('english'), flag: '🇺🇸'},
             {value: 'am', label: ts('amharic'), flag: '🇪🇹'}
@@ -476,37 +369,10 @@ export default function SettingsPage() {
             <button
               key={option.value}
               onClick={() => switchLang(option.value)}
-              style={{
-                flex: 1,
-                padding: '12px 16px',
-                background: lang === option.value ? '#2f81f7' : 'transparent',
-                border: `2px solid ${lang === option.value ? '#2f81f7' : '#30363d'}`,
-                color: lang === option.value ? '#fff' : '#8b949e',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 600,
-                transition: 'all 0.3s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px'
-              }}
-              onMouseEnter={(e) => {
-                if (lang !== option.value) {
-                  e.currentTarget.style.background = 'rgba(47, 129, 247, 0.1)';
-                  e.currentTarget.style.borderColor = '#2f81f7';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (lang !== option.value) {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.borderColor = '#30363d';
-                }
-              }}
+              className={`settings-option-card centered ${lang === option.value ? 'selected accent-blue' : ''}`}
             >
-              <span style={{fontSize: '18px'}}>{option.flag}</span>
-              {option.label}
+              <span className="settings-option-flag">{option.flag}</span>
+              <span>{option.label}</span>
             </button>
           ))}
         </div>
@@ -514,116 +380,40 @@ export default function SettingsPage() {
 
       {/* Display Preferences */}
       <div className="settings-section settings-card">
-        <div style={{display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px'}}>
-          <div style={{fontSize: '24px', color: '#2f81f7'}}>
-            <i className="fa-solid fa-paintbrush"></i>
-          </div>
-          <div>
-            <h3 style={{margin: 0, color: '#c9d1d9', fontSize: '18px', fontWeight: 600}}>{ts('displayPreferences')}</h3>
-            <p style={{margin: '4px 0 0 0', fontSize: '12px', color: '#8b949e'}}>{ts('displayPreferencesDesc')}</p>
-          </div>
-        </div>
+        <SectionIntro iconClass="fa-solid fa-paintbrush" title={ts('displayPreferences')} description={ts('displayPreferencesDesc')} />
 
         {/* Temperature Unit */}
-        <div style={{marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #30363d'}}>
-          <label style={{fontSize: '13px', color: '#8b949e', fontWeight: 600, marginBottom: '12px', display: 'block'}}>{ts('temperatureUnit')}</label>
-          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px'}}>
-            {[
-              {value: 'celsius', label: ts('celsius'), icon: '°C', color: '#58acff'},
-              {value: 'fahrenheit', label: ts('fahrenheit'), icon: '°F', color: '#ff9158'}
-            ].map(opt => (
+        <div className="settings-control-group with-divider">
+          <label className="settings-field-label">{ts('temperatureUnit')}</label>
+          <div className="settings-choice-grid two-up">
+            {TEMPERATURE_OPTIONS.map(opt => (
               <button
                 key={opt.value}
                 onClick={() => handleSettingChange('temperatureUnit', opt.value)}
-                style={{
-                  padding: '14px',
-                  background: localSettings.temperatureUnit === opt.value
-                    ? `linear-gradient(135deg, rgba(${opt.color === '#58acff' ? '88, 172, 255' : '255, 145, 88'}, 0.15) 0%, transparent 100%)`
-                    : '#161b22',
-                  border: `2px solid ${localSettings.temperatureUnit === opt.value ? opt.color : '#30363d'}`,
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  color: localSettings.temperatureUnit === opt.value ? opt.color : '#8b949e',
-                  textAlign: 'center',
-                  fontWeight: 600,
-                  transition: 'all 0.3s ease',
-                }}
-                onMouseEnter={(e) => {
-                  if (localSettings.temperatureUnit !== opt.value) {
-                    e.currentTarget.style.borderColor = opt.color;
-                    e.currentTarget.style.color = opt.color;
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (localSettings.temperatureUnit !== opt.value) {
-                    e.currentTarget.style.borderColor = '#30363d';
-                    e.currentTarget.style.color = '#8b949e';
-                  }
-                }}
+                className={`settings-option-card centered ${localSettings.temperatureUnit === opt.value ? `selected accent-${opt.accentClass}` : ''}`}
               >
-                <div style={{fontSize: '20px', marginBottom: '4px'}}>{opt.icon}</div>
-                <div style={{fontSize: '13px'}}>{opt.label}</div>
+                <div className="settings-option-icon-text">{opt.icon}</div>
+                <div className="settings-option-caption">{ts(opt.labelKey)}</div>
               </button>
             ))}
           </div>
         </div>
 
         {/* Time Format */}
-        <div>
-          <label style={{fontSize: '13px', color: '#8b949e', fontWeight: 600, marginBottom: '12px', display: 'block'}}>{ts('timeFormat')}</label>
-          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px'}}>
-            {[
-              {value: 'relative', label: ts('relative'), example: ts('relativeExample'), iconClass: 'fa-solid fa-clock-rotate-left'},
-              {value: 'absolute', label: ts('absolute'), example: ts('absoluteExample'), iconClass: 'fa-solid fa-calendar-check'}
-            ].map(opt => (
+        <div className="settings-control-group">
+          <label className="settings-field-label">{ts('timeFormat')}</label>
+          <div className="settings-choice-grid two-up">
+            {TIME_FORMAT_OPTIONS.map(opt => (
               <button
                 key={opt.value}
                 onClick={() => handleSettingChange('timeFormat', opt.value)}
-                style={{
-                  padding: '14px',
-                  background: localSettings.timeFormat === opt.value
-                    ? 'linear-gradient(135deg, rgba(63, 185, 80, 0.15) 0%, transparent 100%)'
-                    : '#161b22',
-                  border: `2px solid ${localSettings.timeFormat === opt.value ? '#3fb950' : '#30363d'}`,
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  transition: 'all 0.3s ease',
-                }}
-                onMouseEnter={(e) => {
-                  if (localSettings.timeFormat !== opt.value) {
-                    e.currentTarget.style.borderColor = '#3fb950';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (localSettings.timeFormat !== opt.value) {
-                    e.currentTarget.style.borderColor = '#30363d';
-                  }
-                }}
+                className={`settings-option-card centered ${localSettings.timeFormat === opt.value ? `selected accent-${opt.accentClass}` : ''}`}
               >
-                <div
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    margin: '0 auto 8px auto',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: localSettings.timeFormat === opt.value ? 'rgba(63, 185, 80, 0.18)' : '#0d1117',
-                    border: `1px solid ${localSettings.timeFormat === opt.value ? '#3fb950' : '#30363d'}`,
-                    color: localSettings.timeFormat === opt.value ? '#3fb950' : '#8b949e',
-                    fontSize: '14px'
-                  }}
-                >
+                <div className="settings-option-icon-wrap">
                   <i className={opt.iconClass} aria-hidden="true"></i>
                 </div>
-                <div style={{fontSize: '13px', fontWeight: 600, color: localSettings.timeFormat === opt.value ? '#3fb950' : '#c9d1d9'}}>
-                  {opt.label}
-                </div>
-                <div style={{fontSize: '11px', color: '#8b949e', marginTop: '4px'}}>
-                  {opt.example}
-                </div>
+                <div className="settings-option-caption strong">{ts(opt.labelKey)}</div>
+                <div className="settings-option-meta">{ts(opt.exampleKey)}</div>
               </button>
             ))}
           </div>
@@ -632,136 +422,62 @@ export default function SettingsPage() {
 
       {/* Data Synchronization */}
       <div className="settings-section settings-card">
-        <div style={{display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px'}}>
-          <div style={{fontSize: '24px', color: '#2f81f7'}}>
-            <i className="fa-solid fa-rotate"></i>
-          </div>
-          <div>
-            <h3 style={{margin: 0, color: '#c9d1d9', fontSize: '18px', fontWeight: 600}}>{ts('dataSync')}</h3>
-            <p style={{margin: '4px 0 0 0', fontSize: '12px', color: '#8b949e'}}>{ts('dataSyncDesc')}</p>
-          </div>
+        <SectionIntro iconClass="fa-solid fa-rotate" title={ts('dataSync')} description={ts('dataSyncDesc')} />
+        <div className="settings-helper-banner browser-only">
+          <span className="settings-helper-badge">{t('common', 'browserOnly')}</span>
+          <span>{ts('browserOnlyNote')}</span>
         </div>
 
-        <label style={{fontSize: '13px', color: '#8b949e', fontWeight: 600, marginBottom: '12px', display: 'block'}}>{ts('autoRefreshInterval')}</label>
+        <label className="settings-field-label">{ts('autoRefreshInterval')}</label>
 
-        <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px'}}>
-          {[
-            {value: 1, label: '1m', iconClass: 'fa-solid fa-stopwatch'},
-            {value: 5, label: '5m', iconClass: 'fa-solid fa-clock'},
-            {value: 15, label: '15m', iconClass: 'fa-solid fa-rotate'},
-            {value: 30, label: '30m', iconClass: 'fa-solid fa-hourglass-half'},
-            {value: 60, label: '1h', iconClass: 'fa-solid fa-business-time'},
-            {value: 0, label: ts('manual'), iconClass: 'fa-solid fa-hand-pointer'}
-          ].map(opt => (
+        <div className="settings-choice-grid three-up">
+          {REFRESH_OPTIONS.map(opt => (
             <button
               key={opt.value}
               onClick={() => handleSettingChange('autoRefreshInterval', opt.value)}
-              style={{
-                padding: '12px 8px',
-                background: localSettings.autoRefreshInterval === opt.value
-                  ? 'linear-gradient(135deg, #2f81f7 0%, #1f61d7 100%)'
-                  : '#161b22',
-                border: `1px solid ${localSettings.autoRefreshInterval === opt.value ? '#2f81f7' : '#30363d'}`,
-                borderRadius: '6px',
-                cursor: 'pointer',
-                color: localSettings.autoRefreshInterval === opt.value ? '#fff' : '#8b949e',
-                textAlign: 'center',
-                fontSize: '12px',
-                fontWeight: 600,
-                transition: 'all 0.2s ease',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-              }}
-              onMouseEnter={(e) => {
-                if (localSettings.autoRefreshInterval !== opt.value) {
-                  e.currentTarget.style.borderColor = '#2f81f7';
-                  e.currentTarget.style.background = 'rgba(47, 129, 247, 0.1)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (localSettings.autoRefreshInterval !== opt.value) {
-                  e.currentTarget.style.borderColor = '#30363d';
-                  e.currentTarget.style.background = '#161b22';
-                }
-              }}
+              className={`settings-option-card compact centered ${localSettings.autoRefreshInterval === opt.value ? 'selected accent-blue' : ''}`}
             >
-              <div
-                style={{
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '6px',
-                  marginBottom: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: localSettings.autoRefreshInterval === opt.value ? 'rgba(255,255,255,0.2)' : '#0d1117',
-                  border: `1px solid ${localSettings.autoRefreshInterval === opt.value ? 'rgba(255,255,255,0.35)' : '#30363d'}`,
-                  fontSize: '12px'
-                }}
-              >
+              <div className="settings-option-icon-wrap small">
                 <i className={opt.iconClass} aria-hidden="true"></i>
               </div>
-              <span>{opt.label}</span>
+              <span className="settings-option-caption strong">{opt.dynamicLabelKey ? ts(opt.dynamicLabelKey) : opt.label}</span>
             </button>
           ))}
         </div>
-        <p style={{fontSize: '12px', color: '#8b949e', margin: '0', fontStyle: 'italic'}}>
-          {ts('current')}: <strong style={{color: '#c9d1d9'}}>{localSettings.autoRefreshInterval ? `${ts('every')} ${localSettings.autoRefreshInterval}m` : ts('manual')}</strong>
+        <p className="settings-selection-note">
+          {ts('current')}: <strong>{selectedRefreshLabel}</strong>
         </p>
       </div>
 
       {/* Notifications */}
       <div className="settings-section settings-card">
-        <div style={{display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px'}}>
-          <div style={{fontSize: '24px', color: '#2f81f7'}}>
-            <i className="fa-solid fa-bell"></i>
-          </div>
-          <div>
-            <h3 style={{margin: 0, color: '#c9d1d9', fontSize: '18px', fontWeight: 600}}>{ts('notificationsAlerts')}</h3>
-            <p style={{margin: '4px 0 0 0', fontSize: '12px', color: '#8b949e'}}>{ts('notificationsAlertsDesc')}</p>
-          </div>
+        <SectionIntro iconClass="fa-solid fa-bell" title={ts('notificationsAlerts')} description={ts('notificationsAlertsDesc')} />
+        <div className="settings-helper-banner backend-driven">
+          <span className="settings-helper-badge">{t('common', 'backendDriven')}</span>
+          <span>{ts('serverDrivenNote')}</span>
         </div>
 
         {/* Enable Notifications Toggle */}
-        <div style={{padding: '16px', background: '#161b22', borderRadius: '8px', border: '1px solid #30363d', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+        <div className="settings-toggle-row">
           <div>
-            <p style={{margin: 0, color: '#c9d1d9', fontWeight: 600, fontSize: '14px'}}>{ts('pushNotifications')}</p>
-            <p style={{margin: '4px 0 0 0', fontSize: '12px', color: '#8b949e'}}>{ts('pushNotificationsDesc')}</p>
+            <p className="settings-toggle-title">{ts('pushNotifications')}</p>
+            <p className="settings-toggle-description">{ts('pushNotificationsDesc')}</p>
           </div>
           <button
             onClick={() => handleSettingChange('enableNotifications', !localSettings.enableNotifications)}
-            style={{
-              width: '50px',
-              height: '28px',
-              borderRadius: '14px',
-              border: 'none',
-              background: localSettings.enableNotifications ? '#3fb950' : '#30363d',
-              cursor: 'pointer',
-              position: 'relative',
-              transition: 'all 0.3s ease'
-            }}
+            className={`settings-toggle ${localSettings.enableNotifications ? 'enabled' : ''}`}
           >
-            <span style={{
-              position: 'absolute',
-              top: '2px',
-              left: localSettings.enableNotifications ? '26px' : '2px',
-              width: '24px',
-              height: '24px',
-              background: '#fff',
-              borderRadius: '50%',
-              transition: 'left 0.3s ease'
-            }}></span>
+            <span></span>
           </button>
         </div>
 
         {/* Confidence Threshold */}
-        <div>
-          <label style={{fontSize: '13px', color: '#8b949e', fontWeight: 600, marginBottom: '12px', display: 'block'}}>{ts('confidenceThreshold')}</label>
-          <p style={{fontSize: '12px', color: '#8b949e', margin: '0 0 16px 0'}}>{ts('confidenceHint')}</p>
+        <div className="settings-control-group">
+          <label className="settings-field-label">{ts('confidenceThreshold')}</label>
+          <p className="settings-field-hint">{ts('confidenceHint')}</p>
 
-          <div style={{display: 'grid', gridTemplateColumns: '1fr 60px', gap: '12px', alignItems: 'center'}}>
-            <div style={{position: 'relative'}}>
+          <div className="settings-slider-row">
+            <div className="settings-slider-wrap">
               <input
                 type="range"
                 min="50"
@@ -769,32 +485,24 @@ export default function SettingsPage() {
                 step="1"
                 value={localSettings.diseaseConfidenceThreshold}
                 onChange={(e) => handleSettingChange('diseaseConfidenceThreshold', parseInt(e.target.value))}
-                style={{
-                  width: '100%',
-                  height: '6px',
-                  borderRadius: '3px',
-                  background: `linear-gradient(to right, #f85149 0%, #ff9128 50%, #3fb950 100%)`,
-                  outline: 'none',
-                  WebkitAppearance: 'none',
-                  appearanceNone: 'none'
-                }}
+                className="settings-slider-input"
               />
               <style>{`
-                input[type="range"]::-webkit-slider-thumb {
+                .settings-slider-input::-webkit-slider-thumb {
                   -webkit-appearance: none;
                   appearance: none;
                   width: 20px;
                   height: 20px;
-                  borderRadius: '50%';
+                  border-radius: 50%;
                   background: #2f81f7;
                   cursor: pointer;
                   box-shadow: 0 2px 8px rgba(47, 129, 247, 0.4);
                   border: 2px solid #fff;
                 }
-                input[type="range"]::-moz-range-thumb {
+                .settings-slider-input::-moz-range-thumb {
                   width: 20px;
                   height: 20px;
-                  borderRadius: 50%;
+                  border-radius: 50%;
                   background: #2f81f7;
                   cursor: pointer;
                   box-shadow: 0 2px 8px rgba(47, 129, 247, 0.4);
@@ -802,94 +510,37 @@ export default function SettingsPage() {
                 }
               `}</style>
             </div>
-            <div style={{
-              padding: '10px 12px',
-              background: '#161b22',
-              border: '1px solid #30363d',
-              borderRadius: '6px',
-              textAlign: 'center',
-              fontWeight: 600,
-              color: '#2f81f7',
-              fontSize: '14px'
-            }}>
+            <div className="settings-slider-value">
               {localSettings.diseaseConfidenceThreshold}%
             </div>
           </div>
 
-          <div style={{marginTop: '12px', display: 'flex', gap: '16px', fontSize: '12px'}}>
-            <div style={{display: 'flex', alignItems: 'center', gap: '6px', color: '#f85149'}}>
+          <div className="settings-threshold-legend">
+            <div className="low">
               <i className="fa-solid fa-circle"></i> {ts('low')} ({50}%)
             </div>
-            <div style={{display: 'flex', alignItems: 'center', gap: '6px', color: '#ff9128'}}>
+            <div className="medium">
               <i className="fa-solid fa-circle"></i> {ts('medium')} ({75}%)
             </div>
-            <div style={{display: 'flex', alignItems: 'center', gap: '6px', color: '#3fb950'}}>
+            <div className="high">
               <i className="fa-solid fa-circle"></i> {ts('high')} ({95}%)
             </div>
           </div>
         </div>
       </div>
 
-      <div className="settings-actions" style={{position: 'sticky', bottom: 0, paddingBottom: 20, paddingTop: 10, background: 'linear-gradient(transparent, #161b22 30%)'}}>
+      <div className="settings-actions professional">
         <button
-          className="primary-btn"
+          className="settings-save-btn"
           onClick={handleSaveSettings}
-          style={{
-            width: '100%',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '16px',
-            fontSize: '16px',
-            fontWeight: 600,
-            background: 'linear-gradient(135deg, #2f81f7 0%, #1f61d7 100%)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            boxShadow: '0 4px 12px rgba(47, 129, 247, 0.3)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 20px rgba(47, 129, 247, 0.5)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 12px rgba(47, 129, 247, 0.3)';
-          }}
         >
           <i className="fa-solid fa-floppy-disk"></i> {ts('saveChanges')}
         </button>
         {saved && (
-          <div style={{
-            textAlign: 'center',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            marginTop: '12px',
-            color: '#3fb950',
-            fontSize: '14px',
-            fontWeight: 600,
-            animation: 'slideInUp 0.3s ease'
-          }}>
+          <div className="settings-save-success">
             <i className="fa-solid fa-check-circle"></i> {ts('allChangesSaved')}
           </div>
         )}
-        <style>{`
-          @keyframes slideInUp {
-            from {
-              opacity: 0;
-              transform: translateY(10px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
-        `}</style>
       </div>
     </div>
   );
