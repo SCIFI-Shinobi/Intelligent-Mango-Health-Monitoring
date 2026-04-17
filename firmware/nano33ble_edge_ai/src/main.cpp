@@ -65,23 +65,22 @@ void runInferenceAndPublish() {
         return;
     }
 
-    Serial1.print(".");  // Show we're trying
-    Serial1.flush();
+
 
     // Allocate capture buffer if not already
     if (!image_buffer) {
         image_buffer = (uint8_t*)malloc(IMG_BUF_SIZE);
         if (!image_buffer) {
-            Serial1.println("!M");  // Malloc failed
+            Serial.println("!M");  // Malloc failed
             return;
         }
     }
 
     if (!Cam.readFrame(image_buffer)) {
-        Serial1.println("X");  // Capture failed
+        Serial.println("X");  // Capture failed
         return;
     }
-    Serial1.print("OK ");  // Capture succeeded
+    Serial.println("OK ");  // Capture succeeded
 
     // No conversion needed - get_image_data converts RGB565→float on-the-fly
 
@@ -89,12 +88,13 @@ void runInferenceAndPublish() {
     signal.get_data = &get_image_data;
     signal.total_length = EI_CLASSIFIER_NN_INPUT_FRAME_SIZE;
 
+
     ei_impulse_result_t result;
     EI_IMPULSE_ERROR ei_error = run_classifier(&signal, &result, false);
 
     if (ei_error != EI_IMPULSE_OK) {
-        Serial1.print("Classifier error: ");
-        Serial1.println(ei_error);
+        Serial.print("Classifier error: ");
+        Serial.println(ei_error);
         return;
     }
 
@@ -102,10 +102,10 @@ void runInferenceAndPublish() {
     float maxConfidence = 0;
     int maxIndex = -1;
     for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
-        Serial1.print(result.classification[i].label);
-        Serial1.print(": ");
-        Serial1.print(result.classification[i].value * 100, 1);
-        Serial1.println("%");
+        Serial.print(result.classification[i].label);
+        Serial.print(": ");
+        Serial.print(result.classification[i].value * 100, 1);
+        Serial.println("%");
         if (result.classification[i].value > maxConfidence) {
             maxConfidence = result.classification[i].value;
             maxIndex = i;
@@ -119,15 +119,14 @@ void runInferenceAndPublish() {
         payload = "Unknown,0.00";
     }
 
-    Serial1.print("BLE: ");
-    Serial1.println(payload);
+    Serial.print("BLE: ");
+    Serial.println(payload);
     classificationCharacteristic.writeValue(payload);
 }
 
 // ================= SETUP =================
 void setup() {
     Serial.begin(115200); // For USB debug (optional)
-    Serial1.begin(115200); // For ESP8266 UART communication
 
 #if DEMO_MODE
     while (!Serial) {}
