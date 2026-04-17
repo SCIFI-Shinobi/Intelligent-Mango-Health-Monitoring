@@ -448,18 +448,29 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    // --- Serial read from Nano ---
-    static String serialLine = "";
-    while (Serial.available() > 0) {
-        char c = Serial.read();
-        if (c == '\n' || c == '\r') {
-            if (serialLine.length() > 0) {
-                parseNanoSerialLine(serialLine);
-                serialLine = "";
-            }
+
+    // --- Simulate Nano serial every 20 seconds ---
+    static unsigned long lastNanoSim = 0;
+    if (now - lastNanoSim >= 20000) {
+        lastNanoSim = now;
+        // Simulate a random disease classification as if received from Nano
+        String diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
+        int idx = random(0, 3);
+        nanoClassification.className = diseases[idx];
+        if (nanoClassification.className == "Healthy") {
+            nanoClassification.confidence = 1.0;
+            nanoClassification.classIndex = -1;
         } else {
-            serialLine += c;
+            nanoClassification.confidence = random(70, 100) / 100.0;
+            nanoClassification.classIndex = -1;
+            for (size_t i = 0; i < sizeof(profiles)/sizeof(profiles[0]); ++i) {
+                if (nanoClassification.className == profiles[i].name) {
+                    nanoClassification.classIndex = i;
+                    break;
+                }
+            }
         }
+        nanoResultAvailable = true;
     }
 
     if (WiFi.status() != WL_CONNECTED) {
