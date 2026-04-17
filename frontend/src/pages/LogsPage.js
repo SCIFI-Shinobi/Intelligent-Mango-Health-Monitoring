@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAPI } from '../hooks/useAPI';
+import { apiCall, useAPI } from '../hooks/useAPI';
 import { formatTimeAgo, formatDateEAT } from '../utils/formatTime';
 import { exportDetectionLogs } from '../utils/exportCSV';
 import { useLanguage } from '../context/LanguageContext';
@@ -9,21 +9,30 @@ export default function LogsPage() {
   const { lang, t } = useLanguage();
   const { settings, formatTemp } = useSettings();
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
   const limit = 10;
 
   const { data, loading, error } = useAPI(`/detection/history?page=${page}&limit=${limit}`);
-  const { data: allData } = useAPI('/detection/history?page=1&limit=1000');
 
-  const handleExport = () => {
-    if (!allData || !allData.data) return;
-    const headers = [
-      t('logs', 'timestamp'),
-      t('logs', 'diseaseClass'),
-      t('logs', 'confidence'),
-      t('logs', 'temperature'),
-      t('logs', 'humidity')
-    ];
-    exportDetectionLogs(allData.data, headers);
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const allData = await apiCall('/detection/history?page=1&limit=1000');
+      if (!allData || !allData.data) return;
+
+      const headers = [
+        t('logs', 'timestamp'),
+        t('logs', 'diseaseClass'),
+        t('logs', 'confidence'),
+        t('logs', 'temperature'),
+        t('logs', 'humidity')
+      ];
+      exportDetectionLogs(allData.data, headers);
+    } catch (exportError) {
+      console.error('Failed to export logs:', exportError);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleNextPage = () => {
@@ -39,9 +48,9 @@ export default function LogsPage() {
       <div className="section-header">
         <span className="section-title">{t('logs', 'title')}</span>
         {data && data.data && data.data.length > 0 && (
-          <button className="export-btn" onClick={handleExport}>
+          <button className="export-btn" onClick={handleExport} disabled={exporting}>
             <i className="fa-solid fa-file-csv"></i>
-            {t('logs', 'exportCSV')}
+            {exporting ? t('common', 'loading') : t('logs', 'exportCSV')}
           </button>
         )}
       </div>

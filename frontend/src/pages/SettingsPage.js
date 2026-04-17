@@ -4,6 +4,15 @@ import { useSettings } from '../context/SettingsContext';
 import { getApiBaseUrl } from '../utils/apiBase';
 
 const API_BASE_URL = getApiBaseUrl();
+const DEVICE_ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
+function parseApiDate(value) {
+  if (!value) return null;
+
+  const normalized = typeof value === 'string' && !value.endsWith('Z') ? `${value}Z` : value;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 export default function SettingsPage() {
   const { lang, switchLang, t } = useLanguage();
@@ -43,6 +52,25 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchDevices();
+  }, [fetchDevices]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      fetchDevices();
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchDevices();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchDevices]);
 
   const handleRegisterDevice = async () => {
@@ -220,8 +248,8 @@ export default function SettingsPage() {
             margin: devices.length === 1 ? '0 auto' : '0'
           }}>
             {devices.map(device => {
-              const lastSeenDate = device.last_seen ? new Date(device.last_seen.endsWith('Z') ? device.last_seen : device.last_seen + 'Z') : null;
-              const isOnline = lastSeenDate && (new Date() - lastSeenDate) < 5 * 60 * 1000;
+              const lastSeenDate = parseApiDate(device.last_seen);
+              const isOnline = Boolean(lastSeenDate) && (Date.now() - lastSeenDate.getTime()) < DEVICE_ONLINE_WINDOW_MS;
               const statusColor = isOnline ? '#3fb950' : '#8b949e';
               const statusBg = isOnline ? 'rgba(63, 185, 80, 0.15)' : 'rgba(139, 148, 158, 0.15)';
               const statusText = isOnline ? ts('online') : (lastSeenDate ? ts('offline') : ts('ready'));

@@ -248,6 +248,19 @@ python seed.py
 The API will be available at `http://localhost:8000`.
 Interactive docs at `http://localhost:8000/docs`.
 
+For real email alert delivery, configure SMTP on the backend:
+
+```bash
+SMTP_HOST=smtp.your-provider.com
+SMTP_PORT=587
+SMTP_USERNAME=alerts@example.com
+SMTP_PASSWORD=your-smtp-password
+SMTP_FROM_EMAIL=alerts@example.com
+SMTP_USE_TLS=true
+```
+
+If SMTP is not configured, in-app notifications still appear, but email delivery is skipped.
+
 ### 3. Frontend
 
 ```bash
@@ -298,6 +311,11 @@ REACT_APP_API_BASE_URL=http://localhost:8000
 | `/notifications` | GET | User notifications (requires JWT) |
 | `/notifications/{id}/read` | POST | Mark notification as read |
 | `/notifications/read-all` | POST | Mark all notifications as read |
+
+### Health & Diagnostics
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/health` | GET | Backend uptime + database connectivity check |
 
 ### Data Ingestion
 | Endpoint | Method | Description |

@@ -2,14 +2,18 @@ import os
 import json
 import asyncio
 import secrets
+import smtplib
+import time
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from passlib.context import CryptContext
 
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Form, Header, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Form, Header, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import case
+from sqlalchemy import case, text
 from jose import jwt, JWTError
 
 from . import models, schemas, logic, database
@@ -18,11 +22,38 @@ from .database import engine, get_db
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
+APP_STARTED_AT = time.time()
+REQUEST_SLOW_MS = float(os.getenv("REQUEST_SLOW_MS", "800"))
+
 def send_alert_email(email: str, subject: str, message: str):
     """
-    Simulates sending an email alert when a threshold is triggered.
+    Send an alert email via SMTP when configured.
     """
-    print(f"\n[EMAIL SENT to {email}]\nSubject: {subject}\n{message}\n")
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_from = os.getenv("SMTP_FROM_EMAIL") or smtp_username
+    smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
+
+    if not smtp_host or not smtp_from:
+        print(f"\n[EMAIL SKIPPED]\nSMTP is not configured. Intended recipient: {email}\nSubject: {subject}\n")
+        return
+
+    email_message = EmailMessage()
+    email_message["Subject"] = subject
+    email_message["From"] = smtp_from
+    email_message["To"] = email
+    email_message.set_content(message)
+
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+        server.ehlo()
+        if smtp_use_tls:
+            server.starttls()
+            server.ehlo()
+        if smtp_username and smtp_password:
+            server.login(smtp_username, smtp_password)
+        server.send_message(email_message)
 
 app = FastAPI(title="Intelligent Plant Health Monitoring API")
 
@@ -49,6 +80,37 @@ app.add_middleware(
 
 # --- Active WebSocket connections ---
 connected_clients: list[dict] = []
+
+
+def format_duration_ms(start_time: float) -> float:
+    return round((time.perf_counter() - start_time) * 1000, 2)
+
+
+def log_request_timing(method: str, path: str, status_code: int, duration_ms: float, request_id: str):
+    speed = "slow" if duration_ms >= REQUEST_SLOW_MS else "ok"
+    print(
+        f"[request_timing] id={request_id} method={method} path={path} "
+        f"status={status_code} duration_ms={duration_ms} speed={speed}"
+    )
+
+
+@app.middleware("http")
+async def add_request_timing(request: Request, call_next):
+    start_time = time.perf_counter()
+    request_id = secrets.token_hex(4)
+
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        duration_ms = format_duration_ms(start_time)
+        log_request_timing(request.method, request.url.path, 500, duration_ms, request_id)
+        raise exc
+
+    duration_ms = format_duration_ms(start_time)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Response-Time-Ms"] = str(duration_ms)
+    log_request_timing(request.method, request.url.path, response.status_code, duration_ms, request_id)
+    return response
 
 
 def scoped_device_id(device: models.Device) -> str:
@@ -138,6 +200,169 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
         "risk_level": risk["risk_level"],
         "recommendations": recommendations,
         "timestamp": inference.timestamp.isoformat() if inference.timestamp else None,
+    }
+
+
+def build_analysis_summary(
+    detections: list[models.InferenceResult],
+    sensors: list[models.SensorData],
+    recommendations: list[models.Recommendation],
+    forecasts: list[models.ForecastData],
+) -> dict:
+    localized_recommendations = [
+        {
+            "title": r.title,
+            "title_am": r.title_am,
+        }
+        for r in recommendations
+        if r.title or r.title_am
+    ]
+
+    if not detections:
+        return {
+            "total_scans": 0,
+            "healthy_rate": 0,
+            "top_disease_label": None,
+            "disease_count": 0,
+            "healthy_count": 0,
+            "healthy_temp_avg": None,
+            "healthy_humidity_avg": None,
+            "diseased_temp_avg": None,
+            "diseased_humidity_avg": None,
+            "risk_level": "LOW",
+            "risk_score": 0,
+            "disease_rate": 0,
+            "average_confidence": 0,
+            "recommendation_count": len(recommendations),
+            "latest_recommendation": localized_recommendations[0] if localized_recommendations else None,
+            "high_risk_days": 0,
+            "stable_days": 0,
+            "sensor_sample_count": len(sensors),
+            "confidence_trend": [],
+            "temperature_trend": [],
+            "disease_breakdown": [],
+            "forecast_risk_trend": [],
+            "top_recommendations": localized_recommendations[:3],
+        }
+
+    disease_frequency = {}
+    healthy_count = 0
+    disease_count = 0
+    healthy_temp_total = 0
+    healthy_humidity_total = 0
+    healthy_with_env_count = 0
+    diseased_temp_total = 0
+    diseased_humidity_total = 0
+    diseased_with_env_count = 0
+    confidence_total = 0
+
+    for entry in detections:
+        disease_type = entry.disease_type or "Unknown"
+        is_healthy = disease_type.lower() == "healthy"
+        has_temperature = isinstance(getattr(entry, "temperature", None), (int, float))
+        has_humidity = isinstance(getattr(entry, "humidity", None), (int, float))
+
+        confidence_total += float(entry.confidence_score or 0)
+
+        if is_healthy:
+            healthy_count += 1
+            if has_temperature and has_humidity:
+                healthy_temp_total += entry.temperature
+                healthy_humidity_total += entry.humidity
+                healthy_with_env_count += 1
+            continue
+
+        disease_count += 1
+        disease_frequency[disease_type] = (disease_frequency.get(disease_type, 0) + 1)
+        if has_temperature and has_humidity:
+            diseased_temp_total += entry.temperature
+            diseased_humidity_total += entry.humidity
+            diseased_with_env_count += 1
+
+    top_disease_label = None
+    max_count = 0
+    for disease, count in disease_frequency.items():
+        if count > max_count:
+            max_count = count
+            top_disease_label = disease
+
+    healthy_rate = (healthy_count / len(detections)) * 100
+    recent_window = detections[: min(25, len(detections))]
+    recent_diseased = len([d for d in recent_window if (d.disease_type or "").lower() != "healthy"])
+    disease_rate = (recent_diseased / len(recent_window)) * 100 if recent_window else 0
+    average_confidence = (confidence_total / len(detections)) * 100 if detections else 0
+
+    risk_score = round(disease_rate * 0.7 + average_confidence * 0.3)
+    risk_level = "LOW"
+    if risk_score >= 65:
+        risk_level = "HIGH"
+    elif risk_score >= 40:
+        risk_level = "MEDIUM"
+
+    high_risk_days = len([f for f in forecasts if "HIGH" in (f.risk_level or "").upper()])
+    stable_days = max(0, len(forecasts) - high_risk_days)
+
+    confidence_trend = [
+        max(0, min(100, round((d.confidence_score or 0) * 100)))
+        for d in reversed(detections[:12])
+    ]
+
+    temperature_values = [
+        s.temperature for s in sensors[-12:]
+        if isinstance(s.temperature, (int, float))
+    ]
+    if temperature_values:
+        min_temp = min(temperature_values)
+        max_temp = max(temperature_values)
+        temp_range = max(1, max_temp - min_temp)
+        temperature_trend = [round(((value - min_temp) / temp_range) * 100) for value in temperature_values]
+    else:
+        temperature_trend = []
+
+    total_diseased = max(1, disease_count)
+    disease_breakdown = [
+        {
+            "name": name,
+            "count": count,
+            "pct": round((count / total_diseased) * 100),
+        }
+        for name, count in sorted(disease_frequency.items(), key=lambda item: item[1], reverse=True)[:4]
+    ]
+
+    forecast_risk_trend = []
+    for forecast in forecasts:
+        risk = (forecast.risk_level or "").upper()
+        if "HIGH" in risk:
+            forecast_risk_trend.append(90)
+        elif "MEDIUM" in risk:
+            forecast_risk_trend.append(60)
+        else:
+            forecast_risk_trend.append(30)
+
+    return {
+        "total_scans": len(detections),
+        "healthy_rate": healthy_rate,
+        "top_disease_label": top_disease_label,
+        "disease_count": disease_count,
+        "healthy_count": healthy_count,
+        "healthy_temp_avg": (healthy_temp_total / healthy_with_env_count) if healthy_with_env_count else None,
+        "healthy_humidity_avg": (healthy_humidity_total / healthy_with_env_count) if healthy_with_env_count else None,
+        "diseased_temp_avg": (diseased_temp_total / diseased_with_env_count) if diseased_with_env_count else None,
+        "diseased_humidity_avg": (diseased_humidity_total / diseased_with_env_count) if diseased_with_env_count else None,
+        "risk_level": risk_level,
+        "risk_score": risk_score,
+        "disease_rate": disease_rate,
+        "average_confidence": average_confidence,
+        "recommendation_count": len(recommendations),
+        "latest_recommendation": localized_recommendations[0] if localized_recommendations else None,
+        "high_risk_days": high_risk_days,
+        "stable_days": stable_days,
+        "sensor_sample_count": len(sensors),
+        "confidence_trend": confidence_trend,
+        "temperature_trend": temperature_trend,
+        "disease_breakdown": disease_breakdown,
+        "forecast_risk_trend": forecast_risk_trend,
+        "top_recommendations": localized_recommendations[:3],
     }
 
 
@@ -343,6 +568,44 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Intelligent Plant Health Monitoring API"}
+
+
+@app.get("/health")
+def health_check():
+    """Lightweight health and database connectivity probe."""
+    db_start = time.perf_counter()
+    db_ok = False
+    db_error = None
+
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as exc:
+        db_error = str(exc)
+
+    db_duration_ms = format_duration_ms(db_start)
+    uptime_seconds = round(time.time() - APP_STARTED_AT, 2)
+    overall_status = "ok" if db_ok else "degraded"
+
+    payload = {
+        "status": overall_status,
+        "service": "backend",
+        "uptime_seconds": uptime_seconds,
+        "database": {
+            "ok": db_ok,
+            "duration_ms": db_duration_ms,
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if db_error:
+        payload["database"]["error"] = db_error
+
+    if db_ok:
+        return payload
+
+    return JSONResponse(status_code=503, content=payload)
 
 
 @app.post("/upload", response_model=dict)
@@ -696,6 +959,54 @@ def get_recommendations_latest(
             } for r in recommendations
         ]
     }
+
+
+@app.get("/analysis/summary")
+def get_analysis_summary(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Get a compact analysis summary for the Analysis page in a single request."""
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
+    if not user_device_ids:
+        return build_analysis_summary([], [], [], [])
+
+    detections = db.query(models.InferenceResult).filter(
+        models.InferenceResult.device_id.in_(user_device_ids)
+    ).order_by(models.InferenceResult.timestamp.desc()).limit(200).all()
+
+    enriched_detections = []
+    for detection in detections:
+        sensor = db.query(models.SensorData).filter(
+            models.SensorData.timestamp <= detection.timestamp,
+            models.SensorData.device_id == detection.device_id
+        ).order_by(models.SensorData.timestamp.desc()).first()
+
+        if not sensor:
+            sensor = db.query(models.SensorData).filter(
+                models.SensorData.device_id.in_(user_device_ids)
+            ).order_by(models.SensorData.timestamp.asc()).first()
+
+        detection.temperature = sensor.temperature if sensor else None
+        detection.humidity = sensor.humidity if sensor else None
+        enriched_detections.append(detection)
+
+    sensors = db.query(models.SensorData).filter(
+        models.SensorData.device_id.in_(user_device_ids)
+    ).order_by(models.SensorData.timestamp.asc()).all()
+
+    recommendations = db.query(models.Recommendation).filter(
+        models.Recommendation.device_id.in_(user_device_ids)
+    ).order_by(models.Recommendation.timestamp.desc()).limit(50).all()
+
+    latest_context = db.query(models.ForecastContext).filter(
+        models.ForecastContext.device_id.in_(user_device_ids)
+    ).order_by(models.ForecastContext.timestamp.desc()).first()
+
+    forecasts = []
+    if latest_context:
+        forecasts = db.query(models.ForecastData).filter(
+            models.ForecastData.context_id == latest_context.id
+        ).order_by(models.ForecastData.day_index.asc()).all()
+
+    return build_analysis_summary(enriched_detections, sensors, recommendations, forecasts)
 
 
 @app.post("/data/ingest")
