@@ -501,15 +501,3 @@ void loop() {
 
     delay(50);
 }
-
-    // ================== PLACE YOUR FORECASTING MODEL BELOW ==================
-    // Example: You can define your forecasting model as a function or class here.
-    // Call your model from loop() or another function, and set nanoClassification/classification result accordingly.
-    // Example stub:
-    // void runForecastingModel(float temp, float humidity) {
-    //     // ... your model code ...
-    //     nanoClassification.className = "Anthracnose";
-    //     nanoClassification.confidence = 0.88;
-    //     nanoClassification.classIndex = 0; // or appropriate index
-    //     nanoResultAvailable = true;
-    // }

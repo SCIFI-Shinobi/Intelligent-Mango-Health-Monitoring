@@ -1,3 +1,7 @@
-marcoschwartz/LiquidCrystal_I2C @ ^1.1.4
+Wire
+ESP8266WiFi
 adafruit/DHT sensor library @ ^1.4.4
+marcoschwartz/LiquidCrystal_I2C @ ^1.1.4
+ESP8266HTTPClient
 adafruit/Adafruit Unified Sensor @ ^1.1.9
+Ticker

@@ -1,3 +1,4 @@
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -5,18 +6,112 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <DHT.h>
+
 #include <Adafruit_Sensor.h>
 #include <NimBLEDevice.h>
 #include <time.h>
 #include "Config.h"
+#include "edge-impulse-sdk/classifier/ei_run_classifier.h"
+#include "model-parameters/model_metadata.h"
+#include "model-parameters/model_variables.h"
 
-// ================= HARDWARE =================
+
+
+// ESP8266 to ESP32 pin mapping (D0-D7 to GPIOs)
+#define D0 5
+#define D1 18
+#define D2 19
+#define D3 21
+#define D4 22
+#define D5 23
+#define D6 25
+#define D7 26
+
+static const uint8_t BUZZER_PIN = D0;
+static const uint8_t DHT_PIN = D4;
+static const uint8_t SDA_PIN = D2;
+static const uint8_t SCL_PIN = D1;
+static const uint8_t RED_LED_PIN = D5;
+static const uint8_t GREEN_LED_PIN = D6;
+static const uint8_t YELLOW_LED_PIN = D7;
+
+static const uint8_t DHT_TYPE = DHT22;
+static const uint8_t LCD_I2C_ADDR = 0x3f;
+static const uint8_t LCD_COLUMNS = 16;
+static const uint8_t LCD_ROWS = 2;
+
+static const unsigned long DATA_UPLOAD_INTERVAL_MS = 10000;
+static const unsigned long WIFI_RECONNECT_INTERVAL_MS = 8000;
+static const unsigned long DHT_READ_INTERVAL_MS = 2000;
+
 LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLUMNS, LCD_ROWS);
 DHT dht(DHT_PIN, DHT_TYPE);
 
-// ================= BLE UUIDs (must match Nano) =================
-#define NANO_SERVICE_UUID        "19B10000-E8F2-537E-4F6C-D104768A1214"
-#define CLASSIFICATION_CHAR_UUID "19B10001-E8F2-537E-4F6C-D104768A1214"
+unsigned long lastDataUploadMs = 0;
+unsigned long lastReconnectAttemptMs = 0;
+unsigned long lastDhtReadMs = 0;
+
+String lastHttpStatus = "HTTP: N/A";
+// Utility: JSON escape
+String jsonEscape(const String& s) {
+    String out;
+    out.reserve(s.length() + 8);
+    for (int i = 0; i < (int)s.length(); i++) {
+        char c = s[i];
+        if      (c == '"')  out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else if (c == '\t') out += "\\t";
+        else                out += c;
+    }
+    return out;
+}
+
+void sendLog(const String& message) {
+    if (WiFi.status() != WL_CONNECTED) return;
+    HTTPClient http;
+    http.setTimeout(3000);
+    String url = String(LOG_SERVER_URL) + "/log";
+    bool isHttps = url.startsWith("https");
+    WiFiClientSecure clientSecure;
+    WiFiClient client;
+    bool beginSuccess = false;
+    if (isHttps) {
+        clientSecure.setInsecure();
+        beginSuccess = http.begin(clientSecure, url);
+    } else {
+        beginSuccess = http.begin(client, url);
+    }
+    if (!beginSuccess) return;
+    http.addHeader("Content-Type", "application/json");
+    String body = "{\"device\":\"ESP32\",\"message\":\"" + jsonEscape(message) + "\"}";
+    int code = http.POST(body);
+    Serial.printf("[sendLog] HTTP %d\n", code > 0 ? code : 0);
+    http.end();
+}
+
+void beep(unsigned int onMs, unsigned int offMs, int repeat) {
+    for (int i = 0; i < repeat; ++i) {
+        digitalWrite(BUZZER_PIN, HIGH);
+        delay(onMs);
+        digitalWrite(BUZZER_PIN, LOW);
+        if (i < repeat - 1) delay(offMs);
+    }
+}
+
+void showOnLcd(const String& line1, const String& line2) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(line1.substring(0, LCD_COLUMNS));
+    lcd.setCursor(0, 1);
+    lcd.print(line2.substring(0, LCD_COLUMNS));
+}
+
+LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLUMNS, LCD_ROWS);
+DHT dht(DHT_PIN, DHT_TYPE);
+
+// BLE UUIDs are now in secrets.h
 
 // ================= CONFIDENCE THRESHOLD =================
 // Only generate recommendations if AI confidence exceeds this threshold
@@ -76,8 +171,8 @@ char currentDisease[32]  = "Unknown";
 float currentConfidence  = 0.0;
 float currentTemperature = 0.0;
 float currentHumidity    = 0.0;
-int   currentRainValue   = 4095;  // Analog rain sensor (4095 = dry, 0 = heavy rain)
 bool  currentIsRaining   = false; // Digital rain sensor
+// Remove rain sensor variables
 bool  alertActive        = false;
 const char* riskLevel      = "Evaluating...";
 const char* recommendation = "Waiting for data...";
@@ -168,16 +263,7 @@ bool connectToNano() {
     return false;
 }
 
-// Convert analog rain sensor value to approximate precipitation in mm
-// Rain sensor: 4095 = completely dry, 0 = heavy rain
-float estimatePrecipitation() {
-    if (!currentIsRaining && currentRainValue > RAIN_INTENSITY_THRESHOLD) {
-        return 0.0;  // No rain
-    }
-    // Map 0-RAIN_INTENSITY_THRESHOLD to 0-50mm (rough estimation)
-    float intensity = (float)(RAIN_INTENSITY_THRESHOLD - currentRainValue) / RAIN_INTENSITY_THRESHOLD;
-    return intensity * 50.0;  // Max ~50mm for heavy rain reading
-}
+// ...removed rain sensor code...
 
 // ================= RISK EVALUATION =================
 void evaluateRisk() {
@@ -235,9 +321,9 @@ void evaluateRisk() {
         return;
     }
 
+
     bool tempSuitable = (currentTemperature >= profile->minTemp && currentTemperature <= profile->maxTemp);
     bool moistureSuitable = (currentHumidity > profile->humidityThreshold);
-    bool isRaining = currentIsRaining || (currentRainValue < RAIN_INTENSITY_THRESHOLD);
 
     // High Risk: Both temp AND humidity match disease conditions, or rain boosts risk
     if (tempSuitable && moistureSuitable) {
@@ -277,9 +363,8 @@ void evaluateRisk() {
         alertActive = false;
     }
 
-    Serial.printf("Risk Evaluation: %s (Conf: %.1f%%, Temp: %.1f°C, Hum: %.1f%%, Rain: %s)\n",
-                  riskLevel, currentConfidence * 100, currentTemperature, currentHumidity,
-                  isRaining ? "Yes" : "No");
+    Serial.printf("Risk Evaluation: %s (Conf: %.1f%%, Temp: %.1f°C, Hum: %.1f%%)\n",
+                  riskLevel, currentConfidence * 100, currentTemperature, currentHumidity);
 }
 
 // ================= LCD DISPLAY =================
@@ -287,9 +372,9 @@ void updateDisplay() {
     String line1 = String(WiFi.status() == WL_CONNECTED ? "W:OK " : "W:-- ") +
                    String(bleConnected ? "B:OK" : "B:--");
 
+
     char envBuf[17];
-    snprintf(envBuf, sizeof(envBuf), "T:%2.0f H:%2.0f %s", currentTemperature, currentHumidity,
-             currentIsRaining ? "R" : "D");
+    snprintf(envBuf, sizeof(envBuf), "T:%2.0f H:%2.0f", currentTemperature, currentHumidity);
     String line2 = String(envBuf);
 
     if (alertActive) {
@@ -315,12 +400,12 @@ void updateDisplay() {
 void sendDataToCloud() {
     if (WiFi.status() != WL_CONNECTED) return;
     if (String(DEVICE_API_KEY) == "mg_your_api_key_here") {
-        Serial.println("Cloud sync skipped: set DEVICE_API_KEY in Config.h");
+        Serial.println("Cloud sync skipped: set DEVICE_API_KEY in secrets.h");
         return;
     }
 
     HTTPClient http;
-    String url = String(API_BASE_URL) + String(API_INGEST_PATH);
+    String url = String(TEST_SERVER_URL);
     bool began = false;
     WiFiClientSecure secureClient;
 
@@ -341,7 +426,7 @@ void sendDataToCloud() {
 
     // Build JSON payload matching DataIngestPayload schema
     String json = "{";
-    json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
+    json += "\"device_id\":\"esp32_gateway_001\",";
     json += "\"temperature\":" + String(currentTemperature, 1) + ",";
     json += "\"humidity\":" + String(currentHumidity, 1) + ",";
     json += "\"disease_type\":\"" + String(currentDisease) + "\",";
@@ -402,31 +487,69 @@ void sendDataToCloud() {
     http.end();
 }
 
-// ================= SETUP =================
+// ================= FORECASTING (Edge Impulse) =================
+void runEdgeImpulseModel(float temp, float humidity) {
+    float features[48];
+    for (int i = 0; i < 24; ++i) {
+        features[i * 2] = temp;
+        features[i * 2 + 1] = humidity;
+    }
+
+    ei_impulse_result_t result = { 0 };
+    signal_t signal;
+    signal.total_length = 48;
+    signal.get_data = [](size_t offset, size_t length, float *out_ptr) -> int {
+        memcpy(out_ptr, &features[offset], length * sizeof(float));
+        return 0;
+    };
+
+    ei_impulse_handle_t handle;
+    handle.impulse = &impulse_916176_2;
+    handle.state.clear();
+
+    EI_IMPULSE_ERROR res = process_impulse(&handle, &signal, &result, false);
+
+    if (res == EI_IMPULSE_OK && result.classification) {
+        float max_val = 0.0f;
+        int max_idx = -1;
+        for (size_t i = 0; i < 3; ++i) {
+            if (result.classification[i].value > max_val) {
+                max_val = result.classification[i].value;
+                max_idx = i;
+            }
+        }
+        if (max_idx >= 0) {
+            strncpy(currentDisease, ei_classifier_inferencing_categories_916176_2[max_idx], sizeof(currentDisease) - 1);
+            currentDisease[sizeof(currentDisease) - 1] = '\0';
+            currentConfidence = max_val;
+        }
+    }
+}
+
 void setup() {
     Serial.begin(115200);
 
-    // Buzzer
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
+    pinMode(RED_LED_PIN, OUTPUT);
+    pinMode(GREEN_LED_PIN, OUTPUT);
+    pinMode(YELLOW_LED_PIN, OUTPUT);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(YELLOW_LED_PIN, LOW);
 
-    // Rain sensor
-    pinMode(RAIN_SENSOR_DIGITAL_PIN, INPUT);
-    // RAIN_SENSOR_ANALOG_PIN (GPIO 34) is input-only, no pinMode needed
-
-    // DHT sensor
     dht.begin();
+    Wire.begin(SDA_PIN, SCL_PIN);
 
-    // 16x2 I2C LCD
     lcd.init();
     lcd.backlight();
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print("Mango Monitor");
+    lcd.print("ESP32 Test");
     lcd.setCursor(0, 1);
-    lcd.print("Starting...");
+    lcd.print("LCD+WiFi+Web+DHT");
+    delay(1200);
 
-    // Wi-Fi
     Serial.print("Connecting to Wi-Fi");
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     int timeout = 0;
@@ -437,12 +560,9 @@ void setup() {
     }
     Serial.println(WiFi.status() == WL_CONNECTED ? "\nWi-Fi OK" : "\nWi-Fi Failed");
 
-    // Configure NTP for Ethiopian Time (UTC+3)
     if (WiFi.status() == WL_CONNECTED) {
         configTime(GMT_OFFSET, DST_OFFSET, NTP_SERVER);
         Serial.println("NTP configured for Ethiopian Time (EAT)");
-
-        // Wait for time sync
         struct tm timeinfo;
         int ntpRetry = 0;
         while (!getLocalTime(&timeinfo) && ntpRetry < 10) {
@@ -457,31 +577,15 @@ void setup() {
         }
     }
 
-    // BLE Central
     NimBLEDevice::init("ESP32-Gateway");
     Serial.println("BLE Central initialized.");
 }
 
 // ================= LOOP =================
 void loop() {
-    // 1. Read DHT22
-    float t = dht.readTemperature();
-    float h = dht.readHumidity();
-    if (isnan(t) || isnan(h)) {
-        Serial.println("DHT Read Failed");
-    } else {
-        currentTemperature = t;
-        currentHumidity    = h;
-    }
+    unsigned long now = millis();
 
-    // 1b. Read rain sensor
-    currentRainValue = analogRead(RAIN_SENSOR_ANALOG_PIN);
-    currentIsRaining = (digitalRead(RAIN_SENSOR_DIGITAL_PIN) == LOW); // LOW = rain detected
-    Serial.print("Rain: ");
-    Serial.print(currentRainValue);
-    Serial.println(currentIsRaining ? " (Raining)" : " (Dry)");
-
-    // 2. Maintain BLE connection
+    // --- BLE disease result ---
     if (!bleConnected || (pClient && !pClient->isConnected())) {
         bleConnected = false;
         if (pClient) {
@@ -491,22 +595,34 @@ void loop() {
         bleConnected = connectToNano();
     }
 
-    // 3. Buzzer logic
+    // --- DHT read and forecast ---
+    if (now - lastDhtReadMs >= DHT_READ_INTERVAL_MS) {
+        lastDhtReadMs = now;
+        float h = dht.readHumidity();
+        float t = dht.readTemperature();
+        if (!isnan(h) && !isnan(t)) {
+            currentTemperature = t;
+            currentHumidity = h;
+            String msg = "Temp=" + String(t, 1) + "C Humidity=" + String(h, 0) + "%";
+            sendLog(msg);
+            runEdgeImpulseModel(t, h);
+        }
+        evaluateRisk();
+        updateDisplay();
+    }
+
+    // --- Cloud upload ---
+    if (now - lastDataUploadMs >= DATA_UPLOAD_INTERVAL_MS) {
+        lastDataUploadMs = now;
+        sendDataToCloud();
+    }
+
+    // --- Buzzer logic ---
     if (alertActive) {
         digitalWrite(BUZZER_PIN, (millis() / 500) % 2 == 0 ? HIGH : LOW);
     } else {
         digitalWrite(BUZZER_PIN, LOW);
     }
 
-    // 4. Update display
-    updateDisplay();
-
-    // 5. Cloud sync
-    static unsigned long lastSync = 0;
-    if (millis() - lastSync > CLOUD_SYNC_INTERVAL_MS) {
-        sendDataToCloud();
-        lastSync = millis();
-    }
-
-    delay(200);
+    delay(50);
 }
