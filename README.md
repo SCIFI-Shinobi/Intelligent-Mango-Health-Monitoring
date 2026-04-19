@@ -13,6 +13,10 @@
   <img src="https://img.shields.io/badge/Deploy-Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
 </p>
 
+<p>
+  <a href="https://mango-guard.vercel.app/">Live Demo</a>
+</p>
+
 > An end-to-end smart agriculture system that detects mango leaf diseases in the field, evaluates environmental risk, generates a 5-day forecast, and serves a bilingual real-time dashboard for monitoring and decision support.
 
 </div>
