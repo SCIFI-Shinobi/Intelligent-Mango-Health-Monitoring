@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useSettings } from '../context/SettingsContext';
 import { getApiBaseUrl } from '../utils/apiBase';
@@ -6,8 +6,8 @@ import { getApiBaseUrl } from '../utils/apiBase';
 const API_BASE_URL = getApiBaseUrl();
 const DEVICE_ONLINE_WINDOW_MS = 5 * 60 * 1000;
 const TEMPERATURE_OPTIONS = [
-  { value: 'celsius', labelKey: 'celsius', icon: '°C', accentClass: 'cool' },
-  { value: 'fahrenheit', labelKey: 'fahrenheit', icon: '°F', accentClass: 'warm' }
+  { value: 'celsius', labelKey: 'celsius', icon: 'C', accentClass: 'cool' },
+  { value: 'fahrenheit', labelKey: 'fahrenheit', icon: 'F', accentClass: 'warm' }
 ];
 const TIME_FORMAT_OPTIONS = [
   { value: 'relative', labelKey: 'relative', exampleKey: 'relativeExample', iconClass: 'fa-solid fa-clock-rotate-left', accentClass: 'fresh' },
@@ -58,7 +58,7 @@ export default function SettingsPage() {
   const [copied, setCopied] = useState(null);
   const [error, setError] = useState(null);
 
-  const headers = React.useMemo(() => ({
+  const headers = useMemo(() => ({
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'
   }), [token]);
@@ -154,10 +154,15 @@ export default function SettingsPage() {
     }
   };
 
-  const copyToClipboard = (text, id) => {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
+  const copyToClipboard = async (text, id) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(id);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (e) {
+      setError(ts('copyApiKey'));
+      console.error('Failed to copy API key:', e);
+    }
   };
 
   const handleSettingChange = (key, value) => {
@@ -217,7 +222,7 @@ export default function SettingsPage() {
             alignItems: 'center',
             justifyContent: 'space-between'
           }}>
-            <span>⚠️ {error}</span>
+            <span>Warning: {error}</span>
             <button
               onClick={() => setError(null)}
               style={{
@@ -229,7 +234,7 @@ export default function SettingsPage() {
                 padding: '0 4px'
               }}
             >
-              ✕
+              Close
             </button>
           </div>
         )}
@@ -243,7 +248,7 @@ export default function SettingsPage() {
             <p>{ts('addGatewayHelp')}</p>
             {error && (
               <div className="gateway-inline-error">
-                ⚠️ {error}
+                Warning: {error}
               </div>
             )}
           </div>
@@ -350,8 +355,8 @@ export default function SettingsPage() {
         {/* Language Toggle Buttons */}
         <div className="settings-choice-grid two-up compact-frame">
           {[
-            {value: 'en', label: ts('english'), flag: '🇺🇸'},
-            {value: 'am', label: ts('amharic'), flag: '🇪🇹'}
+            {value: 'en', label: ts('english'), flag: 'EN'},
+            {value: 'am', label: ts('amharic'), flag: 'AM'}
           ].map(option => (
             <button
               key={option.value}
@@ -524,3 +529,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

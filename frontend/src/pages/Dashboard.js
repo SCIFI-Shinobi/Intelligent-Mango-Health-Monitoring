@@ -39,6 +39,7 @@ export default function Dashboard() {
   // WebSocket for real-time updates
   const ws = useRef(null);
   const reconnectTimer = useRef(null);
+  const shouldReconnect = useRef(true);
 
   const connectWebSocket = useCallback(() => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
@@ -72,6 +73,7 @@ export default function Dashboard() {
     };
 
     ws.current.onclose = () => {
+      if (!shouldReconnect.current) return;
       console.log('WebSocket closed, reconnecting...');
       reconnectTimer.current = setTimeout(() => connectWebSocket(), 3000);
     };
@@ -121,9 +123,11 @@ export default function Dashboard() {
     };
 
     fetchData();
+    shouldReconnect.current = true;
     connectWebSocket();
 
     return () => {
+      shouldReconnect.current = false;
       clearTimeout(reconnectTimer.current);
       if (ws.current) ws.current.close();
     };
@@ -194,7 +198,7 @@ export default function Dashboard() {
                 <SensorCard
                   name={t('sensor', 'temperature')}
                   value={formatTemp(sensorLatest?.temperature)}
-                  unit={settings.temperatureUnit === 'fahrenheit' ? '°F' : '°C'}
+                  unit={settings.temperatureUnit === 'fahrenheit' ? 'F' : 'C'}
                   icon="temp"
                   loading={loading}
                   subtitle={freshness.isStale ? t('disease', 'noRecentDeviceData') : t('common', 'live')}
@@ -266,3 +270,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
