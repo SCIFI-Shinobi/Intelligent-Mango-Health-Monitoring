@@ -30,7 +30,7 @@ function parseApiDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function SectionIntro({ iconClass, title, description }) {
+function SectionIntro({ iconClass, title }) {
   return (
     <div className="settings-section-intro">
       <div className="settings-section-icon">
@@ -38,7 +38,6 @@ function SectionIntro({ iconClass, title, description }) {
       </div>
       <div>
         <h3 className="settings-section-title">{title}</h3>
-        <p className="settings-section-description">{description}</p>
       </div>
     </div>
   );
@@ -182,14 +181,6 @@ export default function SettingsPage() {
         <div>
           <p className="settings-page-eyebrow">{t('nav', 'settings')}</p>
           <h2 className="settings-page-title">{ts('general')}</h2>
-          <p className="settings-page-description">
-            Adjust how MangoGuard looks in this browser, manage your connected hardware, and review how alerts are handled.
-          </p>
-        </div>
-        <div className="settings-page-status">
-          <span className={`status-pill ${saved ? 'healthy' : 'delayed'}`}>
-            {saved ? ts('saved') : t('common', 'browserOnly')}
-          </span>
         </div>
       </div>
 
@@ -354,11 +345,7 @@ export default function SettingsPage() {
 
       {/* General Settings */}
       <div className="settings-section settings-card">
-        <SectionIntro iconClass="fa-solid fa-globe" title={ts('language')} description={ts('chooseLanguage')} />
-        <div className="settings-helper-banner browser-only">
-          <span className="settings-helper-badge">{t('common', 'browserOnly')}</span>
-          <span>{ts('browserOnlyNote')}</span>
-        </div>
+        <SectionIntro iconClass="fa-solid fa-globe" title={ts('language')} />
 
         {/* Language Toggle Buttons */}
         <div className="settings-choice-grid two-up compact-frame">
@@ -380,7 +367,7 @@ export default function SettingsPage() {
 
       {/* Display Preferences */}
       <div className="settings-section settings-card">
-        <SectionIntro iconClass="fa-solid fa-paintbrush" title={ts('displayPreferences')} description={ts('displayPreferencesDesc')} />
+        <SectionIntro iconClass="fa-solid fa-paintbrush" title={ts('displayPreferences')} />
 
         {/* Temperature Unit */}
         <div className="settings-control-group with-divider">
@@ -422,11 +409,7 @@ export default function SettingsPage() {
 
       {/* Data Synchronization */}
       <div className="settings-section settings-card">
-        <SectionIntro iconClass="fa-solid fa-rotate" title={ts('dataSync')} description={ts('dataSyncDesc')} />
-        <div className="settings-helper-banner browser-only">
-          <span className="settings-helper-badge">{t('common', 'browserOnly')}</span>
-          <span>{ts('browserOnlyNote')}</span>
-        </div>
+        <SectionIntro iconClass="fa-solid fa-rotate" title={ts('dataSync')} />
 
         <label className="settings-field-label">{ts('autoRefreshInterval')}</label>
 
@@ -451,11 +434,7 @@ export default function SettingsPage() {
 
       {/* Notifications */}
       <div className="settings-section settings-card">
-        <SectionIntro iconClass="fa-solid fa-bell" title={ts('notificationsAlerts')} description={ts('notificationsAlertsDesc')} />
-        <div className="settings-helper-banner backend-driven">
-          <span className="settings-helper-badge">{t('common', 'backendDriven')}</span>
-          <span>{ts('serverDrivenNote')}</span>
-        </div>
+        <SectionIntro iconClass="fa-solid fa-bell" title={ts('notificationsAlerts')} />
 
         {/* Enable Notifications Toggle */}
         <div className="settings-toggle-row">
