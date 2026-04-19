@@ -1,136 +1,170 @@
-# Intelligent Mango Health Monitoring
+<div align="center">
 
-Edge AI and IoT for mango disease detection, environmental monitoring, and risk forecasting.
+# Intelligent Mango Health Monitoring
+### *Edge AI for Resilient Mango Agriculture in Ethiopia*
+
+<p>
+  <img src="https://img.shields.io/badge/TinyML-Edge%20Impulse-6A32C9?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Hardware-Arduino%20Nano%2033%20BLE-00979D?style=for-the-badge&logo=arduino&logoColor=white" />
+  <img src="https://img.shields.io/badge/Gateway-ESP32-E7352C?style=for-the-badge&logo=espressif&logoColor=white" />
+  <img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
+  <img src="https://img.shields.io/badge/Frontend-React-61DAFB?style=for-the-badge&logo=react&logoColor=black" />
+  <img src="https://img.shields.io/badge/Database-PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white" />
+  <img src="https://img.shields.io/badge/Deploy-Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
+</p>
+
+> An end-to-end smart agriculture system that detects mango leaf diseases in the field, evaluates environmental risk, generates a 5-day forecast, and serves a bilingual real-time dashboard for monitoring and decision support.
+
+</div>
+
+---
 
 ## Overview
 
-This project combines TinyML inference on the field device, environmental sensing on the gateway, and a full-stack monitoring dashboard for mango disease management.
+This project combines embedded AI, environmental sensing, and a full-stack dashboard into one field-ready monitoring system for mango disease management.
 
-The system is built to:
+It is designed to:
 
-- detect mango leaf diseases on-device with a quantized MobileNetV1 model
-- monitor field temperature, humidity, and precipitation
-- evaluate disease risk using agronomic rules
-- generate a 5-day forecast using LightGBM and Random Forest Classifier models
-- sync results to a bilingual web dashboard in English and Amharic
+- detect **Anthracnose**, **Powdery Mildew**, and **Healthy** leaf states on-device
+- monitor **temperature**, **humidity**, and precipitation context from the gateway
+- evaluate disease risk using agronomic thresholds
+- produce a **5-day forecast** for disease risk trends
+- deliver results to a bilingual **English / Amharic** dashboard
+
+---
 
 ## System Architecture
 
 ```text
-Arduino Nano 33 BLE Sense
-  -> captures leaf image
-  -> runs TinyML disease classification
-  -> sends result over BLE
-
-ESP32 Gateway
-  -> receives BLE result
-  -> reads DHT22 and rainfall context
-  -> evaluates disease risk
-  -> runs forecasting logic
-  -> sends data to backend over Wi-Fi
-
-FastAPI Backend + PostgreSQL
-  -> stores sensor, detection, recommendation, and forecast data
-  -> exposes REST and WebSocket APIs
-
-React Dashboard
-  -> shows live readings, disease status, recommendations, and forecast trends
++------------------------+      BLE Wireless      +----------------------+
+| Arduino Nano 33 BLE    | ---------------------> | ESP32 Gateway        |
+| + OV7675 Camera        |                        | + DHT22 Sensor       |
+| + TinyML Inference     |                        | + Risk Engine        |
+| + Disease Detection    |                        | + Forecasting        |
++------------------------+                        | + Local Alerts       |
+                                                  +----------+-----------+
+                                                             |
+                                                             | Wi-Fi
+                                                  +----------v-----------+
+                                                  | FastAPI Backend      |
+                                                  | PostgreSQL + JWT     |
+                                                  | REST API + WebSocket |
+                                                  +----------+-----------+
+                                                             |
+                                                  +----------v-----------+
+                                                  | React Dashboard      |
+                                                  | Real-time + Bilingual|
+                                                  +----------------------+
 ```
 
-## Data Flow
+### Data Flow
 
 | Step | Component | Action |
-| :-- | :-- | :-- |
-| 1 | Nano 33 BLE Sense | Captures mango leaf image |
-| 2 | Nano 33 BLE Sense | Runs quantized MobileNetV1 disease inference |
-| 3 | Nano 33 BLE Sense | Sends disease label and confidence via BLE |
-| 4 | ESP32 Gateway | Receives BLE result and reads environmental sensors |
-| 5 | ESP32 Gateway | Applies threshold-based disease risk logic |
-| 6 | ESP32 Gateway | Produces 5-day disease-risk forecast |
-| 7 | Backend | Stores readings, notifications, recommendations, and forecast history |
-| 8 | Frontend | Displays real-time dashboard analytics and alerts |
+| :---: | :--- | :--- |
+| 1 | **Nano 33 BLE Sense** | Captures mango leaf image with camera |
+| 2 | **Nano 33 BLE Sense** | Runs quantized MobileNetV1 inference on-device |
+| 3 | **Nano 33 BLE Sense** | Sends disease label and confidence over BLE |
+| 4 | **ESP32 Gateway** | Receives inference result and reads sensor data |
+| 5 | **ESP32 Gateway** | Applies threshold-based disease risk logic |
+| 6 | **ESP32 Gateway** | Generates 5-day disease risk forecast |
+| 7 | **Backend** | Stores data, notifications, forecast history, and recommendations |
+| 8 | **Dashboard** | Displays live readings, alerts, trends, and recommendations |
 
-## Core Features
+---
 
-### On-device disease detection
+## Key Features
 
-- Quantized MobileNetV1 runs on the Arduino Nano 33 BLE Sense
-- Supports detection of Anthracnose, Powdery Mildew, and Healthy leaf states
-- Keeps inference close to the farm with no cloud dependency for classification
+### On-Device TinyML Inference
 
-### Environmental risk evaluation
+- Runs a **quantized MobileNetV1** model directly on the Arduino Nano 33 BLE Sense
+- No cloud dependency for disease classification
+- Supports **Anthracnose**, **Powdery Mildew**, and **Healthy** classes
 
-The risk engine combines disease output with field conditions:
+### BLE-Based Device Communication
 
-| Disease | High-risk condition | Result |
-| :-- | :-- | :-- |
-| Anthracnose | 24-30 C and humidity above 80% | High risk |
-| Powdery Mildew | 10-31 C and humidity above 80% | High risk |
-| Disease detected but conditions not met | Any disease under weaker conditions | Medium risk |
-| Healthy | No disease detected | Low risk |
+- The Nano acts as the field inference node
+- The ESP32 acts as the gateway and BLE central
+- No wired connection is needed between the boards
 
-### Forecasting
+### Expert-Backed Risk Evaluation
 
-- 5-day disease-risk forecasting is documented as using LightGBM and Random Forest Classifier models
-- Forecast results are surfaced in the dashboard and stored in the backend
-- Forecast context is tied to live sensor and inference data for review and analysis
+The risk engine combines inference results with environmental conditions:
 
-### Dashboard
+| Disease | High-Risk Condition | Result |
+| :--- | :--- | :--- |
+| **Anthracnose** | 24-30 C and humidity above 80% | HIGH RISK |
+| **Powdery Mildew** | 10-31 C and humidity above 80% | HIGH RISK |
+| Disease detected but conditions not met | Disease present in weaker conditions | MEDIUM RISK |
+| Healthy | No disease detected | LOW RISK |
 
-- real-time sensor cards for temperature, humidity, and precipitation
-- disease status with confidence score and scan timing
-- forecast cards and trend visuals
-- bilingual recommendations in English and Amharic
-- notifications and alert history
-- settings page for system preferences and alert thresholds
+### 5-Day Forecasting
+
+- Forecast output is generated from gateway-side disease and environmental context
+- Results are stored in the backend and surfaced in the dashboard
+- Forecast cards help the farmer see short-term disease risk trends
+
+### Dashboard Experience
+
+- real-time sensor monitoring
+- disease status with confidence score
+- history and trend charts
+- bilingual recommendations in **English** and **Amharic**
+- notification feed and device management
+- responsive layout for desktop and mobile use
+
+---
 
 ## Hardware
 
-| Component | Role | Pin / Notes |
-| :-- | :-- | :-- |
-| Arduino Nano 33 BLE Sense | TinyML inference and BLE peripheral | Main field inference board |
-| OV7675 Camera | Leaf image capture | Connected to Nano 33 BLE |
-| ESP32 | BLE central, Wi-Fi gateway, risk engine, forecasting | Main gateway board |
-| DHT22 | Temperature and humidity sensing | GPIO 4 |
-| OLED / LCD display | Local field status display | I2C |
-| Buzzer | High-risk alerting | GPIO 5 |
+| Component | Role | Notes |
+| :--- | :--- | :--- |
+| **Arduino Nano 33 BLE Sense** | TinyML inference + BLE peripheral | Main field inference board |
+| **OV7675 Camera** | Leaf image capture | Connected to Nano |
+| **ESP32** | Gateway, BLE central, Wi-Fi uplink, forecasting | Main bridge device |
+| **DHT22** | Temperature and humidity sensing | Used by gateway |
+| **OLED / LCD Display** | Local device feedback | Shows status and alerts |
+| **Buzzer** | High-risk alerting | Triggered during urgent conditions |
+
+---
 
 ## Repository Structure
 
 ```text
 Intelligent-Mango-Health-Monitoring/
-|-- firmware/
-|   |-- nano33ble_edge_ai/
-|   |   |-- src/
-|   |   |-- lib/
-|   |   `-- platformio.ini
-|   `-- esp32_gateway/
-|       |-- src/
-|       |-- lib/
-|       `-- platformio.ini
-|-- backend/
-|   |-- app/
-|   |-- requirements.txt
-|   |-- Dockerfile
-|   `-- seed.py
-|-- frontend/
-|   |-- public/
-|   |-- src/
-|   |-- package.json
-|   `-- package-lock.json
-|-- dataset/
-|   |-- bahir_dar_mango_dataset_numeric.csv
-|   |-- aug.py
-|   `-- weather_data.py
-|-- docker-compose.yml
-`-- README.md
+├── firmware/
+│   ├── nano33ble_edge_ai/
+│   │   ├── src/
+│   │   ├── lib/
+│   │   └── platformio.ini
+│   └── esp32_gateway/
+│       ├── src/
+│       ├── lib/
+│       └── platformio.ini
+├── backend/
+│   ├── app/
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── seed.py
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   ├── package.json
+│   └── package-lock.json
+├── dataset/
+│   ├── bahir_dar_mango_dataset_numeric.csv
+│   ├── aug.py
+│   └── weather_data.py
+├── docker-compose.yml
+└── README.md
 ```
+
+---
 
 ## Getting Started
 
 ### 1. Firmware
 
-Configure `firmware/esp32_gateway/src/Config.h` with your Wi-Fi and backend values.
+Configure `firmware/esp32_gateway/src/Config.h`:
 
 ```cpp
 #define WIFI_SSID "your_wifi_name"
@@ -141,7 +175,7 @@ Configure `firmware/esp32_gateway/src/Config.h` with your Wi-Fi and backend valu
 #define DEVICE_ID "esp32_gateway_001"
 ```
 
-Flash the boards:
+Flash both boards:
 
 ```bash
 cd firmware/nano33ble_edge_ai
@@ -186,7 +220,7 @@ npm install
 npm start
 ```
 
-Create `frontend/.env` with:
+Create `frontend/.env`:
 
 ```env
 REACT_APP_API_BASE_URL=http://localhost:8000
@@ -196,86 +230,92 @@ Frontend URL:
 
 - Dashboard: `http://localhost:3000`
 
+---
+
 ## API Reference
 
 ### Authentication
 
 | Endpoint | Method | Description |
-| :-- | :-- | :-- |
+| :--- | :--- | :--- |
 | `/login` | POST | Login and return JWT |
 | `/register` | POST | Register a new user |
 | `/me` | GET | Current user profile |
 | `/profile` | PUT | Update profile |
 
-### Sensor and detection
+### Sensor and Detection
 
 | Endpoint | Method | Description |
-| :-- | :-- | :-- |
+| :--- | :--- | :--- |
 | `/sensors/latest` | GET | Latest sensor snapshot |
 | `/history` | GET | Historical sensor and detection data |
 | `/detection/latest` | GET | Latest disease detection |
 | `/detection/history` | GET | Paginated detection history |
 
-### Forecast and recommendations
+### Forecast and Recommendations
 
 | Endpoint | Method | Description |
-| :-- | :-- | :-- |
+| :--- | :--- | :--- |
 | `/forecast/latest` | GET | Latest 5-day forecast |
 | `/forecast/context` | POST | Submit forecast context from ESP32 |
 | `/recommendations/latest` | GET | Latest bilingual recommendations |
 
-### Notifications and streaming
+### Notifications and Streaming
 
 | Endpoint | Method | Description |
-| :-- | :-- | :-- |
+| :--- | :--- | :--- |
 | `/notifications` | GET | Fetch notifications |
 | `/notifications/{id}/read` | POST | Mark notification as read |
 | `/notifications/read-all` | POST | Mark all notifications as read |
 | `/ws` | WebSocket | Real-time updates |
 
-### Ingestion and health
+### Ingestion and Health
 
 | Endpoint | Method | Description |
-| :-- | :-- | :-- |
+| :--- | :--- | :--- |
 | `/data/ingest` | POST | Combined ESP32 payload |
 | `/health` | GET | Backend health check |
 
+---
+
 ## Model Summary
 
-### Disease detection model
+### Disease Detection Model
 
-| Item | Value |
-| :-- | :-- |
-| Model | MobileNetV1 |
-| Deployment | Quantized TinyML |
+| Metric | Value |
+| :--- | :--- |
+| Architecture | MobileNetV1 (quantized) |
+| Input Size | 160 x 160 |
+| Training Images | 11,375 |
+| Accuracy | **86.45%** |
 | Classes | Anthracnose, Powdery Mildew, Healthy |
-| Input size | 160 x 160 |
-| Training images | 11,375 |
-| Accuracy | 86.45% |
-| Dataset source | Woramit Horticultural Research Center, Ethiopia |
+| Dataset Source | Woramit Horticultural Research Center, Ethiopia |
 
-### Forecasting models
+### Forecasting
 
-| Item | Value |
-| :-- | :-- |
-| Forecast horizon | 5 days |
-| Models in use | LightGBM, Random Forest Classifier |
-| Main inputs | Temperature, humidity, precipitation, disease context |
-| Output | Disease risk categories for upcoming days |
+| Metric | Value |
+| :--- | :--- |
+| Horizon | 5 days |
+| Context Inputs | Temperature, humidity, disease status, field conditions |
+| Output | Daily disease-risk categories and trend indicators |
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
-| :-- | :-- |
-| Edge inference | Edge Impulse, TensorFlow Lite Micro |
-| Forecasting | LightGBM, Random Forest Classifier |
-| Firmware | PlatformIO, Arduino framework, NimBLE |
+| :--- | :--- |
+| TinyML Inference | Edge Impulse, TensorFlow Lite Micro |
+| Firmware | PlatformIO, Arduino Framework, NimBLE |
 | Backend | FastAPI, SQLAlchemy, PostgreSQL, JWT |
 | Frontend | React, Chart.js, Context API |
-| Real-time transport | WebSocket |
+| Real-Time Transport | WebSocket |
 | Deployment | Docker, Docker Compose |
 
-## Notes
+---
 
-- The README has been updated to reflect LightGBM and Random Forest Classifier as the forecasting models in use.
-- Current uncommitted code changes already existed in `frontend/src/pages/Dashboard.js` and `frontend/src/pages/SettingsPage.js`; this update keeps those intact and adds the README cleanup on top.
+<div align="center">
+
+*Built to bridge the gap between AI and smallholder agriculture in Ethiopia.*
+
+</div>
