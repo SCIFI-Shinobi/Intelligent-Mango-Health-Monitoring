@@ -11,6 +11,8 @@ class User(Base):
     password = Column(String)
     display_name = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)  # Base64 data URL or external URL
+    notification_emails_enabled = Column(Boolean, default=True, nullable=False)
+    disease_confidence_threshold = Column(Integer, default=70, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

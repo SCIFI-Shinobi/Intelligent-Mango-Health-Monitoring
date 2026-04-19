@@ -10,12 +10,12 @@ const root = ReactDOM.createRoot(document.getElementById("root"));
 
 root.render(
   <LanguageProvider>
-    <SettingsProvider>
       <AuthProvider>
+        <SettingsProvider>
         <BrowserRouter>
           <App />
         </BrowserRouter>
+        </SettingsProvider>
       </AuthProvider>
-    </SettingsProvider>
   </LanguageProvider>
 );

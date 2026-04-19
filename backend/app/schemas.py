@@ -134,6 +134,8 @@ class UserProfileOut(BaseModel):
     email: Optional[str] = None
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    notification_emails_enabled: bool = True
+    disease_confidence_threshold: int = 70
     created_at: datetime
 
     class Config:
@@ -143,6 +145,8 @@ class UserProfileUpdate(BaseModel):
     display_name: Optional[str] = None
     email: Optional[str] = None
     avatar_url: Optional[str] = None
+    notification_emails_enabled: Optional[bool] = None
+    disease_confidence_threshold: Optional[int] = None
 
 class PasswordChangeRequest(BaseModel):
     current_password: str

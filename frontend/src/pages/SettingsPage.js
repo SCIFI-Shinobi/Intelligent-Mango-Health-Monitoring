@@ -170,10 +170,15 @@ export default function SettingsPage() {
     setSaved(false);
   };
 
-  const handleSaveSettings = () => {
-    updateSettings(localSettings);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const handleSaveSettings = async () => {
+    try {
+      setError(null);
+      await updateSettings(localSettings);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      setError(e.message || ts('unknownError'));
+    }
   };
 
   const selectedRefreshLabel = localSettings.autoRefreshInterval
