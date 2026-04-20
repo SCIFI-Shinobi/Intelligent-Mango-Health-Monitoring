@@ -45,7 +45,7 @@ const DiseaseProfile profiles[] = {
         "Prune crowded trees",       // 19 chars trimmed to 16
         "\u12f3\u1239\u1273\u121b \u123b\u130b\u1273 \u121b\u1235\u1328\u1295\u1240\u1243",
         "\u1230\u120d\u1348\u122d \u1218\u122d\u1218\u122d \u12ed\u1233\u12f1",
-        "\u12e8\u12a0\u12e8\u122d \u12dd\u12c8\u12cd\u12c8\u1275 \u12eb\u1273\u1355\u1260\u1275"
+        "\u12e8\u12a0\u12e8\u122d \u12dd\x12c8\u12cd\u12c8\u1275 \u12eb\u1273\u1355\u1260\u1275"
     }
 };
 
@@ -93,7 +93,7 @@ static const uint8_t LCD_I2C_ADDR = 0x3f;
 static const uint8_t LCD_COLUMNS  = 16;
 static const uint8_t LCD_ROWS     = 2;
 
-static const unsigned long DATA_UPLOAD_INTERVAL_MS   = 10000;
+static const unsigned long DATA_UPLOAD_INTERVAL_MS    = 10000;
 static const unsigned long WIFI_RECONNECT_INTERVAL_MS = 8000;
 static const unsigned long DHT_READ_INTERVAL_MS       = 2000;
 
@@ -154,10 +154,9 @@ void connectWiFi() {
     Serial.println();
 
     if (WiFi.status() == WL_CONNECTED) {
-        String ip = WiFi.localIP().toString();
-        showOnLcd("WiFi Connected", ip);
+        showOnLcd("WiFi Connected", "Success!");
         digitalWrite(GREEN_LED_PIN, HIGH);
-        Serial.println("Connected. IP: " + ip);
+        Serial.println("Connected. IP: " + WiFi.localIP().toString());
     } else {
         showOnLcd("WiFi Failed", "Check SSID/PASS");
         Serial.println("WiFi connection failed.");
@@ -172,6 +171,7 @@ void sendLog(const String& message) {
     http.setTimeout(3000);
     String url = String(LOG_SERVER_URL) + "/log";
     WiFiClientSecure clientSecure;
+    clientSecure.setInsecure(); // Allow insecure connection for ESP8266
     WiFiClient client;
     bool ok = url.startsWith("https")
         ? http.begin(clientSecure, url)
@@ -286,6 +286,8 @@ void readAndDisplayDht() {
         lastTemperatureC = t;
         lastHumidityPct  = h;
         sendLog("T=" + String(t, 1) + "C H=" + String(h, 0) + "%");
+        yield(); // Feed the watchdog timer to prevent a crash
+        delay(50); // Space out heavy tasks to avoid memory exhaustion
         runEdgeImpulseModel(t, h);
     } else {
         sendLog("DHT read failed");
@@ -321,6 +323,7 @@ void sendSensorData() {
     http.setTimeout(5000);
     String url = String(TEST_SERVER_URL);
     WiFiClientSecure clientSecure;
+    clientSecure.setInsecure(); // Allow insecure connection for ESP8266
     WiFiClient client;
     bool ok = url.startsWith("https")
         ? http.begin(clientSecure, url)
@@ -378,6 +381,9 @@ void sendSensorData() {
     http.end();
 }
 
+// ================= GLOBALS =================
+unsigned long lastNanoSim = 0;
+
 // ================= SETUP =================
 void setup() {
     Serial.begin(9600);
@@ -399,35 +405,61 @@ void setup() {
     randomSeed(analogRead(A0)); // Once at startup
 
     connectWiFi();
+
+    // FIX 1: Set lastNanoSim far enough in the past so the disease simulation
+    // fires immediately on the very first loop() iteration instead of waiting
+    // a full 20 seconds while the LCD sits frozen on "WiFi Connected".
+    lastNanoSim = millis() - DISEASE_SIM_INTERVAL_MS;
 }
 
 // ================= LOOP =================
 void loop() {
     unsigned long now = millis();
 
-    // ── Simulate Nano BLE result every 20s ──
-    // Remove this block when the real Nano is connected via BLE/UART
-    static unsigned long lastNanoSim = 0;
-    if (now - lastNanoSim >= 20000) {
+    // ── Always generate random disease result every DISEASE_SIM_INTERVAL_MS (from secrets.h) ──
+    if (now - lastNanoSim >= DISEASE_SIM_INTERVAL_MS) {
         lastNanoSim = now;
         const char* diseases[] = {"Healthy", "Anthracnose", "Powdery_Mildew"};
         int idx = random(0, 3);
         nanoClassification.className  = diseases[idx];
-        nanoClassification.classIndex = -1;
         if (nanoClassification.className == "Healthy") {
             nanoClassification.confidence = 1.0;
+            nanoClassification.classIndex = -1;
+            // LED logic: Healthy = Green ON, Red OFF
+            digitalWrite(GREEN_LED_PIN, HIGH);
+            digitalWrite(RED_LED_PIN, LOW);
         } else {
             nanoClassification.confidence = random(70, 100) / 100.0;
+            nanoClassification.classIndex = -1; // reset before search
             for (size_t i = 0; i < sizeof(profiles) / sizeof(profiles[0]); ++i) {
                 if (nanoClassification.className == profiles[i].name) {
                     nanoClassification.classIndex = (int)i;
                     break;
                 }
             }
+            // LED logic: Disease = Red ON, Green OFF if above threshold
+            if (nanoClassification.confidence >= ALERT_THRESHOLD) {
+                digitalWrite(RED_LED_PIN, HIGH);
+                digitalWrite(GREEN_LED_PIN, LOW);
+                beep(800, 200, 2);
+                digitalWrite(RED_LED_PIN, LOW);
+            } else {
+                // Below threshold: all LEDs OFF
+                digitalWrite(RED_LED_PIN, LOW);
+                digitalWrite(GREEN_LED_PIN, LOW);
+            }
         }
         nanoResultAvailable = true;
-        Serial.printf("[SIM] Nano: %s (%.2f)\n",
+        Serial.printf("[SIM] Disease: %s (%.2f)\n",
             nanoClassification.className.c_str(), nanoClassification.confidence);
+
+        // FIX 3: Only update the LCD from the sim if a recommendation isn't
+        // currently being displayed — otherwise it wipes the recommendation mid-display.
+        if (!showRecommendation) {
+            String line1 = nanoClassification.className;
+            String line2 = String((int)(nanoClassification.confidence * 100)) + "%";
+            showOnLcd(line1, line2);
+        }
     }
 
     // ── WiFi watchdog ──
@@ -468,10 +500,13 @@ void loop() {
     }
 
     // ── Data upload ──
+    // FIX 2: Don't clear nanoResultAvailable after upload — the DHT display and
+    // recommendation engine still need it on the next cycle. The upload timer
+    // already prevents sending to the server more than once every 10 seconds.
     if (nanoResultAvailable && (now - lastDataUploadMs >= DATA_UPLOAD_INTERVAL_MS)) {
-        lastDataUploadMs    = now;
+        lastDataUploadMs = now;
         sendSensorData();
-        nanoResultAvailable = false;
+        // nanoResultAvailable intentionally NOT cleared here
     }
 
     delay(50);
