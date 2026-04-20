@@ -1,15 +1,87 @@
+// ================= UART PARSER (real Nano when connected) =================
+void parseNanoSerialLine(const String& line) {
+    int commaIdx = line.indexOf(',');
+    if (commaIdx <= 0) return;
+    String disease = line.substring(0, commaIdx);
+    float  conf    = line.substring(commaIdx + 1).toFloat();
+    nanoClassification.className  = disease;
 
-#include <Arduino.h>
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <DHT.h>
+    void sendDataToCloud() {
+        if (WiFi.status() != WL_CONNECTED) {
+            showOnLcd("WiFi Disconn", "Reconnecting...");
+            digitalWrite(GREEN_LED_PIN, LOW);
+            return;
+        }
+        if (!nanoResultAvailable) return;
 
-#include <Adafruit_Sensor.h>
-#include <NimBLEDevice.h>
+        HTTPClient http;
+        http.setTimeout(5000);
+        String url = String(TEST_SERVER_URL);
+        WiFiClientSecure clientSecure;
+        WiFiClient client;
+        bool ok = url.startsWith("https")
+            ? http.begin(clientSecure, url)
+            : http.begin(client, url);
+        if (!ok) { showOnLcd("HTTP Begin Err", "Bad URL?"); beep(120, 120, 2); return; }
+
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("x-device-key", DEVICE_API_KEY);
+
+        float  humidity    = isnan(lastHumidityPct)  ? 0.0f : lastHumidityPct;
+        float  temperature = isnan(lastTemperatureC) ? 0.0f : lastTemperatureC;
+        String disease     = nanoClassification.className;
+        float  confidence  = nanoClassification.confidence;
+
+        // Amharic fields go in payload for dashboard — not printed to LCD
+        String titleAm  = "";
+        String actionAm = "";
+        if (nanoClassification.classIndex >= 0) {
+            const DiseaseProfile& prof = profiles[nanoClassification.classIndex];
+            titleAm  = prof.titleAm;
+            actionAm = prof.targetedActionAm;
+        }
+
+        String payload = "{";
+        payload += "\"device_id\":\""      + WiFi.macAddress()     + "\",";
+        payload += "\"humidity\":"         + String(humidity, 2)   + ",";
+        payload += "\"temperature\":"      + String(temperature, 2)+ ",";
+        payload += "\"disease_type\":\""   + disease               + "\",";
+        payload += "\"confidence_score\":" + String(confidence, 3) + ",";
+        payload += "\"title_am\":\""       + jsonEscape(titleAm)   + "\",";
+        payload += "\"action_am\":\""      + jsonEscape(actionAm)  + "\"";
+        payload += "}";
+
+        Serial.println("Sending: " + payload);
+
+        digitalWrite(YELLOW_LED_PIN, HIGH); // Uploading indicator
+
+        if (disease == "Healthy") {
+            digitalWrite(GREEN_LED_PIN, HIGH);
+            digitalWrite(RED_LED_PIN, LOW);
+        } else if (confidence >= ALERT_THRESHOLD) {
+            digitalWrite(RED_LED_PIN, HIGH);
+            digitalWrite(GREEN_LED_PIN, LOW);
+            beep(800, 200, 2);
+            digitalWrite(RED_LED_PIN, LOW);
+        }
+
+        int code = http.POST(payload);
+        digitalWrite(YELLOW_LED_PIN, LOW);
+        lastHttpStatus = "HTTP:" + String(code > 0 ? code : 0);
+
+        if (code > 0) Serial.println("HTTP " + String(code) + ": " + http.getString());
+        else          Serial.println("POST error: " + http.errorToString(code));
+
+        http.end();
+    }
 #include <time.h>
+void showOnLcd(const String& line1, const String& line2) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(line1.substring(0, LCD_COLUMNS));
+    lcd.setCursor(0, 1);
+    lcd.print(line2.substring(0, LCD_COLUMNS));
+}
 #include "Config.h"
 #include "edge-impulse-sdk/classifier/ei_run_classifier.h"
 #include "model-parameters/model_metadata.h"
@@ -308,54 +380,73 @@ void evaluateRisk() {
     for (int i = 0; i < NUM_PROFILES; i++) {
         if (strcmp(currentDisease, profiles[i].name) == 0) {
             profile = &profiles[i];
-            currentProfile = profile;
-            break;
-        }
-    }
 
-    if (!profile) {
-        riskLevel = "MEDIUM RISK";
-        recommendation = "Preventive Treatment";
-        farmerAction = "መከላከያ"; // Preventive
-        alertActive = false;
-        return;
-    }
+            // ================= DISEASE PROFILES (Synced with ESP8266) =================
+            // LCD only supports ASCII — Amharic is never printed to LCD.
+            // Amharic strings are sent in the JSON payload to the backend
+            // so the React dashboard can display them properly.
+            struct DiseaseProfile {
+                const char* name;
+                float minTemp;
+                float maxTemp;
+                float humidityThreshold;
+                const char* titleEn;             // LCD line 1 (max 16 chars)
+                const char* targetedActionEn;    // LCD line 2 — first 4 seconds
+                const char* preventiveActionEn;  // LCD line 2 — second 4 seconds
+                const char* titleAm;             // Backend/dashboard only
+                const char* targetedActionAm;    // Backend/dashboard only
+                const char* preventiveActionAm;  // Backend/dashboard only
+            };
 
+            const DiseaseProfile profiles[] = {
+                {
+                    "Anthracnose", 24.0, 30.0, 80.0,
+                    "Anthracnose Alert",         // 16 chars — fits exactly
+                    "Spray copper fung.",        // 18 chars trimmed to 16 by showOnLcd
+                    "Remove sick branch",        // 18 chars trimmed to 16
+                    "\u12a0\u1295\u1275\u122b\u12ad\u1296\u12d8 \u121b\u1235\u1328\u1295\u1240\u1243",
+                    "\u134d\u1295\u1308\u1235 \u121b\u1325\u134a\u12eb \u12ed\u122d\u1329",
+                    "\u12e8\u1273\u1218\u121d\u12c8 \u1245\u122d\u1295\u132b\u134e\u127d\u1295 \u12eb\u1235\u12c8\u130d\u12f1"
+                },
+                {
+                    "Powdery_Mildew", 18.0, 26.0, 60.0,
+                    "Powdery Mildew",            // 14 chars — fits
+                    "Apply sulfur spray",        // 18 chars trimmed to 16
+                    "Prune crowded trees",       // 19 chars trimmed to 16
+                    "\u12f3\u1239\u1273\u121b \u123b\u130b\u1273 \u121b\u1235\u1328\u1295\u1240\u1243",
+                    "\u1230\u120d\u1348\u122d \u1218\u122d\u1218\u122d \u12ed\u1233\u12f1",
+                    "\u12e8\u12a0\u12e8\u122d \u12dd\u12c8\u12cd\u12c8\u1275 \u12eb\u1273\u1355\u1260\u1275"
+                }
+            };
 
-    bool tempSuitable = (currentTemperature >= profile->minTemp && currentTemperature <= profile->maxTemp);
-    bool moistureSuitable = (currentHumidity > profile->humidityThreshold);
+            // Edge Impulse output order (alphabetical): 0=Anthracnose, 1=Healthy, 2=Powdery_Mildew
+            // Map EI index to profiles[] index. -1 = Healthy (no disease).
+            static const int EI_CLASS_COUNT  = 3;
+            static const int EI_TO_PROFILE[] = { 0, -1, 1 };
 
-    // High Risk: Both temp AND humidity match disease conditions, or rain boosts risk
-    if (tempSuitable && moistureSuitable) {
-        riskLevel = "HIGH RISK";
-        recommendation = profile->targetedActionEn;
-        farmerAction = profile->targetedActionAm;
-        isHighRisk = true;
-        alertActive = true;
-    }
-    // Rain + one other factor = elevated risk
-    else if (isRaining && (tempSuitable || moistureSuitable)) {
-        riskLevel = "HIGH RISK";
-        recommendation = profile->targetedActionEn;
-        farmerAction = profile->targetedActionAm;
-        isHighRisk = true;
-        alertActive = true;
-    }
-    // Medium Risk: Only temp OR humidity matches
-    else if (tempSuitable || moistureSuitable) {
-        riskLevel = "MEDIUM RISK";
-        recommendation = profile->preventiveActionEn;
-        farmerAction = profile->preventiveActionAm;
-        alertActive = false;
-    }
-    // Rain alone with disease detected = medium risk
-    else if (isRaining) {
-        riskLevel = "MEDIUM RISK";
-        recommendation = profile->preventiveActionEn;
-        farmerAction = profile->preventiveActionAm;
-        alertActive = false;
-    }
-    // Low Risk: Neither condition matches
+            struct ClassificationResult {
+                String className;
+                float  confidence;
+                int    classIndex;
+            };
+
+            ClassificationResult lastClassification = {"Healthy", 1.0, -1};
+            ClassificationResult nanoClassification = {"",        0.0, -1};
+            bool nanoResultAvailable = false;
+
+            const float ALERT_THRESHOLD = 0.7;
+
+            bool          showRecommendation       = false;
+            unsigned long recommendationStart      = 0;
+            int           recommendationProfileIdx = -1;
+            bool          showPreventive           = false;
+            unsigned long lastActionSwitch         = 0;
+
+            const unsigned long RECOMMENDATION_DISPLAY_MS = 8000; // 8s total
+            const unsigned long ACTION_SWITCH_MS          = 4000; // 4s targeted, 4s preventive
+
+            float lastTemperatureC = NAN;
+            float lastHumidityPct  = NAN;
     else {
         riskLevel = "LOW RISK";
         recommendation = "Monitoring & Cultural Practices";
@@ -595,33 +686,38 @@ void loop() {
         bleConnected = connectToNano();
     }
 
-    // --- DHT read and forecast ---
+    // --- DHT read + EI forecasting ---
     if (now - lastDhtReadMs >= DHT_READ_INTERVAL_MS) {
         lastDhtReadMs = now;
-        float h = dht.readHumidity();
-        float t = dht.readTemperature();
-        if (!isnan(h) && !isnan(t)) {
-            currentTemperature = t;
-            currentHumidity = h;
-            String msg = "Temp=" + String(t, 1) + "C Humidity=" + String(h, 0) + "%";
-            sendLog(msg);
-            runEdgeImpulseModel(t, h);
+        readAndDisplayDht();
+    }
+
+    // --- Recommendation display (English only on LCD) ---
+    // Line 1: disease title   e.g. "Anthracnose Alert"
+    // Line 2: action          first 4s = targeted, next 4s = preventive
+    if (showRecommendation && recommendationProfileIdx >= 0) {
+        if (now - recommendationStart < RECOMMENDATION_DISPLAY_MS) {
+            if (!showPreventive && (now - lastActionSwitch >= ACTION_SWITCH_MS)) {
+                showPreventive   = true;
+                lastActionSwitch = now;
+            }
+            const DiseaseProfile& prof = profiles[recommendationProfileIdx];
+            String l2 = showPreventive
+                ? prof.preventiveActionEn
+                : prof.targetedActionEn;
+            showOnLcd(prof.titleEn, l2);
+        } else {
+            showRecommendation       = false;
+            recommendationProfileIdx = -1;
+            showPreventive           = false;
         }
-        evaluateRisk();
-        updateDisplay();
     }
 
-    // --- Cloud upload ---
-    if (now - lastDataUploadMs >= DATA_UPLOAD_INTERVAL_MS) {
-        lastDataUploadMs = now;
+    // --- Data upload ---
+    if (nanoResultAvailable && (now - lastDataUploadMs >= DATA_UPLOAD_INTERVAL_MS)) {
+        lastDataUploadMs    = now;
         sendDataToCloud();
-    }
-
-    // --- Buzzer logic ---
-    if (alertActive) {
-        digitalWrite(BUZZER_PIN, (millis() / 500) % 2 == 0 ? HIGH : LOW);
-    } else {
-        digitalWrite(BUZZER_PIN, LOW);
+        nanoResultAvailable = false;
     }
 
     delay(50);
