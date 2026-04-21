@@ -38,6 +38,11 @@ class UploadPayload(BaseModel):
     humidity: float
     disease_type: str
     confidence_score: float
+    # Optional Amharic recommendation fields
+    title_am: Optional[str] = None
+    action_am: Optional[str] = None
+    # Optional forecast field
+    forecast: Optional[list[dict]] = None
 
 class HistoricalData(BaseModel):
     sensor_data: list[SensorData]

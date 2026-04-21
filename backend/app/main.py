@@ -711,6 +711,39 @@ async def upload_data(
     )
     db.add(new_inference)
 
+    # Save Amharic recommendation if present
+    rec_id = None
+    if payload.title_am or payload.action_am:
+        rec = models.Recommendation(
+            device_id=internal_device_id,
+            title=payload.disease_type,
+            description=payload.action_am or "",
+            title_am=payload.title_am,
+            description_am=payload.action_am,
+        )
+        db.add(rec)
+        db.flush()
+        rec_id = rec.id
+
+    # Save forecast if present
+    forecast_ids = []
+    if payload.forecast:
+        from .models import ForecastContext, ForecastData
+        context = ForecastContext(device_id=internal_device_id)
+        db.add(context)
+        db.flush()
+        for idx, day in enumerate(payload.forecast):
+            fd = ForecastData(
+                device_id=internal_device_id,
+                day_index=day.get("day", idx),
+                risk_level=day.get("risk_level", ""),
+                forecast_date=day.get("date"),
+                context_id=context.id
+            )
+            db.add(fd)
+            db.flush()
+            forecast_ids.append(fd.id)
+
     db.commit()
     db.refresh(new_sensor_data)
     db.refresh(new_inference)
@@ -727,9 +760,15 @@ async def upload_data(
         "status": "success",
         "data_id": new_sensor_data.id,
         "inference_id": new_inference.id,
+        "recommendation_id": rec_id,
+        "forecast_ids": forecast_ids,
         "risk_level": risk["risk_level"],
         "recommendation": risk["recommendation"],
-        "forecast_alert": forecast_alert
+        "recommendation_am": risk.get("recommendation_am"),
+        "forecast_alert": forecast_alert,
+        "title_am": payload.title_am,
+        "action_am": payload.action_am,
+        "forecast": payload.forecast
     }
 
 
@@ -824,7 +863,7 @@ def get_sensors_history(
 
 @app.get("/detection/latest")
 def get_detection_latest(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    """Get the absolute latest disease detection result with matching sensor data."""
+    """Get the absolute latest disease detection result with matching sensor data and forecast."""
     user_device_ids = get_user_scoped_device_ids(db, user.id)
     if not user_device_ids:
         raise HTTPException(status_code=404, detail="No detection data available")
@@ -848,12 +887,39 @@ def get_detection_latest(db: Session = Depends(get_db), user: models.User = Depe
             models.SensorData.device_id.in_(user_device_ids)
         ).order_by(models.SensorData.timestamp.asc()).first()
 
+    # Get latest forecast context for this device
+    from .models import ForecastContext, ForecastData
+    forecast_context = db.query(ForecastContext).filter(
+        ForecastContext.device_id == detection.device_id
+    ).order_by(ForecastContext.timestamp.desc()).first()
+
+    forecast_days = []
+    forecast_created_at = None
+    forecast_context_dict = None
+    if forecast_context:
+        forecast_created_at = forecast_context.timestamp
+        forecast_context_dict = {"id": forecast_context.id, "timestamp": forecast_context.timestamp}
+        forecast_days = [
+            {
+                "day": f.day_index,
+                "risk_level": f.risk_level,
+                "date": f.forecast_date,
+                "created_at": f.created_at
+            }
+            for f in db.query(ForecastData).filter(ForecastData.context_id == forecast_context.id).order_by(ForecastData.day_index.asc()).all()
+        ]
+
     return {
         "disease_type": detection.disease_type,
         "confidence_score": detection.confidence_score,
         "timestamp": detection.timestamp,
         "temperature": sensor.temperature if sensor else None,
-        "humidity": sensor.humidity if sensor else None
+        "humidity": sensor.humidity if sensor else None,
+        "forecast": {
+            "context": forecast_context_dict,
+            "days": forecast_days,
+            "created_at": forecast_created_at
+        } if forecast_days else None
     }
 
 

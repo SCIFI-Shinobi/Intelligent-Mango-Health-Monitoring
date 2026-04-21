@@ -6,6 +6,7 @@ import DiseaseStatusCard from '../components/DiseaseStatusCard';
 import SensorCard from '../components/SensorCard';
 import HistoricalChart from '../components/HistoricalChart';
 import RecommendationsPanel from '../components/RecommendationsPanel';
+import ForecastCard from '../components/ForecastCard';
 import LogsPage from './LogsPage';
 import SettingsPage from './SettingsPage';
 import AnalysisPage from './AnalysisPage';
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [forecast, setForecast] = useState(null);
 
   // Time range management
   const { range, setRange, data: historyData, loading: historyLoading } = useTimeRange();
@@ -106,6 +108,10 @@ export default function Dashboard() {
             humidity: detectionData.humidity,
             timestamp: detectionData.timestamp
           });
+          // If forecast is present in detectionData, set it
+          if (detectionData.forecast) {
+            setForecast(detectionData.forecast);
+          }
         }
 
         // Fetch recommendations
@@ -229,6 +235,7 @@ export default function Dashboard() {
                 currentRange={range}
                 lastUpdatedText={formatUpdated(chartUpdated)}
               />
+              <ForecastCard forecast={forecast} loading={loading} />
               <RecommendationsPanel recommendations={recommendations} loading={loading} />
             </div>
           </div>
