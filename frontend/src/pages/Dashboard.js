@@ -63,6 +63,7 @@ export default function Dashboard() {
     ws.current.onmessage = (event) => {
       try {
         const incoming = JSON.parse(event.data);
+        window.dispatchEvent(new CustomEvent('mangoguard-live-update', { detail: incoming }));
         if (incoming.disease_type) {
           setDetection({
             disease_type: incoming.disease_type,
@@ -159,7 +160,7 @@ export default function Dashboard() {
       clearTimeout(reconnectTimer.current);
       if (ws.current) ws.current.close();
     };
-  }, [token, connectWebSocket]);
+  }, [token, connectWebSocket, normalizeRecommendations]);
 
   // Get window size for responsive behavior
   const [isDesktop, setIsDesktop] = useState(window.innerWidth > 1024);
