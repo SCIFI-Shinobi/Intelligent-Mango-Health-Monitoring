@@ -315,6 +315,36 @@ body {
 /* Notification bell & panel */
 .notif-bell {
   position: relative;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.notif-bell::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 14px;
+  background: radial-gradient(circle, rgba(47, 129, 247, 0.3) 0%, rgba(47, 129, 247, 0) 70%);
+  opacity: 0;
+  transform: scale(0.8);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.notif-bell i {
+  transform-origin: top center;
+}
+
+.notif-bell.ringing {
+  box-shadow: 0 0 0 1px rgba(47, 129, 247, 0.38), 0 0 22px rgba(47, 129, 247, 0.24);
+}
+
+.notif-bell.ringing::after {
+  animation: notif-glow 1.3s ease-out;
+}
+
+.notif-bell.ringing i {
+  animation: notif-bell-ring 1.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .notif-badge {
@@ -334,6 +364,35 @@ body {
   padding: 0 4px;
   line-height: 1;
   border: 2px solid #0d1117;
+}
+
+.notif-badge.pulse {
+  animation: notif-badge-pop 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes notif-bell-ring {
+  0% { transform: rotate(0deg) scale(1); }
+  12% { transform: rotate(18deg) scale(1.08); }
+  24% { transform: rotate(-14deg) scale(1.04); }
+  36% { transform: rotate(10deg) scale(1.03); }
+  48% { transform: rotate(-8deg) scale(1.02); }
+  60% { transform: rotate(5deg) scale(1.01); }
+  72% { transform: rotate(-3deg) scale(1); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+@keyframes notif-glow {
+  0% { opacity: 0; transform: scale(0.8); }
+  20% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.35); }
+}
+
+@keyframes notif-badge-pop {
+  0% { transform: scale(1); }
+  18% { transform: scale(1.35); }
+  38% { transform: scale(0.92); }
+  58% { transform: scale(1.08); }
+  100% { transform: scale(1); }
 }
 
 .navbar-right {
