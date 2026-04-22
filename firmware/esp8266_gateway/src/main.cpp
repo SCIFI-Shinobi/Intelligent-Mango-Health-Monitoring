@@ -5,12 +5,11 @@
  *   1. Read DHT22 (temp + humidity)
  *   2. Generate random disease + confidence
  *   3. Display on LCD — buzz if above threshold
- *   4. Send simulation result to backend dashboard
- *   5. Show recommendation on LCD (temp/humidity aware)
- *   6. Generate random forecast (High_Anthracnose_Risk | High_Mildew_Risk | Stable)
- *   7. Display forecast on LCD
- *   8. Send forecast to backend dashboard
- *   9. Wait, then repeat
+ *   4. Show recommendation on LCD (temp/humidity aware)
+ *   5. Generate 5-day forecast when due
+ *   6. Display forecast on LCD
+ *   7. Send one unified payload to backend dashboard
+ *   8. Wait, then repeat
  */
 
 #include <Arduino.h>
@@ -50,7 +49,7 @@ const DiseaseProfile profiles[] = {
         "\u12e8\u1273\u1218\u121d\u12c8 \u1245\u122d\u1295\u132b\u134e\u127d\u1295 \u12eb\u1235\u12c8\u130d\u12f1"
     },
     {
-        "Powdery_Mildew", 18.0f, 26.0f, 60.0f,
+        "Powdery Mildew", 18.0f, 26.0f, 60.0f,
         "Powdery Mildew",
         "Apply sulfur spray",
         "Prune crowded trees",
@@ -69,7 +68,6 @@ const char* forecastLabels[] = {
     "High_Mildew_Risk",
     "Stable"
 };
-static const int NUM_FORECASTS = 3;
 
 // =====================================================================
 // PINS & HARDWARE
@@ -128,47 +126,55 @@ int findProfile(const String& name) {
     return -1;
 }
 
-String buildDiseasePayload(const String& disease, float conf,
-                           float temp, float hum, int profIdx) {
-    String titleAm = "", actionAm = "";
-    if (profIdx >= 0) {
-        titleAm  = profiles[profIdx].titleAm;
-        actionAm = profiles[profIdx].targetedActionAm;
-    }
+bool isHighRiskConditions(int profIdx, float temp, float hum) {
+    if (profIdx < 0 || profIdx >= NUM_PROFILES) return false;
+
+    return temp >= profiles[profIdx].minTemp &&
+           temp <= profiles[profIdx].maxTemp &&
+           hum >= profiles[profIdx].humidityThreshold;
+}
+
+String buildUploadPayload(const String& disease, float conf,
+                          float temp, float hum, int profIdx,
+                          bool includeRecommendation,
+                          bool targetedAction,
+                          bool includeForecast,
+                          const String forecastDays[],
+                          int forecastDayCount) {
     String p = "{";
     p += "\"device_id\":\""      + WiFi.macAddress()    + "\",";
     p += "\"humidity\":"         + String(hum,  2)      + ",";
     p += "\"temperature\":"      + String(temp, 2)      + ",";
     p += "\"disease_type\":\""   + disease              + "\",";
-    p += "\"confidence_score\":" + String(conf,  3)     + ",";
-    p += "\"title_am\":\""       + jsonEscape(titleAm)  + "\",";
-    p += "\"action_am\":\""      + jsonEscape(actionAm) + "\"";
-    p += "}";
-    return p;
-}
+    p += "\"confidence_score\":" + String(conf,  3);
 
-String buildForecastPayload(const String& forecast, float conf,
-                            float temp, float hum) {
-    // Backend expects forecast as a list of objects
-    String p = "{";
-    p += "\"device_id\":\""      + WiFi.macAddress() + "\",";
-    p += "\"humidity\":"         + String(hum,  2)   + ",";
-    p += "\"temperature\":"      + String(temp, 2)   + ",";
-    // Send forecast as a list of one object
-    p += "\"forecast\":[{";
-    p += "\"day\":0,";
-    p += "\"risk_level\":\"" + forecast + "\",";
-    p += "\"date\":\"";
-    // Add current date as ISO string (YYYY-MM-DD)
-    time_t now = time(nullptr);
-    struct tm *tm_info = localtime(&now);
-    char date_buf[11];
-    strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", tm_info);
-    p += String(date_buf);
-    p += "\",";
-    p += "\"confidence_score\":" + String(conf,  3);
-    p += "}],";
-    p += "\"confidence_score\":" + String(conf,  3);
+    if (includeRecommendation && profIdx >= 0) {
+        const DiseaseProfile& prof = profiles[profIdx];
+        const char* titleEn = prof.titleEn;
+        const char* actionEn = targetedAction ? prof.targetedActionEn : prof.preventiveActionEn;
+        const char* titleAm = prof.titleAm;
+        const char* actionAm = targetedAction ? prof.targetedActionAm : prof.preventiveActionAm;
+
+        p += ",\"recommendations\":[{";
+        p += "\"title\":\"" + jsonEscape(titleEn) + "\",";
+        p += "\"description\":\"" + jsonEscape(actionEn) + "\",";
+        p += "\"title_am\":\"" + jsonEscape(titleAm) + "\",";
+        p += "\"description_am\":\"" + jsonEscape(actionAm) + "\"";
+        p += "}]";
+    }
+
+    if (includeForecast && forecastDayCount > 0) {
+        p += ",\"forecast\":[";
+        for (int day = 0; day < forecastDayCount; day++) {
+            p += "{";
+            p += "\"day\":" + String(day + 1) + ",";
+            p += "\"risk_level\":\"" + forecastDays[day] + "\"";
+            p += "}";
+            if (day < forecastDayCount - 1) p += ",";
+        }
+        p += "]";
+    }
+
     p += "}";
     return p;
 }
@@ -228,12 +234,16 @@ int httpPost(const String& payload) {
     Serial.println("[HTTP] Sending: " + payload);
     digitalWrite(YELLOW_LED_PIN, HIGH);
     int code = http.POST(payload);
+    String responseBody = (code > 0) ? http.getString() : "";
     digitalWrite(YELLOW_LED_PIN, LOW);
 
-    if (code > 0)
-        Serial.printf("[HTTP] OK %d: %s\n", code, http.getString().c_str());
-    else
+    if (code >= 200 && code < 300) {
+        Serial.printf("[HTTP] OK %d: %s\n", code, responseBody.c_str());
+    } else if (code > 0) {
+        Serial.printf("[HTTP] SERVER %d: %s\n", code, responseBody.c_str());
+    } else {
         Serial.printf("[HTTP] FAIL: %s\n", http.errorToString(code).c_str());
+    }
 
     http.end();
     return code;
@@ -275,7 +285,7 @@ void loop() {
     // ------------------------------------------------------------------
     // READ DHT22
     // ------------------------------------------------------------------
-    Serial.println("[1/8] Reading DHT22...");
+    Serial.println("[1/7] Reading DHT22...");
     float temperature = NAN, humidity = NAN;
 
     for (int attempt = 0; attempt < 3 && (isnan(temperature) || isnan(humidity)); attempt++) {
@@ -300,9 +310,9 @@ void loop() {
     // ------------------------------------------------------------------
     // STEP 1 — Random disease + confidence
     // ------------------------------------------------------------------
-    Serial.println("[2/8] Generating random disease...");
+    Serial.println("[2/7] Generating random disease...");
 
-    const char* diseaseNames[] = { "Healthy", "Anthracnose", "Powdery_Mildew" };
+    const char* diseaseNames[] = { "Healthy", "Anthracnose", "Powdery Mildew" };
     int    pick     = random(0, 3);
     String simName  = diseaseNames[pick];
     float  simConf;
@@ -322,7 +332,7 @@ void loop() {
     // ------------------------------------------------------------------
     // STEP 2 — Display on LCD + buzz if above threshold
     // ------------------------------------------------------------------
-    Serial.println("[3/8] Displaying disease + buzzer...");
+    Serial.println("[3/7] Displaying disease + buzzer...");
 
     String confPct = String((int)(simConf * 100)) + "%";
     lcdShow(simName, confPct);
@@ -344,28 +354,11 @@ void loop() {
     delay(3000);
 
     // ------------------------------------------------------------------
-    // STEP 3 — Upload disease result to backend
+    // STEP 3 — Recommendation (temp + humidity aware)
     // ------------------------------------------------------------------
-    Serial.println("[4/8] Uploading disease result...");
-    lcdShow("Uploading...", simName.substring(0, LCD_COLS));
+    Serial.println("[4/7] Showing recommendation...");
 
-    String simPayload = buildDiseasePayload(simName, simConf,
-                                            temperature, humidity, simProf);
-    int simCode = httpPost(simPayload);
-
-    if (simCode > 0) {
-        lcdShow("Sent OK!", "HTTP " + String(simCode));
-        Serial.println("[Upload] Disease result OK");
-    } else {
-        lcdShow("Upload FAILED", "Check server");
-        Serial.println("[Upload] Disease result FAILED");
-    }
-    delay(2000);
-
-    // ------------------------------------------------------------------
-    // STEP 4 — Recommendation (temp + humidity aware)
-    // ------------------------------------------------------------------
-    Serial.println("[5/8] Showing recommendation...");
+    bool highRiskConditions = isHighRiskConditions(simProf, temperature, humidity);
 
     if (simProf < 0) {
         lcdShow("Crop is Healthy", "No action needed");
@@ -378,7 +371,7 @@ void loop() {
 
         Serial.printf("[REC] tempOk=%d humidOk=%d\n", tempOk, humidOk);
 
-        if (tempOk && humidOk) {
+        if (highRiskConditions) {
             lcdShow(prof.titleEn, prof.targetedActionEn);
             delay(4000);
             lcdShow(prof.titleEn, prof.preventiveActionEn);
@@ -394,64 +387,112 @@ void loop() {
     // FORECAST TIMING CONTROL
     // ------------------------------------------------------------------
     static unsigned long lastForecastMillis = 0;
+    static bool forecastInitialized = false;
     unsigned long nowMillis = millis();
-    bool doForecast = false;
-    if (nowMillis - lastForecastMillis >= FORECAST_INTERVAL_MS) {
+    bool doForecast = !forecastInitialized;
+    if (!doForecast && nowMillis - lastForecastMillis >= FORECAST_INTERVAL_MS) {
         doForecast = true;
+    }
+    if (doForecast) {
+        forecastInitialized = true;
         lastForecastMillis = nowMillis;
     }
 
+    String forecastDays[5];
+    int forecastDayCount = 0;
+    String primaryForecastLabel = "Stable";
+    float primaryForecastConfidence = 0.0f;
+
     if (doForecast) {
-        // STEP 5 — Random forecast simulation
-        //   Picks one of: High_Anthracnose_Risk | High_Mildew_Risk | Stable
-        //   Confidence: Stable always >85%, risk labels 65-99%
-        Serial.println("[6/8] Generating forecast...");
+        // STEP 4 — 5-day forecast simulation
+        Serial.println("[5/7] Generating forecast...");
         lcdShow("Forecasting...", "Please wait");
         delay(1500); // brief pause so LCD is visible
 
-        int    fPick  = random(0, NUM_FORECASTS);
-        String fLabel = forecastLabels[fPick];
-        float  fConf;
-
-        if (fLabel == "Stable") {
-            fConf = (float)random(85, 100) / 100.0f; // Stable = high confidence
+        if (simProf < 0) {
+            primaryForecastLabel = "Stable";
         } else {
-            fConf = (float)random(65, 99) / 100.0f;  // Risk labels = variable
+            primaryForecastLabel = (simName == "Anthracnose")
+                ? forecastLabels[0]
+                : forecastLabels[1];
+
+            if (!highRiskConditions && random(0, 100) < 55) {
+                primaryForecastLabel = "Stable";
+            }
         }
 
-        Serial.printf("[FORECAST] %s  conf=%.2f\n", fLabel.c_str(), fConf);
+        if (primaryForecastLabel == "Stable") {
+            primaryForecastConfidence = (float)random(85, 100) / 100.0f;
+        } else {
+            primaryForecastConfidence = (float)random(65, 99) / 100.0f;
+        }
 
-        // STEP 6 — Display forecast on LCD
-        Serial.println("[7/8] Displaying forecast...");
+        for (int day = 0; day < 5; day++) {
+            String dayRisk = "Stable";
 
-        String fPct = String((int)(fConf * 100)) + "%";
+            if (primaryForecastLabel != "Stable") {
+                if (highRiskConditions) {
+                    dayRisk = (day < 3 || (day == 3 && random(0, 100) < 35))
+                        ? primaryForecastLabel
+                        : "Stable";
+                } else {
+                    dayRisk = (day == 0 || (day == 1 && random(0, 100) < 30))
+                        ? primaryForecastLabel
+                        : "Stable";
+                }
+            }
+
+            forecastDays[day] = dayRisk;
+            forecastDayCount++;
+        }
+
+        Serial.printf("[FORECAST] Day1=%s  conf=%.2f\n",
+            forecastDays[0].c_str(), primaryForecastConfidence);
+
+        // STEP 5 — Display forecast on LCD
+        Serial.println("[6/7] Displaying forecast...");
+
+        String fPct = String((int)(primaryForecastConfidence * 100)) + "%";
 
         // LCD is only 16 chars — shorten long forecast labels for display
-        String fDisplay = fLabel;
-        if (fLabel == "High_Anthracnose_Risk") fDisplay = "Anthracnose Risk";
-        else if (fLabel == "High_Mildew_Risk")  fDisplay = "Mildew Risk";
+        String fDisplay = forecastDays[0];
+        if (forecastDays[0] == "High_Anthracnose_Risk") fDisplay = "Anthracnose Risk";
+        else if (forecastDays[0] == "High_Mildew_Risk")  fDisplay = "Mildew Risk";
         // "Stable" fits fine
 
         lcdShow("Forecast:", fDisplay + " " + fPct);
         Serial.printf("[LCD] %s %s\n", fDisplay.c_str(), fPct.c_str());
         delay(3000);
-
-        // STEP 7 — Upload forecast to backend
-        Serial.println("[8/8] Uploading forecast...");
-        lcdShow("Sending fcst...", fDisplay.substring(0, LCD_COLS));
-
-        String fPayload = buildForecastPayload(fLabel, fConf, temperature, humidity);
-        int    fCode    = httpPost(fPayload);
-
-        if (fCode > 0) {
-            lcdShow("Forecast Sent!", "HTTP " + String(fCode));
-            Serial.println("[Upload] Forecast OK");
-        } else {
-            lcdShow("Fcst FAILED", "Check server");
-            Serial.println("[Upload] Forecast FAILED");
-        }
-        delay(2000);
     }
+
+    // ------------------------------------------------------------------
+    // STEP 6 — Upload dashboard payload
+    // ------------------------------------------------------------------
+    Serial.println("[7/7] Uploading dashboard payload...");
+    lcdShow("Uploading...", simName.substring(0, LCD_COLS));
+
+    String uploadPayload = buildUploadPayload(
+        simName,
+        simConf,
+        temperature,
+        humidity,
+        simProf,
+        simProf >= 0,
+        highRiskConditions,
+        doForecast,
+        forecastDays,
+        forecastDayCount
+    );
+    int uploadCode = httpPost(uploadPayload);
+
+    if (uploadCode >= 200 && uploadCode < 300) {
+        lcdShow("Dashboard Sync", "HTTP " + String(uploadCode));
+        Serial.println("[Upload] Dashboard payload OK");
+    } else {
+        lcdShow("Upload FAILED", "HTTP " + String(uploadCode));
+        Serial.println("[Upload] Dashboard payload FAILED");
+    }
+    delay(2000);
 
     // ------------------------------------------------------------------
     // WIFI WATCHDOG

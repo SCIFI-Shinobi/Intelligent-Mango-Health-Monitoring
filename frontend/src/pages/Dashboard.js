@@ -43,6 +43,14 @@ export default function Dashboard() {
   const reconnectTimer = useRef(null);
   const shouldReconnect = useRef(true);
 
+  const normalizeRecommendations = useCallback((items = []) => (
+    items.map((item) => ({
+      ...item,
+      description: item.description || item.desc || '',
+      desc: item.description || item.desc || '',
+    }))
+  ), []);
+
   const connectWebSocket = useCallback(() => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
 
@@ -69,6 +77,12 @@ export default function Dashboard() {
             timestamp: incoming.timestamp || new Date().toISOString()
           });
         }
+        if (incoming.recommendations !== undefined) {
+          setRecommendations(normalizeRecommendations(incoming.recommendations || []));
+        }
+        if (incoming.forecast) {
+          setForecast(incoming.forecast);
+        }
       } catch (e) {
         console.error('WebSocket message error:', e);
       }
@@ -83,7 +97,7 @@ export default function Dashboard() {
     ws.current.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
-  }, [token]);
+  }, [token, normalizeRecommendations]);
 
   // Fetch all data on mount and when tab changes
   useEffect(() => {
@@ -97,10 +111,12 @@ export default function Dashboard() {
           'Content-Type': 'application/json'
         };
 
+        let detectionData = null;
+
         // Fetch latest detection (now includes matching sensor data)
         const detectionRes = await fetch(`${API_BASE_URL}/detection/latest`, { headers });
         if (detectionRes.ok) {
-          const detectionData = await detectionRes.json();
+          detectionData = await detectionRes.json();
           setDetection(detectionData);
           // Use sensor data from detection to keep them in sync
           setSensorLatest({
@@ -108,17 +124,23 @@ export default function Dashboard() {
             humidity: detectionData.humidity,
             timestamp: detectionData.timestamp
           });
-          // If forecast is present in detectionData, set it
-          if (detectionData.forecast) {
-            setForecast(detectionData.forecast);
-          }
+          setForecast(detectionData.forecast || null);
         }
 
         // Fetch recommendations
         const recsRes = await fetch(`${API_BASE_URL}/recommendations/latest?limit=5`, { headers });
         if (recsRes.ok) {
           const recsData = await recsRes.json();
-          setRecommendations(recsData.data || []);
+          setRecommendations(normalizeRecommendations(recsData.data || []));
+        }
+
+        // Fallback to forecast endpoint when detection/latest has no forecast payload.
+        if (!detectionData?.forecast) {
+          const forecastRes = await fetch(`${API_BASE_URL}/forecast/latest`, { headers });
+          if (forecastRes.ok) {
+            const forecastData = await forecastRes.json();
+            setForecast(forecastData);
+          }
         }
       } catch (err) {
         setError(err.message);
@@ -235,9 +257,10 @@ export default function Dashboard() {
                 currentRange={range}
                 lastUpdatedText={formatUpdated(chartUpdated)}
               />
-              <ForecastCard forecast={forecast} loading={loading} />
               <RecommendationsPanel recommendations={recommendations} loading={loading} />
             </div>
+
+            <ForecastCard forecast={forecast} loading={loading} />
           </div>
         );
     }
@@ -277,4 +300,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

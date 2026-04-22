@@ -38,6 +38,7 @@ class UploadPayload(BaseModel):
     humidity: float
     disease_type: str
     confidence_score: float
+    recommendations: Optional[list["RecommendationBase"]] = None
     # Optional Amharic recommendation fields
     title_am: Optional[str] = None
     action_am: Optional[str] = None
@@ -68,6 +69,11 @@ class Recommendation(RecommendationBase):
 
     class Config:
         from_attributes = True
+
+try:
+    UploadPayload.model_rebuild()
+except AttributeError:
+    UploadPayload.update_forward_refs()
 
 class ForecastContextPayload(BaseModel):
     device_id: str

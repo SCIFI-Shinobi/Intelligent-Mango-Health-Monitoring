@@ -220,6 +220,74 @@ async def broadcast_to_clients(message: dict, owner_id: Optional[int] = None):
             connected_clients.remove(client)
 
 
+def serialize_recommendation_record(record: models.Recommendation) -> dict:
+    return {
+        "id": record.id,
+        "title": record.title,
+        "description": record.description,
+        "desc": record.description,
+        "title_am": record.title_am,
+        "description_am": record.description_am,
+        "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+    }
+
+
+def get_latest_recommendations_for_device(db: Session, device_id: str, limit: int = 5) -> list[dict]:
+    recommendations = db.query(models.Recommendation).filter(
+        models.Recommendation.device_id == device_id
+    ).order_by(models.Recommendation.timestamp.desc()).limit(limit).all()
+    return [serialize_recommendation_record(r) for r in recommendations]
+
+
+def parse_forecast_date(raw_value, fallback: datetime) -> datetime:
+    if isinstance(raw_value, datetime):
+        return raw_value if raw_value.tzinfo else raw_value.replace(tzinfo=timezone.utc)
+
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip()
+        if normalized:
+            try:
+                parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            except ValueError:
+                pass
+
+    return fallback
+
+
+def get_latest_forecast_for_device(db: Session, device_id: str) -> Optional[dict]:
+    forecast_context = db.query(models.ForecastContext).filter(
+        models.ForecastContext.device_id == device_id
+    ).order_by(models.ForecastContext.timestamp.desc()).first()
+
+    if not forecast_context:
+        return None
+
+    forecast_days = [
+        {
+            "day": forecast.day_index,
+            "risk_level": forecast.risk_level,
+            "date": forecast.forecast_date.isoformat() if forecast.forecast_date else None,
+            "created_at": forecast.created_at.isoformat() if forecast.created_at else None,
+        }
+        for forecast in db.query(models.ForecastData).filter(
+            models.ForecastData.context_id == forecast_context.id
+        ).order_by(models.ForecastData.day_index.asc()).all()
+    ]
+
+    if not forecast_days:
+        return None
+
+    return {
+        "context": {
+            "id": forecast_context.id,
+            "timestamp": forecast_context.timestamp.isoformat() if forecast_context.timestamp else None,
+        },
+        "days": forecast_days,
+        "created_at": forecast_context.timestamp.isoformat() if forecast_context.timestamp else None,
+    }
+
+
 def build_dashboard_payload(sensor, inference, db: Session) -> dict:
     """Build the JSON payload the frontend Dashboard expects."""
     risk = logic.evaluate_risk(inference.disease_type, sensor.temperature, sensor.humidity)
@@ -237,21 +305,29 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
     health = health_map.get(risk["risk_level"], "OPTIMAL")
 
     recommendations = []
-    if risk["recommendation"]:
+    if inference.disease_type != "Healthy":
+        bilingual_recommendation = logic.get_recommendation_bilingual(
+            inference.disease_type,
+            risk["risk_level"],
+        )
         recommendations.append({
-            "title": risk["risk_level"],
-            "desc": risk["recommendation"]
+            "title": bilingual_recommendation["title_en"],
+            "description": bilingual_recommendation["description_en"],
+            "desc": bilingual_recommendation["description_en"],
+            "title_am": bilingual_recommendation["title_am"],
+            "description_am": bilingual_recommendation["description_am"],
+            "timestamp": inference.timestamp.isoformat() if inference.timestamp else None,
         })
     if forecast_alert and "High Risk" in forecast_alert:
         recommendations.append({
             "title": "Forecast Alert",
-            "desc": forecast_alert
+            "description": forecast_alert,
+            "desc": forecast_alert,
+            "timestamp": inference.timestamp.isoformat() if inference.timestamp else None,
         })
-    if inference.disease_type != "Healthy":
-        recommendations.append({
-            "title": f"{inference.disease_type} Detected",
-            "desc": logic.get_recommendation(inference.disease_type)
-        })
+
+    latest_recommendations = get_latest_recommendations_for_device(db, inference.device_id) or recommendations
+    latest_forecast = get_latest_forecast_for_device(db, inference.device_id)
 
     return {
         "temperature": sensor.temperature,
@@ -262,7 +338,8 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
         "disease_type": inference.disease_type,
         "confidence_score": inference.confidence_score,
         "risk_level": risk["risk_level"],
-        "recommendations": recommendations,
+        "recommendations": latest_recommendations,
+        "forecast": latest_forecast,
         "timestamp": inference.timestamp.isoformat() if inference.timestamp else None,
     }
 
@@ -694,12 +771,14 @@ async def upload_data(
     device.last_seen = datetime.utcnow()
     db.commit()
     internal_device_id = scoped_device_id(device)
+    server_now = datetime.now(timezone.utc)
 
     # Create Sensor Data record
     new_sensor_data = models.SensorData(
         device_id=internal_device_id,
         temperature=payload.temperature,
-        humidity=payload.humidity
+        humidity=payload.humidity,
+        timestamp=server_now,
     )
     db.add(new_sensor_data)
 
@@ -707,46 +786,72 @@ async def upload_data(
     new_inference = models.InferenceResult(
         device_id=internal_device_id,
         disease_type=payload.disease_type,
-        confidence_score=payload.confidence_score
+        confidence_score=payload.confidence_score,
+        timestamp=server_now,
     )
     db.add(new_inference)
 
-    # Save Amharic recommendation if present
-    rec_id = None
-    if payload.title_am or payload.action_am:
+    db.commit()
+    db.refresh(new_sensor_data)
+    db.refresh(new_inference)
+
+    # Save recommendations if present in the newer dashboard-friendly shape.
+    recommendation_ids = []
+    if payload.recommendations:
+        for recommendation in payload.recommendations:
+            rec = models.Recommendation(
+                device_id=internal_device_id,
+                title=recommendation.title,
+                description=recommendation.description,
+                title_am=recommendation.title_am,
+                description_am=recommendation.description_am,
+                timestamp=server_now,
+            )
+            db.add(rec)
+            db.flush()
+            recommendation_ids.append(rec.id)
+    elif payload.title_am or payload.action_am:
+        legacy_recommendation = logic.get_recommendation_bilingual(
+            payload.disease_type,
+            logic.evaluate_risk(payload.disease_type, payload.temperature, payload.humidity)["risk_level"],
+        )
         rec = models.Recommendation(
             device_id=internal_device_id,
-            title=payload.disease_type,
-            description=payload.action_am or "",
-            title_am=payload.title_am,
-            description_am=payload.action_am,
+            title=legacy_recommendation["title_en"],
+            description=legacy_recommendation["description_en"],
+            title_am=payload.title_am or legacy_recommendation["title_am"],
+            description_am=payload.action_am or legacy_recommendation["description_am"],
+            timestamp=server_now,
         )
         db.add(rec)
         db.flush()
-        rec_id = rec.id
+        recommendation_ids.append(rec.id)
 
     # Save forecast if present
     forecast_ids = []
     if payload.forecast:
-        from .models import ForecastContext, ForecastData
-        context = ForecastContext(device_id=internal_device_id)
+        context = models.ForecastContext(device_id=internal_device_id, timestamp=server_now)
         db.add(context)
         db.flush()
         for idx, day in enumerate(payload.forecast):
-            fd = ForecastData(
+            try:
+                day_index = int(day.get("day", idx + 1))
+            except (TypeError, ValueError):
+                day_index = idx + 1
+
+            fallback_date = server_now + timedelta(days=idx + 1)
+            fd = models.ForecastData(
                 device_id=internal_device_id,
-                day_index=day.get("day", idx),
+                day_index=day_index,
                 risk_level=day.get("risk_level", ""),
-                forecast_date=day.get("date"),
-                context_id=context.id
+                forecast_date=parse_forecast_date(day.get("date"), fallback_date),
+                context_id=context.id,
             )
             db.add(fd)
             db.flush()
             forecast_ids.append(fd.id)
 
     db.commit()
-    db.refresh(new_sensor_data)
-    db.refresh(new_inference)
 
     # Evaluate risk
     risk = logic.evaluate_risk(payload.disease_type, payload.temperature, payload.humidity)
@@ -760,7 +865,8 @@ async def upload_data(
         "status": "success",
         "data_id": new_sensor_data.id,
         "inference_id": new_inference.id,
-        "recommendation_id": rec_id,
+        "recommendation_id": recommendation_ids[0] if recommendation_ids else None,
+        "recommendation_ids": recommendation_ids,
         "forecast_ids": forecast_ids,
         "risk_level": risk["risk_level"],
         "recommendation": risk["recommendation"],
@@ -887,39 +993,13 @@ def get_detection_latest(db: Session = Depends(get_db), user: models.User = Depe
             models.SensorData.device_id.in_(user_device_ids)
         ).order_by(models.SensorData.timestamp.asc()).first()
 
-    # Get latest forecast context for this device
-    from .models import ForecastContext, ForecastData
-    forecast_context = db.query(ForecastContext).filter(
-        ForecastContext.device_id == detection.device_id
-    ).order_by(ForecastContext.timestamp.desc()).first()
-
-    forecast_days = []
-    forecast_created_at = None
-    forecast_context_dict = None
-    if forecast_context:
-        forecast_created_at = forecast_context.timestamp
-        forecast_context_dict = {"id": forecast_context.id, "timestamp": forecast_context.timestamp}
-        forecast_days = [
-            {
-                "day": f.day_index,
-                "risk_level": f.risk_level,
-                "date": f.forecast_date,
-                "created_at": f.created_at
-            }
-            for f in db.query(ForecastData).filter(ForecastData.context_id == forecast_context.id).order_by(ForecastData.day_index.asc()).all()
-        ]
-
     return {
         "disease_type": detection.disease_type,
         "confidence_score": detection.confidence_score,
         "timestamp": detection.timestamp,
         "temperature": sensor.temperature if sensor else None,
         "humidity": sensor.humidity if sensor else None,
-        "forecast": {
-            "context": forecast_context_dict,
-            "days": forecast_days,
-            "created_at": forecast_created_at
-        } if forecast_days else None
+        "forecast": get_latest_forecast_for_device(db, detection.device_id),
     }
 
 
@@ -1229,15 +1309,8 @@ async def data_ingest(
                 db.add(new_forecast)
             db.commit()
 
-        # Build response payload and broadcast to WebSocket clients
-        dashboard_payload = {
-            "temperature": payload.temperature,
-            "humidity": payload.humidity,
-            "disease_type": payload.disease_type,
-            "confidence_score": payload.confidence_score,
-            "timestamp": new_detection.timestamp.isoformat() if new_detection.timestamp else datetime.now(timezone.utc).isoformat()
-        }
-
+        # Broadcast the full dashboard payload so cards refresh live.
+        dashboard_payload = build_dashboard_payload(new_sensor, new_detection, db)
         await broadcast_to_clients(dashboard_payload, owner_id=owner_id)
 
         # 6. Auto-generate notifications only for the device owner
