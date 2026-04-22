@@ -15,6 +15,8 @@ export function useAPI(endpoint, options = {}) {
 
   useEffect(() => {
     let isMounted = true;
+    const parsedHeaders = optionsHeaders ? JSON.parse(optionsHeaders) : {};
+    const parsedBody = optionsBody ? JSON.parse(optionsBody) : undefined;
 
     const fetchData = async () => {
       try {
@@ -25,13 +27,13 @@ export function useAPI(endpoint, options = {}) {
         const headers = {
           'Content-Type': 'application/json',
           ...(token && { 'Authorization': `Bearer ${token}` }),
-          ...options.headers
+          ...parsedHeaders
         };
 
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
           method: optionsMethod,
           headers,
-          body: options.body ? JSON.stringify(options.body) : undefined,
+          body: parsedBody ? JSON.stringify(parsedBody) : undefined,
         });
 
         if (response.status === 401) {

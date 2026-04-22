@@ -1,11 +1,8 @@
 import React from 'react';
 import { calculateTrend } from '../utils/formatTime';
 import { MdOutlineThermostat, MdOpacity, MdWaterDrop } from 'react-icons/md';
-import { useLanguage } from '../context/LanguageContext';
 
 export default function SensorCard({ name, value, unit, previousValue, icon, loading, subtitle, updatedAt, statusLabel, statusClass = 'live' }) {
-  const { t } = useLanguage();
-
   if (loading) {
     return (
       <div className={`sensor-card sensor-card-${icon === 'precip' ? 'moisture' : icon}`}>
@@ -59,6 +56,8 @@ export default function SensorCard({ name, value, unit, previousValue, icon, loa
     return Math.min(100, numValue);
   };
 
+  const hasMeta = Boolean(subtitle || updatedAt);
+
   return (
     <div className={`sensor-card sensor-card-${icon === 'precip' ? 'moisture' : icon}`}>
       <div className="card-header">
@@ -90,10 +89,12 @@ export default function SensorCard({ name, value, unit, previousValue, icon, loa
         </div>
       )}
 
-      <div className="sensor-meta">
-        <span>{subtitle || t('sensor', 'awaitingReading')}</span>
-        {updatedAt && <span>{updatedAt}</span>}
-      </div>
+      {hasMeta && (
+        <div className="sensor-meta">
+          {subtitle && <span>{subtitle}</span>}
+          {updatedAt && <span>{updatedAt}</span>}
+        </div>
+      )}
     </div>
   );
 }

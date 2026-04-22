@@ -35,7 +35,6 @@ export default function DiseaseStatusCard({ detection, loading, freshness }) {
           <div className="disease-status-text">
             <h4 className="disease-status-title">{t('disease', 'healthStatus')}</h4>
             <p className="disease-status-value">{t('disease', 'waitingForDevice')}</p>
-            <div className="disease-status-note">{t('disease', 'noRecentDeviceData')}</div>
           </div>
           <div className="disease-status-icon-wrapper">
             <MdShield className="disease-status-icon" />
@@ -84,9 +83,6 @@ export default function DiseaseStatusCard({ detection, loading, freshness }) {
             <div className="card-updated-label">
               {t('common', 'lastUpdated')}: {lastUpdatedText}
             </div>
-          )}
-          {freshness?.isStale && (
-            <div className="disease-status-note">{t('disease', 'noRecentDeviceData')}</div>
           )}
         </div>
         <div className="disease-status-icon-wrapper">

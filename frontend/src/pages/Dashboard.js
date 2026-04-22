@@ -230,8 +230,6 @@ export default function Dashboard() {
                   unit={settings.temperatureUnit === 'fahrenheit' ? 'F' : 'C'}
                   icon="temp"
                   loading={loading}
-                  subtitle={freshness.isStale ? t('disease', 'noRecentDeviceData') : t('common', 'live')}
-                  updatedAt={formatUpdated(sensorLatest?.timestamp)}
                   statusLabel={freshness.statusLabel}
                   statusClass={freshness.statusClass}
                 />
@@ -241,8 +239,6 @@ export default function Dashboard() {
                   unit="%"
                   icon="humidity"
                   loading={loading}
-                  subtitle={freshness.isStale ? t('disease', 'noRecentDeviceData') : t('common', 'live')}
-                  updatedAt={formatUpdated(sensorLatest?.timestamp)}
                   statusLabel={freshness.statusLabel}
                   statusClass={freshness.statusClass}
                 />
