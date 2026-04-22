@@ -30,8 +30,57 @@ export default function Navbar({ activeTab, onTabChange }) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [filterMode, setFilterMode] = useState('unread');
+  const [bellAnimating, setBellAnimating] = useState(false);
   const panelRef = useRef(null);
+  const bellAnimationTimerRef = useRef(null);
+  const unreadCountRef = useRef(0);
+  const hasNotificationSnapshotRef = useRef(false);
+  const audioUnlockedRef = useRef(false);
+  const audioContextRef = useRef(null);
   const token = localStorage.getItem('token');
+
+  const playNotificationChime = useCallback(async () => {
+    if (!audioUnlockedRef.current) return;
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextClass();
+    }
+
+    const ctx = audioContextRef.current;
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch (error) {
+        return;
+      }
+    }
+
+    const now = ctx.currentTime;
+    const notes = [
+      { freq: 880, start: 0.0, duration: 0.09, gain: 0.03 },
+      { freq: 1174.66, start: 0.11, duration: 0.16, gain: 0.025 },
+    ];
+
+    notes.forEach((note) => {
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(note.freq, now + note.start);
+
+      gainNode.gain.setValueAtTime(0.0001, now + note.start);
+      gainNode.gain.exponentialRampToValueAtTime(note.gain, now + note.start + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + note.start + note.duration);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.start(now + note.start);
+      oscillator.stop(now + note.start + note.duration + 0.03);
+    });
+  }, []);
 
   const fetchNotifications = useCallback(async () => {
     if (!token) return;
@@ -82,13 +131,74 @@ export default function Navbar({ activeTab, onTabChange }) {
   }, [fetchNotifications]);
 
   useEffect(() => {
+    const handleLiveUpdate = () => {
+      fetchNotifications();
+    };
+
+    window.addEventListener('mangoguard-live-update', handleLiveUpdate);
+    return () => window.removeEventListener('mangoguard-live-update', handleLiveUpdate);
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    const unlockAudio = async () => {
+      audioUnlockedRef.current = true;
+
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContextClass();
+      }
+
+      if (audioContextRef.current.state === 'suspended') {
+        try {
+          await audioContextRef.current.resume();
+        } catch (error) {
+          console.error('Notification audio resume failed:', error);
+        }
+      }
+    };
+
+    window.addEventListener('pointerdown', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasNotificationSnapshotRef.current) {
+      unreadCountRef.current = unreadCount;
+      hasNotificationSnapshotRef.current = true;
+      return undefined;
+    }
+
+    if (unreadCount > unreadCountRef.current) {
+      setBellAnimating(true);
+      window.clearTimeout(bellAnimationTimerRef.current);
+      bellAnimationTimerRef.current = window.setTimeout(() => {
+        setBellAnimating(false);
+      }, 1500);
+      playNotificationChime();
+    }
+
+    unreadCountRef.current = unreadCount;
+    return undefined;
+  }, [unreadCount, playNotificationChime]);
+
+  useEffect(() => {
     const handleClickOutside = (e) => {
       if (panelRef.current && !panelRef.current.contains(e.target)) {
         setShowPanel(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.clearTimeout(bellAnimationTimerRef.current);
+    };
   }, []);
 
   const handleBellClick = () => {
@@ -171,10 +281,14 @@ export default function Navbar({ activeTab, onTabChange }) {
           </button>
         </div>
 
-        <button className="icon-btn notif-bell" onClick={handleBellClick} title={t('nav', 'notifications')}>
+        <button
+          className={`icon-btn notif-bell ${bellAnimating ? 'ringing' : ''}`}
+          onClick={handleBellClick}
+          title={t('nav', 'notifications')}
+        >
           <i className="fa-solid fa-bell"></i>
           {unreadCount > 0 && (
-            <span className="notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+            <span className={`notif-badge ${bellAnimating ? 'pulse' : ''}`}>{unreadCount > 9 ? '9+' : unreadCount}</span>
           )}
         </button>
 
