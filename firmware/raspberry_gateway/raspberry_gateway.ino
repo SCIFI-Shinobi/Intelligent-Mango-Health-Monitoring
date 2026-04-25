@@ -1,22 +1,3 @@
-/*
- * MangoGuard Raspberry Pi Pico W Gateway
- *
- * What this sketch does:
- * - Receives "DiseaseLabel,Confidence" lines from the Nano over UART
- * - Reads DHT22 temperature and humidity
- * - Generates bilingual recommendations
- * - Builds a 5-day forecast
- * - Uploads one unified payload to the backend for dashboard, bell, and email rules
- *
- * Target board:
- * - Raspberry Pi Pico W (Arduino IDE)
- *
- * Assumptions:
- * - The Nano sends one line per inference, e.g. "Anthracnose,0.91"
- * - The backend ingest endpoint is the shared MangoGuard API route
- * - You will replace the forecast adapter with your exported Edge Impulse model
- */
-
 #include <Arduino.h>
 #include <Wire.h>
 #include <DHT.h>

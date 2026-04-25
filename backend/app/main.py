@@ -1,5 +1,4 @@
 import os
-import json
 import asyncio
 import secrets
 import smtplib
@@ -8,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from passlib.context import CryptContext
 
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Form, Header, BackgroundTasks, Request
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Form, Header, BackgroundTasks, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional
@@ -16,8 +15,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import case, text, inspect
 from jose import jwt, JWTError
 
-from . import models, schemas, logic, database
+from . import models, schemas, logic, database, cloud_scan_service
+from .alert_service import check_and_send_alert
 from .database import engine, get_db
+from .disease_labels import normalize_disease_type as normalize_disease_label
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -46,7 +47,24 @@ def ensure_user_settings_columns():
             )
 
 
+def ensure_inference_result_source_column():
+    """Backfill detection source metadata for existing databases without migrations."""
+    inspector = inspect(engine)
+    inference_columns = {column["name"] for column in inspector.get_columns("inference_results")}
+
+    with engine.begin() as connection:
+        if "source" not in inference_columns:
+            connection.execute(
+                text("ALTER TABLE inference_results ADD COLUMN source VARCHAR DEFAULT 'gateway'")
+            )
+
+        connection.execute(
+            text("UPDATE inference_results SET source = 'gateway' WHERE source IS NULL OR source = ''")
+        )
+
+
 ensure_user_settings_columns()
+ensure_inference_result_source_column()
 
 APP_STARTED_AT = time.time()
 REQUEST_SLOW_MS = float(os.getenv("REQUEST_SLOW_MS", "800"))
@@ -122,6 +140,19 @@ def send_alert_email(email: str, subject: str, message: str):
 
 app = FastAPI(title="Intelligent Plant Health Monitoring API")
 
+
+@app.on_event("startup")
+def load_cloud_scan_model_on_startup():
+    cloud_scan_service.load_cloud_scan_model()
+    model_status = cloud_scan_service.get_cloud_model_status()
+    if model_status["loaded"]:
+        print(
+            f"[cloud_scan] loaded model at {model_status['path']} "
+            f"with input_shape={model_status['input_shape']}"
+        )
+    else:
+        print(f"[cloud_scan] unavailable: {model_status['error']}")
+
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -183,10 +214,66 @@ def scoped_device_id(device: models.Device) -> str:
     return f"device:{device.id}"
 
 
+def web_app_device_id(user_id: int) -> str:
+    """Build a stable virtual device id for scans triggered from the web app."""
+    return f"user:{user_id}:web_app"
+
+
+def is_virtual_device_id(device_id: Optional[str]) -> bool:
+    return bool(device_id and device_id.startswith("user:"))
+
+
+def get_authenticated_device(db: Session, x_device_key: Optional[str]) -> models.Device:
+    if not x_device_key:
+        raise HTTPException(status_code=401, detail="X-Device-Key header is required")
+
+    device = db.query(models.Device).filter(models.Device.api_key == x_device_key).first()
+    if not device:
+        raise HTTPException(status_code=401, detail="Invalid device API key")
+
+    return device
+
+
 def get_user_scoped_device_ids(db: Session, user_id: int) -> list[str]:
     """Return all internal device ids that belong to a user."""
     devices = db.query(models.Device).filter(models.Device.user_id == user_id).all()
-    return [scoped_device_id(d) for d in devices]
+    device_ids = [scoped_device_id(d) for d in devices]
+    device_ids.append(web_app_device_id(user_id))
+    return list(dict.fromkeys(device_ids))
+
+
+def ensure_aware_datetime(value: Optional[datetime]) -> Optional[datetime]:
+    if not value:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def serialize_device_brief(device: Optional[models.Device]) -> Optional[dict]:
+    if not device:
+        return None
+
+    return {
+        "id": device.id,
+        "device_name": device.device_name,
+        "last_seen": ensure_aware_datetime(device.last_seen).isoformat() if device.last_seen else None,
+    }
+
+
+def get_preferred_user_device(db: Session, user_id: int) -> Optional[models.Device]:
+    devices = db.query(models.Device).filter(models.Device.user_id == user_id).all()
+    if not devices:
+        return None
+
+    minimum = datetime.min.replace(tzinfo=timezone.utc)
+
+    def sort_key(device: models.Device):
+        return (
+            ensure_aware_datetime(device.last_seen) or minimum,
+            ensure_aware_datetime(device.created_at) or minimum,
+            device.id or 0,
+        )
+
+    return max(devices, key=sort_key)
 
 
 def decode_user_from_token(token: str, db: Session) -> Optional[models.User]:
@@ -256,20 +343,161 @@ def parse_forecast_date(raw_value, fallback: datetime) -> datetime:
     return fallback
 
 
-def normalize_disease_type(raw_value: Optional[str]) -> str:
-    normalized = (raw_value or "").strip().replace("_", " ").replace("-", " ")
-    normalized = " ".join(normalized.split())
-    lowered = normalized.lower()
+def normalize_forecast_day_index(raw_value, fallback_index: int) -> int:
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return fallback_index
 
-    if lowered == "healthy":
-        return "Healthy"
-    if lowered == "anthracnose":
-        return "Anthracnose"
-    if lowered == "powdery mildew":
-        return "Powdery Mildew"
-    if not normalized:
-        return "Unknown"
-    return normalized
+    return parsed - 1 if parsed > 0 else parsed
+
+
+def format_forecast_date_label(value: datetime) -> str:
+    normalized = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return f"{normalized.strftime('%a')}, {normalized.strftime('%b')} {normalized.day}"
+
+
+def get_sorted_forecast_records(db: Session, context_id: int) -> list[models.ForecastData]:
+    records = db.query(models.ForecastData).filter(
+        models.ForecastData.context_id == context_id
+    ).all()
+
+    def sort_key(record: models.ForecastData):
+        forecast_date = record.forecast_date
+        normalized_date = None
+        if forecast_date:
+            normalized_date = forecast_date if forecast_date.tzinfo else forecast_date.replace(tzinfo=timezone.utc)
+
+        return (
+            0 if normalized_date else 1,
+            normalized_date or datetime.max.replace(tzinfo=timezone.utc),
+            normalize_forecast_day_index(record.day_index, 0),
+            record.id,
+        )
+
+    return sorted(records, key=sort_key)
+
+
+def serialize_forecast_days(forecasts: list[models.ForecastData]) -> list[dict]:
+    return [
+        {
+            "day": index + 1,
+            "risk_level": forecast.risk_level,
+            "date": forecast.forecast_date.isoformat() if forecast.forecast_date else None,
+            "created_at": forecast.created_at.isoformat() if forecast.created_at else None,
+        }
+        for index, forecast in enumerate(forecasts)
+    ]
+
+
+def normalize_disease_type(raw_value: Optional[str]) -> str:
+    return normalize_disease_label(raw_value)
+
+
+def normalize_detection_source(raw_value: Optional[str]) -> str:
+    normalized = (raw_value or "").strip().lower()
+    if normalized in {"web", "web_app", "cloud", "app"}:
+        return "web_app"
+    return "gateway"
+
+
+def should_reuse_user_sensor_fallback(detection: models.InferenceResult) -> bool:
+    if normalize_detection_source(getattr(detection, "source", None)) == "web_app":
+        return False
+    return not is_virtual_device_id(getattr(detection, "device_id", None))
+
+
+def get_sensor_for_detection(
+    db: Session,
+    detection: models.InferenceResult,
+    *,
+    fallback_device_ids: Optional[list[str]] = None,
+) -> Optional[models.SensorData]:
+    sensor = db.query(models.SensorData).filter(
+        models.SensorData.timestamp <= detection.timestamp,
+        models.SensorData.device_id == detection.device_id,
+    ).order_by(models.SensorData.timestamp.desc()).first()
+
+    if sensor or not fallback_device_ids or not should_reuse_user_sensor_fallback(detection):
+        return sensor
+
+    return db.query(models.SensorData).filter(
+        models.SensorData.device_id.in_(fallback_device_ids)
+    ).order_by(models.SensorData.timestamp.asc()).first()
+
+
+def serialize_scan_request(
+    scan_request: Optional[models.ScanRequest],
+    device: Optional[models.Device] = None,
+) -> Optional[dict]:
+    if not scan_request:
+        return None
+
+    return {
+        "id": scan_request.id,
+        "user_id": scan_request.user_id,
+        "device_id": scan_request.device_id,
+        "status": (scan_request.status or "pending").lower(),
+        "source": scan_request.source or "edge_impulse",
+        "model_name": scan_request.model_name or "Edge Impulse EfficientNet",
+        "requested_at": ensure_aware_datetime(scan_request.requested_at).isoformat() if scan_request.requested_at else None,
+        "completed_at": ensure_aware_datetime(scan_request.completed_at).isoformat() if scan_request.completed_at else None,
+        "result_inference_id": scan_request.result_inference_id,
+        "result_disease_type": (
+            normalize_disease_type(scan_request.result_disease_type)
+            if scan_request.result_disease_type
+            else None
+        ),
+        "result_confidence_score": scan_request.result_confidence_score,
+        "device": serialize_device_brief(device),
+    }
+
+
+def get_latest_scan_request_record(db: Session, user_id: int) -> Optional[models.ScanRequest]:
+    return db.query(models.ScanRequest).filter(
+        models.ScanRequest.user_id == user_id
+    ).order_by(models.ScanRequest.requested_at.desc(), models.ScanRequest.id.desc()).first()
+
+
+def get_requested_scan_for_upload(
+    db: Session,
+    *,
+    device: models.Device,
+    request_id: Optional[int],
+) -> Optional[models.ScanRequest]:
+    if request_id is None:
+        return None
+
+    scan_request = db.query(models.ScanRequest).filter(
+        models.ScanRequest.id == request_id,
+        models.ScanRequest.user_id == device.user_id,
+        models.ScanRequest.device_id == device.id,
+    ).first()
+
+    if not scan_request:
+        raise HTTPException(status_code=404, detail="Pending scan request was not found for this device")
+
+    if (scan_request.status or "").lower() != "pending":
+        raise HTTPException(status_code=409, detail="Scan request is no longer pending")
+
+    return scan_request
+
+
+def complete_scan_request(
+    scan_request: Optional[models.ScanRequest],
+    *,
+    detection: models.InferenceResult,
+    timestamp: datetime,
+) -> Optional[models.ScanRequest]:
+    if not scan_request:
+        return None
+
+    scan_request.status = "completed"
+    scan_request.completed_at = timestamp
+    scan_request.result_inference_id = detection.id
+    scan_request.result_disease_type = normalize_disease_type(detection.disease_type)
+    scan_request.result_confidence_score = detection.confidence_score
+    return scan_request
 
 
 def get_latest_forecast_for_device(db: Session, device_id: str) -> Optional[dict]:
@@ -280,17 +508,7 @@ def get_latest_forecast_for_device(db: Session, device_id: str) -> Optional[dict
     if not forecast_context:
         return None
 
-    forecast_days = [
-        {
-            "day": forecast.day_index,
-            "risk_level": forecast.risk_level,
-            "date": forecast.forecast_date.isoformat() if forecast.forecast_date else None,
-            "created_at": forecast.created_at.isoformat() if forecast.created_at else None,
-        }
-        for forecast in db.query(models.ForecastData).filter(
-            models.ForecastData.context_id == forecast_context.id
-        ).order_by(models.ForecastData.day_index.asc()).all()
-    ]
+    forecast_days = serialize_forecast_days(get_sorted_forecast_records(db, forecast_context.id))
 
     if not forecast_days:
         return None
@@ -398,7 +616,9 @@ def apply_notification_rules(
             timestamp=timestamp,
         )
         if notification:
-            queue_email(disease_title, disease_message)
+            # Disease emails are handled centrally by alert_service.check_and_send_alert
+            # after the inference result has been saved.
+            pass
 
     for i, day_forecast in enumerate(forecast or []):
         risk_level = (day_forecast.get("risk_level") or "Stable")
@@ -412,9 +632,10 @@ def apply_notification_rules(
         else:
             risk_name = "Disease"
 
-        day_num = i + 1
-        title = f"Day {day_num} Forecast: High {risk_name} Risk"
-        message = f"Forecast predicts high {risk_name.lower()} risk in {day_num} day(s). Consider preventive measures."
+        forecast_date = parse_forecast_date(day_forecast.get("date"), timestamp + timedelta(days=i + 1))
+        forecast_date_label = format_forecast_date_label(forecast_date)
+        title = f"Forecast for {forecast_date_label}: High {risk_name} Risk"
+        message = f"Forecast predicts high {risk_name.lower()} risk on {forecast_date_label}. Consider preventive measures."
         notification = create_notification_if_due(
             db,
             user_id=user.id,
@@ -449,6 +670,7 @@ def persist_payload_records(
         device_id=internal_device_id,
         disease_type=disease_type,
         confidence_score=payload.confidence_score,
+        source="gateway",
         timestamp=server_now,
     )
     db.add(new_detection)
@@ -480,11 +702,7 @@ def persist_payload_records(
         context_id = new_context.id
 
         for idx, day in enumerate(payload.forecast):
-            try:
-                day_index = int(day.get("day", idx + 1))
-            except (TypeError, ValueError):
-                day_index = idx + 1
-
+            day_index = normalize_forecast_day_index(day.get("day"), idx)
             fallback_date = server_now + timedelta(days=idx + 1)
             new_forecast = models.ForecastData(
                 device_id=internal_device_id,
@@ -513,17 +731,17 @@ async def ingest_device_payload(
     x_device_key: Optional[str],
     background_tasks: Optional[BackgroundTasks] = None,
 ) -> dict:
-    if not x_device_key:
-        raise HTTPException(status_code=401, detail="X-Device-Key header is required")
-
-    device = db.query(models.Device).filter(models.Device.api_key == x_device_key).first()
-    if not device:
-        raise HTTPException(status_code=401, detail="Invalid device API key")
+    device = get_authenticated_device(db, x_device_key)
 
     owner_id = device.user_id
     server_now = datetime.now(timezone.utc)
     device.last_seen = server_now
     internal_device_id = scoped_device_id(device)
+    requested_scan = get_requested_scan_for_upload(
+        db,
+        device=device,
+        request_id=getattr(payload, "request_id", None),
+    )
 
     disease_type = normalize_disease_type(getattr(payload, "disease_type", None))
     risk = logic.evaluate_risk(disease_type, payload.temperature, payload.humidity)
@@ -536,6 +754,11 @@ async def ingest_device_payload(
         disease_type=disease_type,
         risk_level=risk["risk_level"],
         server_now=server_now,
+    )
+    completed_scan_request = complete_scan_request(
+        requested_scan,
+        detection=persisted["detection"],
+        timestamp=server_now,
     )
 
     apply_notification_rules(
@@ -572,6 +795,10 @@ async def ingest_device_payload(
         "title_am": getattr(payload, "title_am", None),
         "action_am": getattr(payload, "action_am", None),
         "forecast": getattr(payload, "forecast", None),
+        "scan_request": serialize_scan_request(completed_scan_request, device),
+        "disease_type": disease_type,
+        "confidence_score": payload.confidence_score,
+        "timestamp": server_now.isoformat(),
         "dashboard_payload": dashboard_payload,
         "message": "Data ingested successfully",
     }
@@ -579,7 +806,8 @@ async def ingest_device_payload(
 
 def build_dashboard_payload(sensor, inference, db: Session) -> dict:
     """Build the JSON payload the frontend Dashboard expects."""
-    risk = logic.evaluate_risk(inference.disease_type, sensor.temperature, sensor.humidity)
+    normalized_disease_type = normalize_disease_type(inference.disease_type)
+    risk = logic.evaluate_risk(normalized_disease_type, sensor.temperature, sensor.humidity)
     forecast_alert = logic.get_forecast_alert(sensor.temperature, sensor.humidity)
 
     # Compute a simple stability score (0-100) from confidence + env risk
@@ -594,9 +822,9 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
     health = health_map.get(risk["risk_level"], "OPTIMAL")
 
     recommendations = []
-    if inference.disease_type != "Healthy":
+    if normalized_disease_type != "Healthy":
         bilingual_recommendation = logic.get_recommendation_bilingual(
-            inference.disease_type,
+            normalized_disease_type,
             risk["risk_level"],
         )
         recommendations.append({
@@ -624,7 +852,7 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
         "moisture": round(sensor.humidity * 0.85, 1),  # derived estimate
         "health": health,
         "stability": stability,
-        "disease_type": inference.disease_type,
+        "disease_type": normalized_disease_type,
         "confidence_score": inference.confidence_score,
         "risk_level": risk["risk_level"],
         "recommendations": latest_recommendations,
@@ -687,7 +915,7 @@ def build_analysis_summary(
     confidence_total = 0
 
     for entry in detections:
-        disease_type = entry.disease_type or "Unknown"
+        disease_type = normalize_disease_type(entry.disease_type)
         is_healthy = disease_type.lower() == "healthy"
         has_temperature = isinstance(getattr(entry, "temperature", None), (int, float))
         has_humidity = isinstance(getattr(entry, "humidity", None), (int, float))
@@ -718,7 +946,9 @@ def build_analysis_summary(
 
     healthy_rate = (healthy_count / len(detections)) * 100
     recent_window = detections[: min(25, len(detections))]
-    recent_diseased = len([d for d in recent_window if (d.disease_type or "").lower() != "healthy"])
+    recent_diseased = len([
+        d for d in recent_window if normalize_disease_type(d.disease_type).lower() != "healthy"
+    ])
     disease_rate = (recent_diseased / len(recent_window)) * 100 if recent_window else 0
     average_confidence = (confidence_total / len(detections)) * 100 if detections else 0
 
@@ -971,15 +1201,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
             inference = inference_query.order_by(models.InferenceResult.timestamp.desc()).first()
             if inference:
                 # Get sensor data at the time of detection (to match dashboard/logs)
-                sensor = db.query(models.SensorData).filter(
-                    models.SensorData.timestamp <= inference.timestamp,
-                    models.SensorData.device_id == inference.device_id
-                ).order_by(models.SensorData.timestamp.desc()).first()
-                if not sensor:
-                    sensor_query = db.query(models.SensorData)
-                    if user_device_ids:
-                        sensor_query = sensor_query.filter(models.SensorData.device_id.in_(user_device_ids))
-                    sensor = sensor_query.order_by(models.SensorData.timestamp.asc()).first()
+                sensor = get_sensor_for_detection(
+                    db,
+                    inference,
+                    fallback_device_ids=user_device_ids,
+                )
                 if sensor:
                     payload = build_dashboard_payload(sensor, inference, db)
                     await websocket.send_json(payload)
@@ -1056,6 +1282,13 @@ async def upload_data(
             db=db,
             x_device_key=x_device_key,
             background_tasks=background_tasks,
+        )
+        background_tasks.add_task(
+            check_and_send_alert,
+            result["disease_type"],
+            result["confidence_score"],
+            "edge",
+            result["timestamp"],
         )
         return {
             "status": result["status"],
@@ -1185,20 +1418,16 @@ def get_detection_latest(db: Session = Depends(get_db), user: models.User = Depe
         raise HTTPException(status_code=404, detail="No detection data available")
 
     # Get sensor data at the time of detection (same as /detection/history does)
-    sensor = db.query(models.SensorData).filter(
-        models.SensorData.timestamp <= detection.timestamp,
-        models.SensorData.device_id == detection.device_id
-    ).order_by(models.SensorData.timestamp.desc()).first()
-
-    # Fallback to nearest sensor if none before
-    if not sensor:
-        sensor = db.query(models.SensorData).filter(
-            models.SensorData.device_id.in_(user_device_ids)
-        ).order_by(models.SensorData.timestamp.asc()).first()
+    sensor = get_sensor_for_detection(
+        db,
+        detection,
+        fallback_device_ids=user_device_ids,
+    )
 
     return {
-        "disease_type": detection.disease_type,
+        "disease_type": normalize_disease_type(detection.disease_type),
         "confidence_score": detection.confidence_score,
+        "source": normalize_detection_source(getattr(detection, "source", None)),
         "timestamp": detection.timestamp,
         "temperature": sensor.temperature if sensor else None,
         "humidity": sensor.humidity if sensor else None,
@@ -1251,21 +1480,17 @@ def get_detection_history(
     result = []
     for detection in detections:
         # Find the most recent sensor data at or before detection time
-        sensor = db.query(models.SensorData).filter(
-            models.SensorData.timestamp <= detection.timestamp,
-            models.SensorData.device_id == detection.device_id
-        ).order_by(models.SensorData.timestamp.desc()).first()
-
-        # Fallback: get nearest sensor reading if none before
-        if not sensor:
-            sensor = db.query(models.SensorData).filter(
-                models.SensorData.device_id.in_(user_device_ids)
-            ).order_by(models.SensorData.timestamp.asc()).first()
+        sensor = get_sensor_for_detection(
+            db,
+            detection,
+            fallback_device_ids=user_device_ids,
+        )
 
         result.append({
             "id": detection.id,
-            "disease_type": detection.disease_type,
+            "disease_type": normalize_disease_type(detection.disease_type),
             "confidence_score": detection.confidence_score,
+            "source": normalize_detection_source(getattr(detection, "source", None)),
             "timestamp": detection.timestamp,
             "temperature": sensor.temperature if sensor else None,
             "humidity": sensor.humidity if sensor else None
@@ -1298,9 +1523,7 @@ def get_forecast_latest(db: Session = Depends(get_db), user: models.User = Depen
         raise HTTPException(status_code=404, detail="No forecast data available")
 
     # Get forecast data for this context
-    forecasts = db.query(models.ForecastData).filter(
-        models.ForecastData.context_id == context.id
-    ).order_by(models.ForecastData.day_index.asc()).all()
+    forecasts = get_sorted_forecast_records(db, context.id)
 
     return {
         "context": {
@@ -1308,10 +1531,10 @@ def get_forecast_latest(db: Session = Depends(get_db), user: models.User = Depen
         },
         "days": [
             {
-                "day": (f.day_index + 1),
-                "risk_level": f.risk_level,
-                "date": f.forecast_date
-            } for f in forecasts
+                "day": index + 1,
+                "risk_level": forecast.risk_level,
+                "date": forecast.forecast_date
+            } for index, forecast in enumerate(forecasts)
         ],
         "created_at": context.timestamp
     }
@@ -1392,15 +1615,11 @@ def get_analysis_summary(db: Session = Depends(get_db), user: models.User = Depe
 
     enriched_detections = []
     for detection in detections:
-        sensor = db.query(models.SensorData).filter(
-            models.SensorData.timestamp <= detection.timestamp,
-            models.SensorData.device_id == detection.device_id
-        ).order_by(models.SensorData.timestamp.desc()).first()
-
-        if not sensor:
-            sensor = db.query(models.SensorData).filter(
-                models.SensorData.device_id.in_(user_device_ids)
-            ).order_by(models.SensorData.timestamp.asc()).first()
+        sensor = get_sensor_for_detection(
+            db,
+            detection,
+            fallback_device_ids=user_device_ids,
+        )
 
         detection.temperature = sensor.temperature if sensor else None
         detection.humidity = sensor.humidity if sensor else None
@@ -1427,6 +1646,190 @@ def get_analysis_summary(db: Session = Depends(get_db), user: models.User = Depe
     return build_analysis_summary(enriched_detections, sensors, recommendations, forecasts)
 
 
+@app.get("/scan/latest", response_model=schemas.ScanRequestLatestOut)
+def get_latest_scan_request(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    default_device = get_preferred_user_device(db, user.id)
+    latest_request = get_latest_scan_request_record(db, user.id)
+
+    request_device = None
+    if latest_request:
+        request_device = db.query(models.Device).filter(
+            models.Device.id == latest_request.device_id,
+            models.Device.user_id == user.id,
+        ).first()
+
+    return {
+        "request": serialize_scan_request(latest_request, request_device),
+        "default_device": serialize_device_brief(default_device),
+    }
+
+
+@app.get("/scan/pending", response_model=schemas.ScanPendingOut)
+def get_pending_scan_command(
+    db: Session = Depends(get_db),
+    x_device_key: Optional[str] = Header(None),
+):
+    device = get_authenticated_device(db, x_device_key)
+    pending_request = db.query(models.ScanRequest).filter(
+        models.ScanRequest.user_id == device.user_id,
+        models.ScanRequest.device_id == device.id,
+        models.ScanRequest.status == "pending",
+    ).order_by(models.ScanRequest.requested_at.asc(), models.ScanRequest.id.asc()).first()
+
+    if not pending_request:
+        return {"pending": False}
+
+    return {
+        "pending": True,
+        "request_id": pending_request.id,
+    }
+
+
+@app.post("/scan/request", response_model=schemas.ScanRequestLatestOut)
+def request_scan(
+    payload: schemas.ScanRequestCreate,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    if payload.device_id is not None:
+        target_device = db.query(models.Device).filter(
+            models.Device.id == payload.device_id,
+            models.Device.user_id == user.id,
+        ).first()
+    else:
+        target_device = get_preferred_user_device(db, user.id)
+
+    if not target_device:
+        raise HTTPException(status_code=404, detail="No registered device is available for scanning")
+
+    existing_pending = db.query(models.ScanRequest).filter(
+        models.ScanRequest.user_id == user.id,
+        models.ScanRequest.device_id == target_device.id,
+        models.ScanRequest.status == "pending",
+    ).order_by(models.ScanRequest.requested_at.desc(), models.ScanRequest.id.desc()).first()
+
+    if existing_pending:
+        return {
+            "request": serialize_scan_request(existing_pending, target_device),
+            "default_device": serialize_device_brief(target_device),
+        }
+
+    source = (payload.source or "edge_impulse").strip() or "edge_impulse"
+    model_name = (payload.model_name or "Edge Impulse EfficientNet").strip() or "Edge Impulse EfficientNet"
+
+    new_request = models.ScanRequest(
+        user_id=user.id,
+        device_id=target_device.id,
+        status="pending",
+        source=source,
+        model_name=model_name,
+    )
+    db.add(new_request)
+    db.commit()
+    db.refresh(new_request)
+
+    return {
+        "request": serialize_scan_request(new_request, target_device),
+        "default_device": serialize_device_brief(target_device),
+    }
+
+
+@app.post("/scan/cloud", response_model=schemas.CloudScanOut)
+async def run_cloud_scan(
+    background_tasks: BackgroundTasks,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Cloud scan requires an image upload")
+
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty")
+
+    try:
+        prediction = cloud_scan_service.run_cloud_scan_inference(image_bytes)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Cloud scan failed: {exc}") from exc
+
+    server_now = datetime.now(timezone.utc)
+    internal_device_id = web_app_device_id(user.id)
+    disease_type = prediction["disease_type"]
+    confidence_score = prediction["confidence_score"]
+    risk_level = "LOW RISK" if disease_type == "Healthy" else "HIGH RISK"
+
+    detection = models.InferenceResult(
+        device_id=internal_device_id,
+        disease_type=disease_type,
+        confidence_score=confidence_score,
+        source="web_app",
+        timestamp=server_now,
+    )
+    db.add(detection)
+    db.flush()
+
+    recommendation_payload = None
+    if disease_type != "Healthy":
+        recommendation_payload = logic.get_recommendation_bilingual(disease_type, risk_level)
+        recommendation = models.Recommendation(
+            device_id=internal_device_id,
+            title=recommendation_payload["title_en"],
+            description=recommendation_payload["description_en"],
+            title_am=recommendation_payload["title_am"],
+            description_am=recommendation_payload["description_am"],
+            timestamp=server_now,
+        )
+        db.add(recommendation)
+        db.flush()
+
+    apply_notification_rules(
+        db,
+        owner_id=user.id,
+        disease_type=disease_type,
+        confidence_score=confidence_score,
+        forecast=None,
+        background_tasks=background_tasks,
+        timestamp=server_now,
+    )
+
+    db.commit()
+
+    background_tasks.add_task(
+        check_and_send_alert,
+        disease_type,
+        confidence_score,
+        "cloud",
+        server_now.isoformat(),
+    )
+
+    return {
+        "disease_type": disease_type,
+        "confidence_score": confidence_score,
+        "source": "web_app",
+        "timestamp": server_now,
+        "model_name": "EfficientNet Cloud Scan",
+        "input_shape": prediction["input_shape"],
+        "preprocessing": prediction["preprocessing"],
+        "class_scores": prediction["class_scores"],
+        "recommendation": (
+            {
+                "title": recommendation_payload["title_en"],
+                "description": recommendation_payload["description_en"],
+                "title_am": recommendation_payload["title_am"],
+                "description_am": recommendation_payload["description_am"],
+            }
+            if recommendation_payload
+            else None
+        ),
+    }
+
+
 @app.post("/data/ingest")
 async def data_ingest(
     payload: schemas.DataIngestPayload,
@@ -1445,6 +1848,13 @@ async def data_ingest(
             db=db,
             x_device_key=x_device_key,
             background_tasks=background_tasks,
+        )
+        background_tasks.add_task(
+            check_and_send_alert,
+            result["disease_type"],
+            result["confidence_score"],
+            "edge",
+            result["timestamp"],
         )
         return {
             "status": result["status"],

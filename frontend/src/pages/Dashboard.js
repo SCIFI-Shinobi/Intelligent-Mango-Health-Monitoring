@@ -51,6 +51,57 @@ export default function Dashboard() {
     }))
   ), []);
 
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
+      let detectionData = null;
+
+      // Fetch latest detection (now includes matching sensor data)
+      const detectionRes = await fetch(`${API_BASE_URL}/detection/latest`, { headers });
+      if (detectionRes.ok) {
+        detectionData = await detectionRes.json();
+        setDetection(detectionData);
+        // Use sensor data from detection to keep them in sync
+        setSensorLatest({
+          temperature: detectionData.temperature,
+          humidity: detectionData.humidity,
+          timestamp: detectionData.timestamp
+        });
+        setForecast(detectionData.forecast || null);
+      }
+
+      // Fetch recommendations
+      const recsRes = await fetch(`${API_BASE_URL}/recommendations/latest?limit=5`, { headers });
+      if (recsRes.ok) {
+        const recsData = await recsRes.json();
+        setRecommendations(normalizeRecommendations(recsData.data || []));
+      }
+
+      // Fallback to forecast endpoint when detection/latest has no forecast payload.
+      if (!detectionData?.forecast) {
+        const forecastRes = await fetch(`${API_BASE_URL}/forecast/latest`, { headers });
+        if (forecastRes.ok) {
+          const forecastData = await forecastRes.json();
+          setForecast(forecastData);
+        } else {
+          setForecast(null);
+        }
+      }
+    } catch (err) {
+      setError(err.message);
+      console.error('Data fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, normalizeRecommendations]);
+
   const connectWebSocket = useCallback(() => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
 
@@ -102,56 +153,7 @@ export default function Dashboard() {
 
   // Fetch all data on mount and when tab changes
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const headers = {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        };
-
-        let detectionData = null;
-
-        // Fetch latest detection (now includes matching sensor data)
-        const detectionRes = await fetch(`${API_BASE_URL}/detection/latest`, { headers });
-        if (detectionRes.ok) {
-          detectionData = await detectionRes.json();
-          setDetection(detectionData);
-          // Use sensor data from detection to keep them in sync
-          setSensorLatest({
-            temperature: detectionData.temperature,
-            humidity: detectionData.humidity,
-            timestamp: detectionData.timestamp
-          });
-          setForecast(detectionData.forecast || null);
-        }
-
-        // Fetch recommendations
-        const recsRes = await fetch(`${API_BASE_URL}/recommendations/latest?limit=5`, { headers });
-        if (recsRes.ok) {
-          const recsData = await recsRes.json();
-          setRecommendations(normalizeRecommendations(recsData.data || []));
-        }
-
-        // Fallback to forecast endpoint when detection/latest has no forecast payload.
-        if (!detectionData?.forecast) {
-          const forecastRes = await fetch(`${API_BASE_URL}/forecast/latest`, { headers });
-          if (forecastRes.ok) {
-            const forecastData = await forecastRes.json();
-            setForecast(forecastData);
-          }
-        }
-      } catch (err) {
-        setError(err.message);
-        console.error('Data fetch error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    fetchDashboardData();
     shouldReconnect.current = true;
     connectWebSocket();
 
@@ -160,7 +162,16 @@ export default function Dashboard() {
       clearTimeout(reconnectTimer.current);
       if (ws.current) ws.current.close();
     };
-  }, [token, connectWebSocket, normalizeRecommendations]);
+  }, [connectWebSocket, fetchDashboardData]);
+
+  useEffect(() => {
+    const handleCloudScanComplete = () => {
+      fetchDashboardData();
+    };
+
+    window.addEventListener('mangoguard-cloud-scan-complete', handleCloudScanComplete);
+    return () => window.removeEventListener('mangoguard-cloud-scan-complete', handleCloudScanComplete);
+  }, [fetchDashboardData]);
 
   // Get window size for responsive behavior
   const [isDesktop, setIsDesktop] = useState(window.innerWidth > 1024);

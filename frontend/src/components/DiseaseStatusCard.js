@@ -7,6 +7,7 @@ const DISEASE_NAMES = {
   'Healthy': 'healthy',
   'Anthracnose': 'anthracnose',
   'Powdery Mildew': 'powderyMildew',
+  'Die Back': 'dieBack',
 };
 
 export default function DiseaseStatusCard({ detection, loading, freshness }) {
@@ -54,6 +55,8 @@ export default function DiseaseStatusCard({ detection, loading, freshness }) {
     statusClass = 'mildew';
   } else if (detection.disease_type === 'Anthracnose' || (detection.disease_type && detection.disease_type.toLowerCase().includes('anthracnose'))) {
     statusClass = 'anthracnose';
+  } else if (detection.disease_type === 'Die Back' || (detection.disease_type && detection.disease_type.toLowerCase().includes('die'))) {
+    statusClass = 'warning';
   } else if (!isHealthy) {
     statusClass = 'warning';
   }

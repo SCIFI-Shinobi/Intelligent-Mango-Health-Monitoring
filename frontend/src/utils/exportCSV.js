@@ -23,6 +23,7 @@ export function exportDetectionLogs(records, headers) {
     const values = [
       r.timestamp ? `"${new Date(r.timestamp).toISOString()}"` : '',
       `"${r.disease_type || ''}"`,
+      `"${r.source === 'web_app' ? 'Web/App' : 'Gateway'}"`,
       r.confidence_score != null ? (r.confidence_score * 100).toFixed(1) : '',
       r.temperature != null ? r.temperature.toFixed(1) : '',
       r.humidity != null ? r.humidity.toFixed(1) : ''

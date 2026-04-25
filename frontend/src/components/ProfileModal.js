@@ -1,8 +1,9 @@
 import React, { useState, useContext, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { getApiBaseUrl } from '../utils/apiBase';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = getApiBaseUrl();
 
 export default function ProfileModal({ onClose }) {
   const { user, updateUser, logout } = useContext(AuthContext);

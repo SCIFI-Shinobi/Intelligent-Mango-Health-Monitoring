@@ -124,6 +124,12 @@ static BLEStringCharacteristic inferenceResultCharacteristic(
     BLERead | BLENotify,
     32
 );
+static BLEStringCharacteristic inferenceCommandCharacteristic(
+    "19B10012-E8F2-537E-4F6C-D104768A1214",
+    BLERead | BLEWrite,
+    16
+);
+static bool inferenceRequested = false;
 
 /* Function definitions ------------------------------------------------------- */
 bool ei_camera_init(void);
@@ -165,126 +171,132 @@ void setup()
 */
 void loop()
 {
-    bool stop_inferencing = false;
+    BLE.poll();
 
-    while(stop_inferencing == false) {
-        BLE.poll();
-        ei_printf("\nStarting inferencing in 2 seconds...\n");
-
-        // instead of wait_ms, we'll wait on the signal, this allows threads to cancel us...
-        if (ei_sleep(2000) != EI_IMPULSE_OK) {
-            break;
+    if (inferenceCommandCharacteristic.written()) {
+        String command = inferenceCommandCharacteristic.value();
+        command.trim();
+        command.toLowerCase();
+        if (command == "scan") {
+            inferenceRequested = true;
+            inferenceResultCharacteristic.writeValue("pending,0.00000");
+            ei_printf("BLE command received: scan\r\n");
         }
+    }
 
-        ei_printf("Taking photo...\n");
+    if (!inferenceRequested) {
+        delay(20);
+        return;
+    }
 
-        if (ei_camera_init() == false) {
-            ei_printf("ERR: Failed to initialize image sensor\r\n");
-            break;
-        }
+    inferenceRequested = false;
+    ei_printf("\nStarting on-demand inferencing...\n");
+    ei_printf("Taking photo...\n");
 
-        // choose resize dimensions
-        uint32_t resize_col_sz;
-        uint32_t resize_row_sz;
-        bool do_resize = false;
-        int res = calculate_resize_dimensions(EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT, &resize_col_sz, &resize_row_sz, &do_resize);
-        if (res) {
-            ei_printf("ERR: Failed to calculate resize dimensions (%d)\r\n", res);
-            break;
-        }
+    if (ei_camera_init() == false) {
+        ei_printf("ERR: Failed to initialize image sensor\r\n");
+        return;
+    }
 
-        void *snapshot_mem = NULL;
-        uint8_t *snapshot_buf = NULL;
-        snapshot_mem = ei_malloc(resize_col_sz*resize_row_sz*2);
-        if(snapshot_mem == NULL) {
-            ei_printf("failed to create snapshot_mem\r\n");
-            break;
-        }
-        snapshot_buf = (uint8_t *)DWORD_ALIGN_PTR((uintptr_t)snapshot_mem);
+    // choose resize dimensions
+    uint32_t resize_col_sz;
+    uint32_t resize_row_sz;
+    bool do_resize = false;
+    int res = calculate_resize_dimensions(EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT, &resize_col_sz, &resize_row_sz, &do_resize);
+    if (res) {
+        ei_printf("ERR: Failed to calculate resize dimensions (%d)\r\n", res);
+        ei_camera_deinit();
+        return;
+    }
 
-        if (ei_camera_capture(EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
-            ei_printf("Failed to capture image\r\n");
-            if (snapshot_mem) ei_free(snapshot_mem);
-            break;
-        }
+    void *snapshot_mem = NULL;
+    uint8_t *snapshot_buf = NULL;
+    snapshot_mem = ei_malloc(resize_col_sz*resize_row_sz*2);
+    if(snapshot_mem == NULL) {
+        ei_printf("failed to create snapshot_mem\r\n");
+        ei_camera_deinit();
+        return;
+    }
+    snapshot_buf = (uint8_t *)DWORD_ALIGN_PTR((uintptr_t)snapshot_mem);
 
-        ei::signal_t signal;
-        signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
-        signal.get_data = &ei_camera_cutout_get_data;
+    if (ei_camera_capture(EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
+        ei_printf("Failed to capture image\r\n");
+        if (snapshot_mem) ei_free(snapshot_mem);
+        ei_camera_deinit();
+        return;
+    }
 
-        // run the impulse: DSP, neural network and the Anomaly algorithm
-        ei_impulse_result_t result = { 0 };
+    ei::signal_t signal;
+    signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
+    signal.get_data = &ei_camera_cutout_get_data;
 
-        EI_IMPULSE_ERROR ei_error = run_classifier(&signal, &result, debug_nn);
-        if (ei_error != EI_IMPULSE_OK) {
-            ei_printf("Failed to run impulse (%d)\n", ei_error);
-            ei_free(snapshot_mem);
-            break;
-        }
+    // run the impulse: DSP, neural network and the Anomaly algorithm
+    ei_impulse_result_t result = { 0 };
 
-        // print the predictions
-        ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
-                  result.timing.dsp, result.timing.classification, result.timing.anomaly);
+    EI_IMPULSE_ERROR ei_error = run_classifier(&signal, &result, debug_nn);
+    if (ei_error != EI_IMPULSE_OK) {
+        ei_printf("Failed to run impulse (%d)\n", ei_error);
+        ei_free(snapshot_mem);
+        ei_camera_deinit();
+        return;
+    }
+
+    // print the predictions
+    ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
+              result.timing.dsp, result.timing.classification, result.timing.anomaly);
 #if EI_CLASSIFIER_OBJECT_DETECTION == 1
-        ei_printf("Object detection bounding boxes:\r\n");
-        for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
-            ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
-            if (bb.value == 0) {
-                continue;
-            }
-            ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                    bb.label,
-                    bb.value,
-                    bb.x,
-                    bb.y,
-                    bb.width,
-                    bb.height);
+    ei_printf("Object detection bounding boxes:\r\n");
+    for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
+        ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
+        if (bb.value == 0) {
+            continue;
         }
+        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
+                bb.label,
+                bb.value,
+                bb.x,
+                bb.y,
+                bb.width,
+                bb.height);
+    }
 
     // Print the prediction results (classification)
 #else
-        ei_printf("Predictions:\r\n");
-        for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
-            ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
-            ei_printf("%.5f\r\n", result.classification[i].value);
-        }
+    ei_printf("Predictions:\r\n");
+    for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+        ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
+        ei_printf("%.5f\r\n", result.classification[i].value);
+    }
 
-        const char *top_label = "unknown";
-        float top_confidence = 0.0f;
-        find_top_classification(&result, &top_label, &top_confidence);
-        ble_update_inference_result(top_label, top_confidence);
+    const char *top_label = "unknown";
+    float top_confidence = 0.0f;
+    find_top_classification(&result, &top_label, &top_confidence);
+    ble_update_inference_result(top_label, top_confidence);
 #endif
 
     // Print anomaly result (if it exists)
 #if EI_CLASSIFIER_HAS_ANOMALY
-        ei_printf("Anomaly prediction: %.3f\r\n", result.anomaly);
+    ei_printf("Anomaly prediction: %.3f\r\n", result.anomaly);
 #endif
 
 #if EI_CLASSIFIER_HAS_VISUAL_ANOMALY
-        ei_printf("Visual anomalies:\r\n");
-        for (uint32_t i = 0; i < result.visual_ad_count; i++) {
-            ei_impulse_result_bounding_box_t bb = result.visual_ad_grid_cells[i];
-            if (bb.value == 0) {
-                continue;
-            }
-            ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                    bb.label,
-                    bb.value,
-                    bb.x,
-                    bb.y,
-                    bb.width,
-                    bb.height);
+    ei_printf("Visual anomalies:\r\n");
+    for (uint32_t i = 0; i < result.visual_ad_count; i++) {
+        ei_impulse_result_bounding_box_t bb = result.visual_ad_grid_cells[i];
+        if (bb.value == 0) {
+            continue;
         }
+        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
+                bb.label,
+                bb.value,
+                bb.x,
+                bb.y,
+                bb.width,
+                bb.height);
+    }
 #endif
 
-        while (ei_get_serial_available() > 0) {
-            if (ei_get_serial_byte() == 'b') {
-                ei_printf("Inferencing stopped by user\r\n");
-                stop_inferencing = true;
-            }
-        }
-        if (snapshot_mem) ei_free(snapshot_mem);
-    }
+    if (snapshot_mem) ei_free(snapshot_mem);
     ei_camera_deinit();
 }
 
@@ -297,8 +309,10 @@ bool ble_init(void) {
     BLE.setDeviceName("Nano33-Classifier");
     BLE.setAdvertisedService(inferenceService);
     inferenceService.addCharacteristic(inferenceResultCharacteristic);
+    inferenceService.addCharacteristic(inferenceCommandCharacteristic);
     BLE.addService(inferenceService);
     inferenceResultCharacteristic.writeValue("waiting,0.00000");
+    inferenceCommandCharacteristic.writeValue("idle");
     BLE.advertise();
 
     ei_printf("BLE advertising as Nano33-Classifier\r\n");

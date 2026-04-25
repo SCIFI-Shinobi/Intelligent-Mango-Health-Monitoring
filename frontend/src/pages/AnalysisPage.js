@@ -1,13 +1,19 @@
-import React, { useContext } from 'react';
-import { useAPI } from '../hooks/useAPI';
+import React, { useContext, useEffect, useState } from 'react';
+import { apiCall, useAPI } from '../hooks/useAPI';
 import { useLanguage } from '../context/LanguageContext';
 import { SettingsContext } from '../context/SettingsContext';
-import { MdChecklist, MdInsights, MdOutlineThermostat, MdWarningAmber } from 'react-icons/md';
+import { formatDateEAT, formatTimeAgo } from '../utils/formatTime';
+import { MdAdd, MdChecklist, MdDocumentScanner, MdInsights, MdOutlineThermostat, MdPhotoCamera, MdWarningAmber } from 'react-icons/md';
 
 export default function AnalysisPage() {
   const { t, lang } = useLanguage();
   const { settings, formatTemp } = useContext(SettingsContext);
-  const { data: analysis, loading, error } = useAPI('/analysis/summary');
+  const [analysisRefreshKey, setAnalysisRefreshKey] = useState(0);
+  const [scanRefreshKey, setScanRefreshKey] = useState(0);
+  const [scanRequestLoading, setScanRequestLoading] = useState(false);
+  const [scanActionError, setScanActionError] = useState(null);
+  const { data: analysis, loading, error } = useAPI(`/analysis/summary?refresh=${analysisRefreshKey}`);
+  const { data: scanData } = useAPI(`/scan/latest?refresh=${scanRefreshKey}`);
 
   const tempUnitString = settings?.temperatureUnit === 'fahrenheit' ? 'F' : 'C';
   const noDataText = t('analysis', 'notAvailable');
@@ -50,11 +56,16 @@ export default function AnalysisPage() {
 
   const translateDiseaseName = (diseaseName) => {
     if (!diseaseName) return noDataText;
-    const lowerName = diseaseName.toLowerCase().trim();
+    const lowerName = diseaseName
+      .toLowerCase()
+      .replace(/[_-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     if (lowerName === 'healthy') return t('disease', 'healthy');
     if (lowerName === 'anthracnose') return t('disease', 'anthracnose');
     if (lowerName === 'powdery mildew' || lowerName === 'powderymildew') return t('disease', 'powderyMildew');
+    if (lowerName === 'die back' || lowerName === 'dieback') return t('disease', 'dieBack');
 
     return diseaseName;
   };
@@ -79,6 +90,56 @@ export default function AnalysisPage() {
         ))}
       </div>
     );
+  };
+
+  const formatTimestampLabel = (value) => {
+    if (!value) return noDataText;
+    return settings?.timeFormat === 'relative'
+      ? formatTimeAgo(value, lang)
+      : formatDateEAT(value, lang);
+  };
+
+  useEffect(() => {
+    if (scanData?.request?.status !== 'pending') {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setScanRefreshKey((current) => current + 1);
+      setAnalysisRefreshKey((current) => current + 1);
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [scanData?.request?.status]);
+
+  useEffect(() => {
+    const handleCloudScanComplete = () => {
+      setScanRefreshKey((current) => current + 1);
+      setAnalysisRefreshKey((current) => current + 1);
+    };
+
+    window.addEventListener('mangoguard-cloud-scan-complete', handleCloudScanComplete);
+    return () => window.removeEventListener('mangoguard-cloud-scan-complete', handleCloudScanComplete);
+  }, []);
+
+  const handleRunScan = async () => {
+    try {
+      setScanRequestLoading(true);
+      setScanActionError(null);
+      await apiCall('/scan/request', {
+        method: 'POST',
+        body: {
+          source: 'edge_impulse',
+          model_name: 'Edge Impulse EfficientNet',
+        },
+      });
+      setScanRefreshKey((current) => current + 1);
+      setAnalysisRefreshKey((current) => current + 1);
+    } catch (requestError) {
+      setScanActionError(requestError.message);
+    } finally {
+      setScanRequestLoading(false);
+    }
   };
 
   const summary = analysis || {
@@ -106,6 +167,41 @@ export default function AnalysisPage() {
     forecast_risk_trend: [],
     top_recommendations: [],
   };
+
+  const latestScanRequest = scanData?.request || null;
+  const defaultScanDevice = scanData?.default_device || null;
+  const scanDeviceName = latestScanRequest?.device?.device_name || defaultScanDevice?.device_name || noDataText;
+  const scanDeviceLastSeen = latestScanRequest?.device?.last_seen || defaultScanDevice?.last_seen || null;
+  const scanHasDevice = Boolean(latestScanRequest?.device || defaultScanDevice);
+  const scanStatus = latestScanRequest?.status || 'idle';
+  const scanStatusClass = scanStatus === 'completed' ? 'completed' : scanStatus === 'pending' ? 'pending' : 'idle';
+  const scanStatusText = scanStatus === 'completed'
+    ? t('analysis', 'scanCompletedStatus')
+    : scanStatus === 'pending'
+      ? t('analysis', 'scanPendingStatus')
+      : t('analysis', 'scanReadyStatus');
+  const scanDescription = !scanHasDevice
+    ? t('analysis', 'scanNoDeviceBody')
+    : scanStatus === 'completed'
+      ? t('analysis', 'scanCompletedBody')
+      : scanStatus === 'pending'
+        ? t('analysis', 'scanPendingBody')
+        : t('analysis', 'scanReadyBody');
+  const scanButtonLabel = scanStatus === 'pending'
+    ? t('analysis', 'scanPendingAction')
+    : t('analysis', 'scanRunAction');
+  const scanResultText = latestScanRequest?.result_disease_type
+    ? `${translateDiseaseName(latestScanRequest.result_disease_type)} · ${formatPercent((latestScanRequest.result_confidence_score ?? 0) * 100)}`
+    : t('analysis', 'scanWaitingResult');
+  const scanQueuedAtText = latestScanRequest?.requested_at
+    ? formatTimestampLabel(latestScanRequest.requested_at)
+    : noDataText;
+  const scanCompletedAtText = latestScanRequest?.completed_at
+    ? formatTimestampLabel(latestScanRequest.completed_at)
+    : noDataText;
+  const scanModelName = latestScanRequest?.model_name || t('analysis', 'scanModelDefault');
+  const scanButtonDisabled = !scanHasDevice || scanRequestLoading || scanStatus === 'pending';
+  const scanButtonText = scanRequestLoading ? t('common', 'loading') : scanButtonLabel;
 
   const riskClass = `risk-${(summary.risk_level || 'LOW').toLowerCase()}`;
   const hasAnalysisData = summary.total_scans > 0 || summary.sensor_sample_count > 0 || summary.recommendation_count > 0;
@@ -207,13 +303,78 @@ export default function AnalysisPage() {
           <span className="section-title">{t('analysis', 'title')}</span>
           <p className="analysis-subtitle">{t('analysis', 'insightsLive')}</p>
         </div>
-        <div className="analysis-live-pill">
-          <span className="analysis-live-dot"></span>
-          {t('analysis', 'liveOverview')}
+        <div className="analysis-header-actions">
+          <div className="analysis-live-pill">
+            <span className="analysis-live-dot"></span>
+            {t('analysis', 'liveOverview')}
+          </div>
+          <button
+            type="button"
+            className="analysis-scan-button analysis-scan-button-desktop"
+            onClick={handleRunScan}
+            disabled={scanButtonDisabled}
+          >
+            <MdDocumentScanner />
+            <span>{scanButtonText}</span>
+          </button>
         </div>
       </div>
 
       {error && <div className="error-message">{error}</div>}
+
+      <section className={`analysis-scan-card ${scanStatusClass}`}>
+        <div className="analysis-scan-main">
+          <div className="analysis-scan-top">
+            <span className={`analysis-scan-status ${scanStatusClass}`}>{scanStatusText}</span>
+            <span className="analysis-meta-chip">{scanModelName}</span>
+          </div>
+
+          <div className="analysis-card-heading analysis-scan-heading">
+            <div className="analysis-card-icon">
+              <MdPhotoCamera />
+            </div>
+            <div>
+              <h4>{t('analysis', 'scanTitle')}</h4>
+              <p>{scanDescription}</p>
+            </div>
+          </div>
+
+          <div className="analysis-scan-actions">
+            <span className="analysis-scan-helper">{t('analysis', 'scanQueueHint')}</span>
+          </div>
+
+          {scanActionError && <div className="analysis-scan-feedback">{scanActionError}</div>}
+        </div>
+
+        <div className="analysis-scan-side">
+          <div className="analysis-scan-meta">
+            <div className="analysis-stat-tile">
+              <span>{t('analysis', 'scanTargetDevice')}</span>
+              <strong className="analysis-stat-compact">{scanDeviceName}</strong>
+              <small>
+                {scanDeviceLastSeen
+                  ? `${t('settings', 'lastSeen')}: ${formatTimestampLabel(scanDeviceLastSeen)}`
+                  : t('analysis', 'scanDeviceIdleHint')}
+              </small>
+            </div>
+            <div className="analysis-stat-tile">
+              <span>{t('analysis', 'scanLatestResult')}</span>
+              <strong className="analysis-stat-compact">{scanResultText}</strong>
+              <small>{t('analysis', 'scanResultStoredHint')}</small>
+            </div>
+            <div className="analysis-stat-tile">
+              <span>{t('analysis', 'scanQueuedAt')}</span>
+              <strong className="analysis-stat-compact">{scanQueuedAtText}</strong>
+              <small>{t('analysis', 'scanRequestStored')}</small>
+            </div>
+            <div className="analysis-stat-tile">
+              <span>{t('analysis', 'scanCompletedAt')}</span>
+              <strong className="analysis-stat-compact">{scanCompletedAtText}</strong>
+              <small>{t('analysis', 'scanCompletionHint')}</small>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {loading ? (
         <div className="analysis-loading">{t('analysis', 'loading')}</div>
@@ -477,6 +638,19 @@ export default function AnalysisPage() {
           <p className="analysis-note">{t('analysis', 'insightsLive')}</p>
         </>
       )}
+
+      <div className="analysis-mobile-scan-action">
+        <button
+          type="button"
+          className="analysis-scan-fab"
+          onClick={handleRunScan}
+          disabled={scanButtonDisabled}
+          aria-label={scanButtonText}
+        >
+          <MdAdd />
+        </button>
+        <span className="analysis-scan-fab-text">{scanButtonText}</span>
+      </div>
     </div>
   );
 }

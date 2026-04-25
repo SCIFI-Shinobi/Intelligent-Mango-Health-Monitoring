@@ -1,16 +1,23 @@
-version: '3.8'
-
 services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:8000
+      HOST: 0.0.0.0
+    depends_on:
+      - backend
+
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/plant_health
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/plant_health
     depends_on:
-      - db
-    volumes:
-      - ./backend:/app
+      db:
+        condition: service_healthy
 
   db:
     image: postgres:15
@@ -20,8 +27,11 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=plant_health
-    ports:
-      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d plant_health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   postgres_data:

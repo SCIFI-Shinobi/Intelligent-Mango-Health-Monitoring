@@ -1,20 +1,28 @@
-# Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
-# Set the working directory in the container
-WORKDIR /app
+WORKDIR /srv
+ENV PIP_DEFAULT_TIMEOUT=1000
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_PROGRESS_BAR=off
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+COPY requirements.txt /tmp/requirements.txt
+COPY wheelhouse /tmp/wheelhouse
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN set -eux; \
+    if ls /tmp/wheelhouse/*.whl >/dev/null 2>&1; then \
+        pip install --no-cache-dir --no-deps /tmp/wheelhouse/*.whl; \
+    fi; \
+    if [ -f /tmp/wheelhouse/.complete ]; then \
+        pip install --no-cache-dir --no-index --find-links /tmp/wheelhouse -r /tmp/requirements.txt; \
+    else \
+        pip install --no-cache-dir --retries 20 --timeout 1200 -r /tmp/requirements.txt; \
+    fi
 
-# Copy the rest of the application code
-COPY . .
+COPY . /srv/backend
 
-# Expose the port the app runs on
+WORKDIR /srv/backend
+ENV PYTHONPATH=/srv/backend
+
 EXPOSE 8000
 
-# Command to run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

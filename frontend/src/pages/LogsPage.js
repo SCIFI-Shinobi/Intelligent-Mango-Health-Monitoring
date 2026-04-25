@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiCall, useAPI } from '../hooks/useAPI';
 import { formatTimeAgo, formatDateEAT } from '../utils/formatTime';
 import { exportDetectionLogs } from '../utils/exportCSV';
@@ -9,10 +9,25 @@ export default function LogsPage() {
   const { lang, t } = useLanguage();
   const { settings, formatTemp } = useSettings();
   const [page, setPage] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [exporting, setExporting] = useState(false);
   const limit = 10;
 
-  const { data, loading, error } = useAPI(`/detection/history?page=${page}&limit=${limit}`);
+  const { data, loading, error } = useAPI(`/detection/history?page=${page}&limit=${limit}&refresh=${refreshKey}`);
+
+  useEffect(() => {
+    const handleCloudScanComplete = () => {
+      setPage(1);
+      setRefreshKey((current) => current + 1);
+    };
+
+    window.addEventListener('mangoguard-cloud-scan-complete', handleCloudScanComplete);
+    return () => window.removeEventListener('mangoguard-cloud-scan-complete', handleCloudScanComplete);
+  }, []);
+
+  const getSourceLabel = (source) => (
+    source === 'web_app' ? t('logs', 'sourceWebApp') : t('logs', 'sourceGateway')
+  );
 
   const handleExport = async () => {
     try {
@@ -23,6 +38,7 @@ export default function LogsPage() {
       const headers = [
         t('logs', 'timestamp'),
         t('logs', 'diseaseClass'),
+        t('logs', 'source'),
         t('logs', 'confidence'),
         t('logs', 'temperature'),
         t('logs', 'humidity')
@@ -83,25 +99,34 @@ export default function LogsPage() {
                 <tr>
                   <th>{t('logs', 'timestamp')}</th>
                   <th>{t('logs', 'diseaseClass')}</th>
+                  <th>{t('logs', 'source')}</th>
                   <th>{t('logs', 'confidence')}</th>
                   <th>{t('logs', 'temperature')}</th>
                   <th>{t('logs', 'humidity')}</th>
                 </tr>
               </thead>
               <tbody>
-                {data.data.map((detection, index) => {
+                {data.data.map((detection) => {
                   const dtype = (detection.disease_type || '').toLowerCase();
                   const isHealthy = dtype === 'healthy';
-                  const badgeClass = isHealthy ? 'healthy' : dtype.includes('powdery') ? 'mildew' : 'anthracnose';
-                  const diseaseKey = isHealthy ? 'healthy' : dtype.includes('powdery') ? 'powderyMildew' : 'anthracnose';
-                  const iconClass = isHealthy ? 'fa-seedling' : dtype.includes('powdery') ? 'fa-smog' : 'fa-bug';
+                  const isPowdery = dtype.includes('powdery');
+                  const isDieBack = dtype.includes('die');
+                  const badgeClass = isHealthy ? 'healthy' : isPowdery ? 'mildew' : isDieBack ? 'warning' : 'anthracnose';
+                  const diseaseKey = isHealthy ? 'healthy' : isPowdery ? 'powderyMildew' : isDieBack ? 'dieBack' : 'anthracnose';
+                  const iconClass = isHealthy ? 'fa-seedling' : isPowdery ? 'fa-smog' : isDieBack ? 'fa-tree' : 'fa-bug';
+                  const sourceClass = detection.source === 'web_app' ? 'web' : 'gateway';
                   return (
-                    <tr key={index}>
+                    <tr key={detection.id}>
                       <td>{settings.timeFormat === 'relative' ? formatTimeAgo(detection.timestamp, lang) : formatDateEAT(detection.timestamp, lang)}</td>
                       <td>
                         <span className={`disease-chip ${badgeClass}`}>
                           <i className={`fa-solid ${iconClass}`}></i>
                           {t('disease', diseaseKey)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`source-chip ${sourceClass}`}>
+                          {getSourceLabel(detection.source)}
                         </span>
                       </td>
                       <td>
@@ -115,8 +140,8 @@ export default function LogsPage() {
                           <span className="confidence-text">{(detection.confidence_score * 100).toFixed(1)}%</span>
                         </div>
                       </td>
-                      <td>{detection.temperature ? `${formatTemp(detection.temperature)}${settings.temperatureUnit === 'fahrenheit' ? '°F' : '°C'}` : 'N/A'}</td>
-                      <td>{detection.humidity ? `${detection.humidity.toFixed(1)}%` : 'N/A'}</td>
+                      <td>{detection.temperature != null ? `${formatTemp(detection.temperature)}${settings.temperatureUnit === 'fahrenheit' ? '°F' : '°C'}` : 'N/A'}</td>
+                      <td>{detection.humidity != null ? `${detection.humidity.toFixed(1)}%` : 'N/A'}</td>
                     </tr>
                   );
                 })}

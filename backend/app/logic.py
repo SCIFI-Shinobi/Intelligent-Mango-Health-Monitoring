@@ -34,7 +34,7 @@ def evaluate_risk(disease_type: str, temperature: float, humidity: float) -> dic
             "recommendation": action.get("en", "Apply targeted fungicides immediately."),
             "recommendation_am": action.get("am", "ወዲያውኑ መድሃኒት ይርጩ")
         }
-    elif disease_type in ("Anthracnose", "Powdery Mildew"):
+    elif disease_type in ("Anthracnose", "Powdery Mildew", "Die Back"):
         action = PREVENTIVE_ACTIONS.get(disease_type, {})
         return {
             "risk_level": "MEDIUM RISK",
@@ -60,6 +60,10 @@ TARGETED_ACTIONS = {
         "en": "Spray with sulfur-based medicine (Sulfur fungicide). High risk conditions detected.",
         "am": "ሰልፈር (Sulfur) ያለው መድሃኒት ይርጩ"
     },
+    "Die Back": {
+        "en": "Prune dieback-affected twigs, disinfect tools, and apply a protective copper fungicide.",
+        "am": "የደረቁ ቅርንጫፎችን ይቈርጡ፣ መሳሪያዎችን ያጽዱ እና የኮፐር ፈንገስ ማጥፊያ ይጠቀሙ"
+    },
 }
 
 PREVENTIVE_ACTIONS = {
@@ -70,6 +74,10 @@ PREVENTIVE_ACTIONS = {
     "Powdery Mildew": {
         "en": "Prune tree branches to allow air circulation.",
         "am": "አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ"
+    },
+    "Die Back": {
+        "en": "Remove infected branches, avoid trunk injury, and support tree vigor with balanced irrigation.",
+        "am": "የተጎዱ ቅርንጫፎችን ያስወግዱ፣ ግንዱን ከጉዳት ይጠብቁ እና በተመጣጠነ ውሃ ድጋፍ ያድርጉ"
     },
 }
 
@@ -97,6 +105,18 @@ RECOMMENDATIONS = {
             "title": "የዱቄት ሻጋታ ተገኝቷል",
             "targeted": "ሰልፈር (Sulfur) ያለው መድሃኒት ይርጩ",
             "preventive": "አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ",
+        },
+    },
+    "Die Back": {
+        "en": {
+            "title": "Die Back Detected",
+            "targeted": "Prune dieback-affected twigs, disinfect pruning tools, and protect wounds with a copper fungicide.",
+            "preventive": "Remove infected branches early and keep trees vigorous with balanced irrigation and nutrition.",
+        },
+        "am": {
+            "title": "ዳይ ባክ ተገኝቷል",
+            "targeted": "የደረቁ ቅርንጫፎችን ይቈርጡ፣ መሳሪያዎችን ያጽዱ እና የኮፐር ፈንገስ ማጥፊያ ይጠቀሙ",
+            "preventive": "የተጎዱ ቅርንጫፎችን ቀድሞ ያስወግዱ እና በተመጣጠነ ውሃና ንጥረ ምግብ ዛፉን ያጠናክሩ",
         },
     },
     "Healthy": {

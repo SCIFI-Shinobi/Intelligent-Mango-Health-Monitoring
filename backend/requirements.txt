@@ -8,5 +8,8 @@ python-jose[cryptography]
 python-multipart
 websockets
 passlib[bcrypt]==1.7.4
-bcrypt==3.2.2
+bcrypt==4.0.1
 requests
+numpy
+Pillow
+tensorflow-cpu==2.18.0

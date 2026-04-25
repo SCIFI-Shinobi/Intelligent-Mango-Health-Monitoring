@@ -43,6 +43,7 @@ class InferenceResult(Base):
     device_id = Column(String, index=True)
     disease_type = Column(String)  # 'Healthy', 'Anthracnose', 'Powdery Mildew'
     confidence_score = Column(Float)
+    source = Column(String, default="gateway", nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 class Recommendation(Base):
@@ -83,3 +84,18 @@ class Device(Base):
     api_key = Column(String, unique=True, index=True)
     last_seen = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ScanRequest(Base):
+    __tablename__ = "scan_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), index=True)
+    status = Column(String, default="pending", nullable=False)
+    source = Column(String, default="edge_impulse", nullable=False)
+    model_name = Column(String, default="Edge Impulse EfficientNet", nullable=False)
+    requested_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    result_inference_id = Column(Integer, ForeignKey("inference_results.id"), nullable=True)
+    result_disease_type = Column(String, nullable=True)
+    result_confidence_score = Column(Float, nullable=True)

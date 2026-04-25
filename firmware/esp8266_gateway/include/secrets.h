@@ -8,8 +8,8 @@
 // Make sure this file is ignored by git!
 
 // Wi-Fi Credentials
-static const char* WIFI_SSID = "BDU-Guest";
-static const char* WIFI_PASSWORD = "";
+static const char* WIFI_SSID = "Adux";
+static const char* WIFI_PASSWORD = "43211234";
 
 // Server Endpoints
 // Use your Render/Vercel URLs for deployment

@@ -21,6 +21,7 @@ class InferenceResultBase(BaseModel):
     device_id: str
     disease_type: str
     confidence_score: float
+    source: Optional[str] = "gateway"
 
 class InferenceResultCreate(InferenceResultBase):
     pass
@@ -38,6 +39,7 @@ class UploadPayload(BaseModel):
     humidity: float
     disease_type: str
     confidence_score: float
+    request_id: Optional[int] = None
     recommendations: Optional[list["RecommendationBase"]] = None
     # Optional Amharic recommendation fields
     title_am: Optional[str] = None
@@ -97,6 +99,7 @@ class DetectionHistory(BaseModel):
     id: int
     disease_type: str
     confidence_score: float
+    source: Optional[str] = None
     timestamp: datetime
     temperature: Optional[float]
     humidity: Optional[float]
@@ -109,6 +112,7 @@ class DataIngestPayload(BaseModel):
     # Detection
     disease_type: str
     confidence_score: float
+    request_id: Optional[int] = None
     # Recommendations (optional)
     recommendations: Optional[list[RecommendationBase]] = None
     # Forecast (5 days)
@@ -137,6 +141,49 @@ class DeviceOut(BaseModel):
 
 class DeviceRegister(BaseModel):
     device_name: Optional[str] = "ESP32 Gateway"
+
+class ScanRequestCreate(BaseModel):
+    device_id: Optional[int] = None
+    source: Optional[str] = "edge_impulse"
+    model_name: Optional[str] = "Edge Impulse EfficientNet"
+
+class ScanDeviceBrief(BaseModel):
+    id: int
+    device_name: str
+    last_seen: Optional[datetime] = None
+
+class ScanRequestOut(BaseModel):
+    id: int
+    user_id: int
+    device_id: int
+    status: str
+    source: str
+    model_name: str
+    requested_at: datetime
+    completed_at: Optional[datetime] = None
+    result_inference_id: Optional[int] = None
+    result_disease_type: Optional[str] = None
+    result_confidence_score: Optional[float] = None
+    device: Optional[ScanDeviceBrief] = None
+
+class ScanRequestLatestOut(BaseModel):
+    request: Optional[ScanRequestOut] = None
+    default_device: Optional[ScanDeviceBrief] = None
+
+class ScanPendingOut(BaseModel):
+    pending: bool
+    request_id: Optional[int] = None
+
+class CloudScanOut(BaseModel):
+    disease_type: str
+    confidence_score: float
+    source: str
+    timestamp: datetime
+    model_name: str
+    input_shape: list[int]
+    preprocessing: dict
+    class_scores: dict[str, float]
+    recommendation: Optional[RecommendationBase] = None
 
 # User Profile schemas
 class UserProfileOut(BaseModel):

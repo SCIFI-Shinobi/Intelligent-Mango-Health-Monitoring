@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import MangoLeafLogo from './MangoLeafLogo';
 import ProfileDropdown from './ProfileDropdown';
+import ScanUploadModal from './ScanUploadModal';
 import { formatTimeAgo } from '../utils/formatTime';
 import { useLanguage } from '../context/LanguageContext';
 import { getApiBaseUrl } from '../utils/apiBase';
@@ -31,6 +32,7 @@ export default function Navbar({ activeTab, onTabChange }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [filterMode, setFilterMode] = useState('unread');
   const [bellAnimating, setBellAnimating] = useState(false);
+  const [showQuickScan, setShowQuickScan] = useState(false);
   const panelRef = useRef(null);
   const bellAnimationTimerRef = useRef(null);
   const unreadCountRef = useRef(0);
@@ -266,6 +268,15 @@ export default function Navbar({ activeTab, onTabChange }) {
       </div>
 
       <div className="navbar-right" ref={panelRef}>
+        <button
+          className="icon-btn scan-launch-btn"
+          onClick={() => setShowQuickScan(true)}
+          title={t('nav', 'quickScan')}
+          aria-label={t('nav', 'quickScan')}
+        >
+          <i className="fa-solid fa-plus"></i>
+        </button>
+
         <div className="lang-toggle">
           <button
             className={`lang-btn ${lang === 'en' ? 'active' : ''}`}
@@ -358,6 +369,8 @@ export default function Navbar({ activeTab, onTabChange }) {
 
         <ProfileDropdown />
       </div>
+
+      {showQuickScan && <ScanUploadModal onClose={() => setShowQuickScan(false)} />}
     </div>
   );
 }

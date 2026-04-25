@@ -2,7 +2,8 @@ import React from 'react';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function ForecastCard({ forecast, loading }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const forecastLocale = lang === 'am' ? 'am-ET' : 'en-US';
 
   if (loading) {
     return (
@@ -54,33 +55,45 @@ export default function ForecastCard({ forecast, loading }) {
 
   const getRisk = (riskLevel) => RISK_MAP[normalizeRisk(riskLevel)] || RISK_MAP.stable;
 
+  const rawForecastDate = forecast?.created_at || forecast?.context?.timestamp;
+
+  const getForecastBaseDate = () => {
+    if (rawForecastDate) {
+      const parsed = new Date(rawForecastDate);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    return new Date();
+  };
+
   const getDayLabel = (day, index) => {
     if (day?.date) {
       const parsed = new Date(day.date);
       if (!Number.isNaN(parsed.getTime())) {
-        const dayName = parsed.toLocaleDateString('en-US', { weekday: 'short' });
+        const dayName = parsed.toLocaleDateString(forecastLocale, { weekday: 'short' });
         const dayNum = parsed.getDate();
-        return { dayName, dayNum, isFirst: index === 0 };
+        return { dayName, dayNum };
       }
     }
 
-    const today = new Date();
-    const date = new Date(today);
-    date.setDate(today.getDate() + index + 1);
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+    const baseDate = getForecastBaseDate();
+    const date = new Date(baseDate);
+    date.setDate(baseDate.getDate() + index + 1);
+    const dayName = date.toLocaleDateString(forecastLocale, { weekday: 'short' });
     const dayNum = date.getDate();
-    return { dayName, dayNum, isFirst: index === 0 };
+    return { dayName, dayNum };
   };
 
-  const rawForecastDate = forecast?.created_at || forecast?.context?.timestamp;
   let forecastDateText = null;
   if (rawForecastDate) {
     const parsedDate = new Date(rawForecastDate);
     if (!Number.isNaN(parsedDate.getTime())) {
-      const dd = String(parsedDate.getDate()).padStart(2, '0');
-      const mm = String(parsedDate.getMonth() + 1).padStart(2, '0');
-      const yyyy = parsedDate.getFullYear();
-      forecastDateText = `${dd}/${mm}/${yyyy}`;
+      forecastDateText = parsedDate.toLocaleDateString(forecastLocale, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
     }
   }
 
@@ -95,12 +108,12 @@ export default function ForecastCard({ forecast, loading }) {
 
       <div className="forecast-grid">
         {forecast.days.map((day, index) => {
-          const { dayName, dayNum, isFirst } = getDayLabel(day, index);
+          const { dayName, dayNum } = getDayLabel(day, index);
           const risk = getRisk(day.risk_level);
           return (
             <div key={index} className="forecast-day-card">
               <div className="forecast-day-label">
-                <span className="forecast-day-name">{isFirst ? t('forecast', 'tomorrow') : dayName}</span>
+                <span className="forecast-day-name">{dayName}</span>
                 <span className="forecast-day-num">{dayNum}</span>
               </div>
               <div
