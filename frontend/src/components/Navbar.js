@@ -27,12 +27,12 @@ const NOTIF_COLORS = {
 
 export default function Navbar({ activeTab, onTabChange }) {
   const { lang, switchLang, t } = useLanguage();
+  const [showQuickScan, setShowQuickScan] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [filterMode, setFilterMode] = useState('unread');
   const [bellAnimating, setBellAnimating] = useState(false);
-  const [showQuickScan, setShowQuickScan] = useState(false);
   const panelRef = useRef(null);
   const bellAnimationTimerRef = useRef(null);
   const unreadCountRef = useRef(0);
@@ -268,109 +268,85 @@ export default function Navbar({ activeTab, onTabChange }) {
       </div>
 
       <div className="navbar-right" ref={panelRef}>
-        <button
-          className="icon-btn scan-launch-btn"
-          onClick={() => setShowQuickScan(true)}
-          title={t('nav', 'quickScan')}
-          aria-label={t('nav', 'quickScan')}
-        >
-          <i className="fa-solid fa-plus"></i>
-        </button>
-
+        {/* Language Toggle - Same as Login Page */}
         <div className="lang-toggle">
-          <button
-            className={`lang-btn ${lang === 'en' ? 'active' : ''}`}
-            onClick={() => switchLang('en')}
-          >
-            EN
-          </button>
-          <button
-            className={`lang-btn ${lang === 'am' ? 'active' : ''}`}
-            onClick={() => switchLang('am')}
-          >
-            አማ
-          </button>
+          <button className={`lang-btn ${lang === 'en' ? 'active' : ''}`} onClick={() => switchLang('en')}>EN</button>
+          <button className={`lang-btn ${lang === 'am' ? 'active' : ''}`} onClick={() => switchLang('am')}>አማ</button>
         </div>
 
-        <button
-          className={`icon-btn notif-bell ${bellAnimating ? 'ringing' : ''}`}
-          onClick={handleBellClick}
-          title={t('nav', 'notifications')}
-        >
-          <i className="fa-solid fa-bell"></i>
-          {unreadCount > 0 && (
-            <span className={`notif-badge ${bellAnimating ? 'pulse' : ''}`}>{unreadCount > 9 ? '9+' : unreadCount}</span>
-          )}
-        </button>
+        {/* Notification Bell */}
+        <div className="notif-bell-wrapper">
+          <button
+            className={`notif-bell-btn${bellAnimating ? ' bell-animate' : ''}`}
+            onClick={handleBellClick}
+            title={t('nav', 'notifications') || 'Notifications'}
+          >
+            <i className="fa-solid fa-bell"></i>
+            {unreadCount > 0 && (
+              <span className="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+            )}
+          </button>
 
-        {showPanel && (
-          <div className="notif-panel">
-            <div className="notif-panel-header">
-              <span className="notif-panel-title">{t('nav', 'notifications')}</span>
-              {unreadCount > 0 && (
-                <button className="notif-mark-all" onClick={markAllRead}>
-                  {t('nav', 'markAllRead')}
-                </button>
-              )}
-            </div>
-
-            <div className="notif-panel-toolbar">
-              <div className="notif-filter-group">
-                <button
-                  className={`notif-filter-btn ${filterMode === 'unread' ? 'active' : ''}`}
-                  onClick={() => setFilterMode('unread')}
-                >
-                  {t('nav', 'unreadOnly')}
-                </button>
-                <button
-                  className={`notif-filter-btn ${filterMode === 'all' ? 'active' : ''}`}
-                  onClick={() => setFilterMode('all')}
-                >
-                  {t('nav', 'allItems')}
-                </button>
-              </div>
-              <span className="notif-sync-note">{t('nav', 'notificationsSyncing')}</span>
-            </div>
-
-            <div className="notif-list">
-              {visibleNotifications.length === 0 ? (
-                <div className="notif-empty">
-                  <i className="fa-solid fa-bell-slash"></i>
-                  <span>{filterMode === 'unread' ? t('nav', 'noNotifications') : t('nav', 'noNotifications')}</span>
-                </div>
-              ) : (
-                visibleNotifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`notif-item ${n.read ? '' : 'unread'}`}
-                    onClick={() => !n.read && markAsRead(n.id)}
+          {showPanel && (
+            <div className="notif-panel">
+              <div className="notif-panel-header">
+                <span className="notif-panel-title">{t('nav', 'notifications') || 'Notifications'}</span>
+                <div className="notif-filter-tabs">
+                  <button
+                    className={`notif-filter-tab${filterMode === 'unread' ? ' active' : ''}`}
+                    onClick={() => setFilterMode('unread')}
                   >
-                    <div
-                      className="notif-icon-circle"
-                      style={{ background: `${NOTIF_COLORS[n.type] || '#8b949e'}20` }}
-                    >
-                      <i
-                        className={`fa-solid ${NOTIF_ICONS[n.type] || 'fa-circle-info'}`}
-                        style={{ color: NOTIF_COLORS[n.type] || '#8b949e' }}
-                      ></i>
-                    </div>
-                    <div className="notif-content">
-                      <span className="notif-title">{n.title}</span>
-                      <span className="notif-message">{n.message}</span>
-                      <span className="notif-time">{formatTimeAgo(n.timestamp)}</span>
-                    </div>
-                    {!n.read && <span className="notif-unread-dot"></span>}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
+                    {t('nav', 'unread') || 'Unread'}
+                  </button>
+                  <button
+                    className={`notif-filter-tab${filterMode === 'all' ? ' active' : ''}`}
+                    onClick={() => setFilterMode('all')}
+                  >
+                    {t('nav', 'all') || 'All'}
+                  </button>
+                </div>
+                {unreadCount > 0 && (
+                  <button className="notif-mark-all-btn" onClick={markAllRead}>
+                    {t('nav', 'markAllRead') || 'Mark all read'}
+                  </button>
+                )}
+              </div>
 
+              <div className="notif-list">
+                {visibleNotifications.length === 0 ? (
+                  <div className="notif-empty">
+                    <i className="fa-solid fa-bell-slash"></i>
+                    <span>{t('nav', 'noNotifications') || 'No notifications'}</span>
+                  </div>
+                ) : (
+                  visibleNotifications.map((notif) => (
+                    <div
+                      key={notif.id}
+                      className={`notif-item${notif.read ? '' : ' unread'}`}
+                      onClick={() => !notif.read && markAsRead(notif.id)}
+                    >
+                      <div
+                        className="notif-icon"
+                        style={{ color: NOTIF_COLORS[notif.type] || '#8b949e' }}
+                      >
+                        <i className={`fa-solid ${NOTIF_ICONS[notif.type] || 'fa-circle-info'}`}></i>
+                      </div>
+                      <div className="notif-body">
+                        <span className="notif-message">{notif.message}</span>
+                        <span className="notif-time">{formatTimeAgo(notif.created_at)}</span>
+                      </div>
+                      {!notif.read && <div className="notif-unread-dot"></div>}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Profile Dropdown */}
         <ProfileDropdown />
       </div>
-
-      {showQuickScan && <ScanUploadModal onClose={() => setShowQuickScan(false)} />}
     </div>
   );
 }

@@ -257,6 +257,30 @@ body {
   gap: 12px;
 }
 
+.desktop-scan-btn {
+  background: #2f81f7;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.desktop-scan-btn:hover {
+  background: #1f6feb;
+  transform: translateY(-1px);
+}
+
+.desktop-scan-btn:active {
+  transform: translateY(1px);
+}
+
 .navbar-center {
   display: flex;
   align-items: center;
@@ -318,6 +342,35 @@ body {
 .icon-btn:hover {
   background: #30363d;
   border-color: #2f81f7;
+}
+
+.notif-bell-wrapper {
+  position: relative;
+}
+
+.notif-bell-btn {
+  position: relative;
+  background: #1c2128;
+  border: 1px solid #30363d;
+  color: #fff;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.notif-bell-btn:hover {
+  background: #30363d;
+  border-color: #2f81f7;
+}
+
+.notif-bell-btn.bell-animate {
+  animation: notif-bell-ring 1.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .scan-launch-btn {
@@ -440,6 +493,50 @@ body {
   border-bottom: 1px solid #30363d;
 }
 
+.notif-filter-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.notif-filter-tab {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.notif-filter-tab:hover {
+  border-color: #2f81f7;
+  color: #2f81f7;
+}
+
+.notif-filter-tab.active {
+  background: #2f81f7;
+  border-color: #2f81f7;
+  color: #fff;
+}
+
+.notif-mark-all-btn {
+  background: none;
+  border: none;
+  color: #2f81f7;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.notif-mark-all-btn:hover {
+  background: rgba(47, 129, 247, 0.1);
+}
+
 .notif-panel-toolbar {
   padding: 10px 16px 12px;
   border-bottom: 1px solid #21262d;
@@ -535,6 +632,45 @@ body {
   background: rgba(47, 129, 247, 0.05);
 }
 
+.notif-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.notif-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.notif-message {
+  font-size: 13px;
+  color: #c9d1d9;
+  line-height: 1.4;
+}
+
+.notif-time {
+  font-size: 11px;
+  color: #7b8bbd;
+}
+
+.notif-unread-dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  background: #2f81f7;
+  margin-top: 6px;
+}
+
 .notif-icon-circle {
   width: 36px;
   height: 36px;
@@ -560,18 +696,6 @@ body {
   color: #e6edf3;
 }
 
-.notif-message {
-  font-size: 12px;
-  color: #7b8bbd;
-  line-height: 1.4;
-}
-
-.notif-time {
-  font-size: 11px;
-  color: #484f58;
-  margin-top: 2px;
-}
-
 .notif-unread-dot {
   width: 8px;
   height: 8px;
@@ -582,6 +706,9 @@ body {
 }
 
 .secondary-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: #1c2128;
   border: 1px solid #30363d;
   padding: 8px 16px;
@@ -936,6 +1063,12 @@ body {
   margin-left: auto;
 }
 
+.top-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
 .sensor-grid-desktop {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1262,26 +1395,29 @@ body {
   border: 1px solid #30363d;
   border-radius: 6px;
   overflow: hidden;
+  gap: 0;
 }
 
 .lang-btn {
   background: transparent;
   border: none;
-  color: #7b8bbd;
-  padding: 4px 10px;
+  color: #8b949e;
+  padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
 }
 
+.lang-btn:hover:not(.active) {
+  color: #c9d1d9;
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .lang-btn.active {
   background: #2f81f7;
   color: #fff;
-}
-
-.lang-btn:hover:not(.active) {
-  background: #30363d;
+  border-radius: 4px;
 }
 
 .recommendation-card {
@@ -3653,6 +3789,29 @@ body {
   background: rgba(47, 129, 247, 0.1);
 }
 
+.mobile-nav-scan-btn {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #2f81f7;
+  color: #fff;
+  border: 4px solid #161b22;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  box-shadow: 0 4px 12px rgba(47, 129, 247, 0.3);
+  transform: translateY(-15px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.mobile-nav-scan-btn:active {
+  transform: translateY(-12px) scale(0.95);
+  background: #1f6feb;
+}
+
 /* ================= FOOTER ================= */
 
 .footer {
@@ -3890,6 +4049,10 @@ body {
     gap: 6px;
   }
 
+  .desktop-scan-btn {
+    display: none;
+  }
+
   .notif-panel {
     width: min(92vw, 360px);
     right: -8px;
@@ -3924,6 +4087,16 @@ body {
     grid-template-columns: 1fr;
     gap: 12px;
     margin-bottom: 0;
+  }
+
+  .top-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-bottom: 0;
+  }
+
+  .disease-status-card {
+    display: none !important;
   }
 
   .middle-grid {
@@ -5150,4 +5323,133 @@ body {
   .avatar-initials-large {
     font-size: 28px;
   }
+}
+
+/* --- MangoGuard UI Redesign --- */
+
+/* Desktop Dashboard Content Layout */
+.dashboard-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 0;
+}
+
+.dashboard-scan-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-left: auto;
+  background: linear-gradient(135deg, #2f81f7 0%, #1f6feb 100%);
+  color: white;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(47, 129, 247, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 15px;
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-scan-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  transition: left 0.3s ease;
+}
+
+.dashboard-scan-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(47, 129, 247, 0.4);
+}
+
+.dashboard-scan-button:hover::before {
+  left: 100%;
+}
+
+.dashboard-scan-button i {
+  font-size: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-scan-button:active {
+  transform: translateY(0);
+}
+
+.sensor-card, .disease-status-card, .recommendation-card, .forecast-card, .analysis-card, .historical-chart-container, .system-health-card {
+  border-radius: 16px !important;
+  padding: 24px !important;
+  border: 1px solid #30363d !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+}
+
+.disease-status-card {
+  padding: 32px !important;
+}
+
+.sensor-name, .disease-status-title, .section-title, .mini-label {
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  color: #8b949e !important;
+  letter-spacing: 0.05em !important;
+}
+
+.sensor-value .value, .disease-status-value {
+  font-weight: 800 !important;
+}
+
+.recommendation-view-all {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.recommendation-view-all a {
+  color: #2f81f7;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.recommendation-view-all a:hover {
+  text-decoration: underline;
+}
+
+.scan-result-container {
+  text-align: center;
+  padding: 24px 0;
+}
+.scan-result-title {
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+.scan-result-metrics {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.scan-result-confidence {
+  font-weight: bold;
+  color: #2f81f7;
+}
+.scan-result-severity {
+  font-weight: bold;
+}
+.severity-low { color: #3fb950; }
+.severity-medium { color: #d29922; }
+.severity-high { color: #f85149; }
+.scan-result-recommendation {
+  font-size: 16px;
+  margin-bottom: 24px;
+  color: #c9d1d9;
 }

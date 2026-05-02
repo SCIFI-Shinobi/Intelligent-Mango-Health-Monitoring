@@ -95,28 +95,35 @@ export default function RecommendationsPanel({ recommendations, loading }) {
           <span className="recommendation-help">{t('rec', 'noRecentAdvice')}</span>
         </div>
       ) : (
-        recommendations.map((rec, index) => {
-          const title = getTitle(rec);
-          return (
-            <div key={index} className="recommendation-card">
-              <div className="recommendation-header">
-                <div className="rec-icon-circle" style={{ background: `${getIconColor(rec)}15` }}>
-                  <i
-                    className={`fa-solid ${getRecommendationIcon(rec)}`}
-                    style={{ color: getIconColor(rec) }}
-                  ></i>
+        <>
+          {recommendations.slice(0, 3).map((rec, index) => {
+            const title = getTitle(rec);
+            return (
+              <div key={index} className="recommendation-card">
+                <div className="recommendation-header">
+                  <div className="rec-icon-circle" style={{ background: `${getIconColor(rec)}15` }}>
+                    <i
+                      className={`fa-solid ${getRecommendationIcon(rec)}`}
+                      style={{ color: getIconColor(rec) }}
+                    ></i>
+                  </div>
+                  <div className="rec-content">
+                    <span className="recommendation-title">{title}</span>
+                    {rec.timestamp && (
+                      <span className="rec-time">{formatTimeAgo(rec.timestamp)}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="rec-content">
-                  <span className="recommendation-title">{title}</span>
-                  {rec.timestamp && (
-                    <span className="rec-time">{formatTimeAgo(rec.timestamp)}</span>
-                  )}
-                </div>
+                <span className="recommendation-desc">{getDescription(rec)}</span>
               </div>
-              <span className="recommendation-desc">{getDescription(rec)}</span>
+            );
+          })}
+          {recommendations.length > 3 && (
+            <div className="recommendation-view-all">
+              <a href="#/analysis">{t('rec', 'viewAll') || 'View all'}</a>
             </div>
-          );
-        })
+          )}
+        </>
       )}
     </div>
   );

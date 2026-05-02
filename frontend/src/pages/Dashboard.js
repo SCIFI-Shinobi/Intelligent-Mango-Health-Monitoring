@@ -2,11 +2,12 @@ import React, { useContext, useEffect, useState, useRef, useCallback } from 'rea
 import { AuthContext } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import MobileNav from '../components/MobileNav';
-import DiseaseStatusCard from '../components/DiseaseStatusCard';
 import SensorCard from '../components/SensorCard';
 import HistoricalChart from '../components/HistoricalChart';
 import RecommendationsPanel from '../components/RecommendationsPanel';
 import ForecastCard from '../components/ForecastCard';
+import DiseaseStatusCard from '../components/DiseaseStatusCard';
+import ScanUploadModal from '../components/ScanUploadModal';
 import LogsPage from './LogsPage';
 import SettingsPage from './SettingsPage';
 import AnalysisPage from './AnalysisPage';
@@ -26,6 +27,7 @@ export default function Dashboard() {
 
   // Tab state
   const [activeTab, setActiveTab] = useState('home');
+  const [showQuickScan, setShowQuickScan] = useState(false);
 
   // Data states
   const [detection, setDetection] = useState(null);
@@ -231,29 +233,49 @@ export default function Dashboard() {
       default:
         return (
           <div className="dashboard-content">
-            {/* Top Grid: Disease Status + Sensors */}
-            <div className={isDesktop ? "top-grid" : "mobile-top-section"}>
-              <DiseaseStatusCard detection={detection} loading={loading} freshness={freshness} />
-              <div className={isDesktop ? "sensor-grid-desktop" : "sensor-row"}>
-                <SensorCard
-                  name={t('sensor', 'temperature')}
-                  value={formatTemp(sensorLatest?.temperature)}
-                  unit={settings.temperatureUnit === 'fahrenheit' ? 'F' : 'C'}
-                  icon="temp"
-                  loading={loading}
-                  statusLabel={freshness.statusLabel}
-                  statusClass={freshness.statusClass}
-                />
-                <SensorCard
-                  name={t('sensor', 'humidity')}
-                  value={sensorLatest?.humidity?.toFixed(1) || '-'}
-                  unit="%"
-                  icon="humidity"
-                  loading={loading}
-                  statusLabel={freshness.statusLabel}
-                  statusClass={freshness.statusClass}
-                />
-              </div>
+            {isDesktop && (
+              <button
+                className="dashboard-scan-button"
+                onClick={() => setShowQuickScan(true)}
+                title={t('nav', 'scanForDisease') || 'Scan for Disease'}
+              >
+                <i className="fa-solid fa-microscope"></i>
+                {t('nav', 'scanForDisease') || 'Scan for Disease'}
+              </button>
+            )}
+            
+            {/* Top Grid: Health Status + Sensor Cards (3 columns on desktop) */}
+            <div className={isDesktop ? "top-cards-grid" : "mobile-top-section"}>
+              {/* Health / Disease Status Card */}
+              <DiseaseStatusCard
+                detection={detection}
+                loading={loading}
+                freshness={freshness}
+              />
+
+              {/* Sensors */}
+              <SensorCard
+                name={t('sensor', 'temperature')}
+                value={formatTemp(sensorLatest?.temperature)}
+                unit={settings.temperatureUnit === 'fahrenheit' ? 'F' : 'C'}
+                icon="temp"
+                loading={loading}
+                statusLabel={freshness.statusLabel}
+                statusClass={freshness.statusClass}
+                lastScanTimestamp={sensorLatest?.timestamp}
+                lang={lang}
+              />
+              <SensorCard
+                name={t('sensor', 'humidity')}
+                value={sensorLatest?.humidity?.toFixed(1) || '-'}
+                unit="%"
+                icon="humidity"
+                loading={loading}
+                statusLabel={freshness.statusLabel}
+                statusClass={freshness.statusClass}
+                lastScanTimestamp={sensorLatest?.timestamp}
+                lang={lang}
+              />
             </div>
 
             {/* Chart + Recommendations */}
@@ -305,6 +327,9 @@ export default function Dashboard() {
       <div className="footer">
         {t('footer', 'text')}
       </div>
+
+      {/* Scan Modal */}
+      {showQuickScan && <ScanUploadModal onClose={() => setShowQuickScan(false)} />}
     </div>
   );
 }

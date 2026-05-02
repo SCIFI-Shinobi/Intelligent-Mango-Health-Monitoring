@@ -8,10 +8,13 @@ const MAX_SCAN_IMAGE_BYTES = 8 * 1024 * 1024;
 export default function ScanUploadModal({ onClose }) {
   const { t } = useLanguage();
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [scanResult, setScanResult] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
     if (!selectedFile) {
@@ -38,6 +41,10 @@ export default function ScanUploadModal({ onClose }) {
 
   const openPicker = () => {
     fileInputRef.current?.click();
+  };
+
+  const openCamera = () => {
+    cameraInputRef.current?.click();
   };
 
   const handleFileChange = (event) => {
@@ -83,9 +90,7 @@ export default function ScanUploadModal({ onClose }) {
         throw new Error(payload.detail || t('quickScan', 'scanFailed'));
       }
 
-      window.dispatchEvent(new CustomEvent('mangoguard-cloud-scan-complete', { detail: payload }));
-      window.dispatchEvent(new CustomEvent('mangoguard-live-update', { detail: { source: 'web_app' } }));
-      onClose();
+      setScanResult(payload);
     } catch (submitError) {
       setError(submitError.message || t('quickScan', 'scanFailed'));
     } finally {
@@ -107,47 +112,76 @@ export default function ScanUploadModal({ onClose }) {
         </div>
 
         <div className="profile-modal-body scan-modal-body">
-          <div className="scan-modal-note">
-            <i className="fa-solid fa-circle-info"></i>
-            <span>{t('quickScan', 'storageHint')}</span>
-          </div>
+          {scanResult ? (
+            <div className="scan-result-container">
+              <h3 className="scan-result-title">{scanResult.disease_type === 'Healthy' ? 'Healthy' : scanResult.disease_type}</h3>
+              <div className="scan-result-metrics">
+                <span className="scan-result-confidence">Confidence: {(scanResult.confidence_score * 100).toFixed(1)}%</span>
+                <span className={`scan-result-severity severity-${(scanResult.severity || 'low').toLowerCase()}`}>Severity: {scanResult.severity || 'Low'}</span>
+              </div>
+              <p className="scan-result-recommendation">{scanResult.recommendation?.title || scanResult.recommendation || 'Keep monitoring regularly.'}</p>
+              <button type="button" className="primary-btn" onClick={onClose}>Close</button>
+            </div>
+          ) : (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+              />
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleFileChange}
-            style={{ display: 'none' }}
-          />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+              />
 
-          <button type="button" className="scan-upload-dropzone" onClick={openPicker}>
-            {previewUrl ? (
-              <>
-                <img src={previewUrl} alt={t('quickScan', 'previewAlt')} className="scan-upload-preview" />
-                <span className="scan-upload-file">{selectedFile?.name}</span>
-              </>
-            ) : (
-              <>
-                <span className="scan-upload-icon">
-                  <i className="fa-solid fa-camera"></i>
-                </span>
-                <span className="scan-upload-title">{t('quickScan', 'pickImage')}</span>
-                <span className="scan-upload-hint">{t('quickScan', 'pickImageHint')}</span>
-              </>
-            )}
-          </button>
+              <button type="button" className="scan-upload-dropzone" onClick={openPicker}>
+                {previewUrl ? (
+                  <>
+                    <img src={previewUrl} alt={t('quickScan', 'previewAlt')} className="scan-upload-preview" />
+                    <span className="scan-upload-file">{selectedFile?.name}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="scan-upload-icon">
+                      <i className="fa-solid fa-camera"></i>
+                    </span>
+                    <span className="scan-upload-title">{t('quickScan', 'pickImage')}</span>
+                    <span className="scan-upload-hint">{t('quickScan', 'pickImageHint')}</span>
+                  </>
+                )}
+              </button>
 
-          {error && <div className="profile-error">{error}</div>}
+              {error && <div className="profile-error">{error}</div>}
 
-          <div className="scan-modal-actions">
-            <button type="button" className="secondary-btn scan-secondary-btn" onClick={openPicker} disabled={submitting}>
-              {selectedFile ? t('quickScan', 'changeImage') : t('quickScan', 'pickImage')}
-            </button>
-            <button type="button" className="primary-btn scan-primary-btn" onClick={handleSubmit} disabled={!selectedFile || submitting}>
-              {submitting ? t('common', 'loading') : t('quickScan', 'runAction')}
-            </button>
-          </div>
+              <div className="scan-modal-actions">
+                {isMobile ? (
+                  <>
+                    <button type="button" className="secondary-btn scan-secondary-btn" onClick={openCamera} disabled={submitting}>
+                      <i className="fa-solid fa-camera"></i> {t('quickScan', 'takePhoto') || 'Take Photo'}
+                    </button>
+                    <button type="button" className="secondary-btn scan-secondary-btn" onClick={openPicker} disabled={submitting}>
+                      <i className="fa-solid fa-image"></i> {t('quickScan', 'pickImage') || 'Pick Image'}
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="secondary-btn scan-secondary-btn" onClick={openPicker} disabled={submitting}>
+                    {selectedFile ? t('quickScan', 'changeImage') : t('quickScan', 'pickImage')}
+                  </button>
+                )}
+                <button type="button" className="primary-btn scan-primary-btn" onClick={handleSubmit} disabled={!selectedFile || submitting}>
+                  {submitting ? t('common', 'loading') : t('quickScan', 'runAction')}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

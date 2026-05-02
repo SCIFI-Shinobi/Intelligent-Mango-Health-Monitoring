@@ -73,7 +73,7 @@ export default function DiseaseStatusCard({ detection, loading, freshness }) {
         <div className="disease-status-text">
           <h4 className="disease-status-title">{t('disease', 'healthStatus')}</h4>
           <p className="disease-status-value">{diseaseName}</p>
-          <div className={`status-pill ${freshnessClass}`}>{freshnessLabel}</div>
+          {freshnessClass === 'live' && <div className={`status-pill ${freshnessClass}`}>{freshnessLabel}</div>}
           <div className="disease-status-details">
             <span className="confidence">
               {(detection.confidence_score * 100).toFixed(1)}% {t('disease', 'confidence')}
