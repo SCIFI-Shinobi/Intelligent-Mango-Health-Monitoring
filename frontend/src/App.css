@@ -4095,9 +4095,7 @@ body {
     margin-bottom: 0;
   }
 
-  .disease-status-card {
-    display: none !important;
-  }
+  /* previously hid disease status on small screens; allow it to display */
 
   .middle-grid {
     gap: 32px;

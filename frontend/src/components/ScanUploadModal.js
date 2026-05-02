@@ -9,6 +9,8 @@ export default function ScanUploadModal({ onClose }) {
   const { t } = useLanguage();
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -31,6 +33,7 @@ export default function ScanUploadModal({ onClose }) {
   useEffect(() => {
     const handleEscape = (event) => {
       if (event.key === 'Escape' && !submitting) {
+        stopCamera();
         onClose();
       }
     };
@@ -39,12 +42,62 @@ export default function ScanUploadModal({ onClose }) {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose, submitting]);
 
+  useEffect(() => {
+    return () => stopCamera();
+  }, []);
+
   const openPicker = () => {
     fileInputRef.current?.click();
   };
 
   const openCamera = () => {
-    cameraInputRef.current?.click();
+    // Try opening the camera directly; fall back to file input where not available
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      startCamera();
+    } else {
+      cameraInputRef.current?.click();
+    }
+  };
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setUsingCamera(true);
+    } catch (e) {
+      console.error('Camera access failed, falling back to file input', e);
+      cameraInputRef.current?.click();
+    }
+  };
+
+  const stopCamera = () => {
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    } catch (e) {
+      console.error('Error stopping camera stream', e);
+    }
+    streamRef.current = null;
+    setUsingCamera(false);
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setSelectedFile(file);
+      setError('');
+      stopCamera();
+    }, 'image/jpeg', 0.9);
   };
 
   const handleFileChange = (event) => {
@@ -142,22 +195,32 @@ export default function ScanUploadModal({ onClose }) {
                 style={{ display: 'none' }}
               />
 
-              <button type="button" className="scan-upload-dropzone" onClick={openPicker}>
-                {previewUrl ? (
-                  <>
-                    <img src={previewUrl} alt={t('quickScan', 'previewAlt')} className="scan-upload-preview" />
-                    <span className="scan-upload-file">{selectedFile?.name}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="scan-upload-icon">
-                      <i className="fa-solid fa-camera"></i>
-                    </span>
-                    <span className="scan-upload-title">{t('quickScan', 'pickImage')}</span>
-                    <span className="scan-upload-hint">{t('quickScan', 'pickImageHint')}</span>
-                  </>
-                )}
-              </button>
+              {usingCamera ? (
+                <div className="camera-capture">
+                  <video ref={videoRef} autoPlay playsInline className="camera-preview" />
+                  <div className="camera-actions">
+                    <button type="button" className="secondary-btn" onClick={capturePhoto}>Capture</button>
+                    <button type="button" className="secondary-btn" onClick={stopCamera}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="scan-upload-dropzone" onClick={openPicker}>
+                  {previewUrl ? (
+                    <>
+                      <img src={previewUrl} alt={t('quickScan', 'previewAlt')} className="scan-upload-preview" />
+                      <span className="scan-upload-file">{selectedFile?.name}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="scan-upload-icon">
+                        <i className="fa-solid fa-camera"></i>
+                      </span>
+                      <span className="scan-upload-title">{t('quickScan', 'pickImage')}</span>
+                      <span className="scan-upload-hint">{t('quickScan', 'pickImageHint')}</span>
+                    </>
+                  )}
+                </button>
+              )}
 
               {error && <div className="profile-error">{error}</div>}
 

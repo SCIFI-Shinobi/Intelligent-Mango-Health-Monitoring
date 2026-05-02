@@ -10,17 +10,29 @@ from .disease_labels import class_name_from_index, normalize_disease_type
 try:
     import numpy as np
     from PIL import Image
-    import tensorflow as tf
+    try:
+        import tensorflow as tf
+    except Exception:
+        tf = None
+    try:
+        import tensorflow.lite as tflite
+    except Exception:
+        tflite = None
 except Exception as exc:  # pragma: no cover - optional runtime dependency
     np = None
     Image = None
     tf = None
+    tflite = None
     IMPORT_ERROR = exc
 else:
     IMPORT_ERROR = None
 
 
-MODEL_PATH = Path(__file__).resolve().parent / "ml_models" / "efficientnet_mango_leaf.h5"
+# Try .tflite first (Edge Impulse format), fall back to .h5
+ML_MODELS_DIR = Path(__file__).resolve().parent / "ml_models"
+MODEL_PATH_TFLITE = ML_MODELS_DIR / "efficientnet_mango_leaf.tflite"
+MODEL_PATH_H5 = ML_MODELS_DIR / "efficientnet_mango_leaf.h5"
+MODEL_PATH = MODEL_PATH_TFLITE if MODEL_PATH_TFLITE.exists() else MODEL_PATH_H5
 DEFAULT_INPUT_SHAPE = (224, 224, 3)
 
 cloud_model = None
@@ -141,6 +153,16 @@ def _load_legacy_edge_impulse_h5_model(model_path: Path):
     return model
 
 
+def _load_tflite_model(model_path: Path):
+    """Load TensorFlow Lite model (Edge Impulse .tflite format)"""
+    if tflite is None:
+        raise RuntimeError("TensorFlow Lite is not available")
+    
+    interpreter = tflite.Interpreter(model_path=str(model_path))
+    interpreter.allocate_tensors()
+    return interpreter
+
+
 def load_cloud_scan_model():
     global cloud_model, cloud_model_error, cloud_model_input_shape
 
@@ -155,11 +177,29 @@ def load_cloud_scan_model():
         cloud_model_input_shape = DEFAULT_INPUT_SHAPE
         return None
 
+    # Try TensorFlow Lite first (Edge Impulse native format)
+    if MODEL_PATH_TFLITE.exists():
+        try:
+            cloud_model = _load_tflite_model(MODEL_PATH_TFLITE)
+            cloud_model_input_shape = DEFAULT_INPUT_SHAPE
+            cloud_model_error = None
+            return cloud_model
+        except Exception as tflite_exc:
+            cloud_model_error = f"TensorFlow Lite model failed to load: {tflite_exc}"
+            # Fall through to try H5
+
+    # Try Keras H5 format
+    if tf is None:
+        cloud_model = None
+        cloud_model_error = "TensorFlow not available and no .tflite model found"
+        cloud_model_input_shape = DEFAULT_INPUT_SHAPE
+        return None
+
     try:
-        cloud_model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+        cloud_model = tf.keras.models.load_model(MODEL_PATH_H5, compile=False)
     except Exception as primary_exc:  # pragma: no cover - depends on runtime model format
         try:
-            cloud_model = _load_legacy_edge_impulse_h5_model(MODEL_PATH)
+            cloud_model = _load_legacy_edge_impulse_h5_model(MODEL_PATH_H5)
         except Exception as fallback_exc:
             cloud_model = None
             cloud_model_input_shape = DEFAULT_INPUT_SHAPE
@@ -200,7 +240,12 @@ def _prepare_image_bytes(image_bytes: bytes):
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     image = image.resize((width, height))
     image_array = np.asarray(image, dtype=np.float32) / 255.0
-    return np.expand_dims(image_array, axis=0)
+    
+    # Handle both Keras and TFLite formats
+    if hasattr(cloud_model, 'predict'):  # Keras model
+        return np.expand_dims(image_array, axis=0)
+    else:  # TFLite interpreter
+        return image_array.astype(np.uint8) if np.max(image_array) > 1 else (image_array * 255).astype(np.uint8)
 
 
 def _to_probabilities(raw_scores):
@@ -215,9 +260,20 @@ def run_cloud_scan_inference(image_bytes: bytes) -> dict:
     if cloud_model is None:
         raise RuntimeError(cloud_model_error or "Cloud scan model is not loaded")
 
-    batch = _prepare_image_bytes(image_bytes)
-    predictions = cloud_model.predict(batch, verbose=0)
-    predictions = predictions[0] if getattr(predictions, "ndim", 1) > 1 else predictions
+    # Handle TensorFlow Lite interpreter
+    if hasattr(cloud_model, 'get_input_details'):  # TFLite interpreter
+        image_data = _prepare_image_bytes(image_bytes)
+        input_details = cloud_model.get_input_details()
+        output_details = cloud_model.get_output_details()
+        
+        cloud_model.set_tensor(input_details[0]['index'], np.expand_dims(image_data, axis=0))
+        cloud_model.invoke()
+        predictions = cloud_model.get_tensor(output_details[0]['index'])[0]
+    else:  # Keras model
+        batch = _prepare_image_bytes(image_bytes)
+        predictions = cloud_model.predict(batch, verbose=0)
+        predictions = predictions[0] if getattr(predictions, "ndim", 1) > 1 else predictions
+    
     probabilities = _to_probabilities(predictions)
 
     best_index = int(np.argmax(probabilities))
@@ -237,3 +293,4 @@ def run_cloud_scan_inference(image_bytes: bytes) -> dict:
             "normalization_range": [0.0, 1.0],
         },
     }
+

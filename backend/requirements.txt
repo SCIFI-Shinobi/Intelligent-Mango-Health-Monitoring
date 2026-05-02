@@ -12,4 +12,4 @@ bcrypt==4.0.1
 requests
 numpy
 Pillow
-tensorflow-cpu==2.18.0
+tflite-runtime

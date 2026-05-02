@@ -421,9 +421,10 @@ def get_sensor_for_detection(
     if sensor or not fallback_device_ids or not should_reuse_user_sensor_fallback(detection):
         return sensor
 
+    # Return the most recent sensor reading from any of the user's devices
     return db.query(models.SensorData).filter(
         models.SensorData.device_id.in_(fallback_device_ids)
-    ).order_by(models.SensorData.timestamp.asc()).first()
+    ).order_by(models.SensorData.timestamp.desc()).first()
 
 
 def serialize_scan_request(
