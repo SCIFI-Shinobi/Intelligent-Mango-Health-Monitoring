@@ -122,6 +122,7 @@ export default function AnalysisPage() {
     average_confidence: 0,
     recommendation_count: 0,
     latest_recommendation: null,
+    latest_scan_timestamp: null,
     high_risk_days: 0,
     stable_days: 0,
     sensor_sample_count: 0,
@@ -148,18 +149,22 @@ export default function AnalysisPage() {
 
   let overviewHeadline = t('analysis', 'overviewStableTitle');
   let overviewBody = t('analysis', 'overviewStableBody');
+  let actionText = t('analysis', 'actionNoAction');
+
   if (summary.risk_level === 'HIGH') {
     overviewHeadline = t('analysis', 'overviewHighRiskTitle');
     overviewBody = t('analysis', 'overviewHighRiskBody');
+    actionText = t('analysis', 'actionSpray');
   } else if (summary.risk_level === 'MEDIUM') {
     overviewHeadline = t('analysis', 'overviewWatchTitle');
     overviewBody = t('analysis', 'overviewWatchBody');
+    actionText = t('analysis', 'actionMonitor');
   }
 
   const overviewMetrics = [
     { label: t('analysis', 'healthyRate'), value: formatPercent(summary.healthy_rate) },
     { label: t('analysis', 'topDisease'), value: topDiseaseDisplay, compact: true },
-    { label: t('analysis', 'highRiskDays'), value: summary.high_risk_days },
+    { label: t('analysis', 'forecastHighRiskDays'), value: summary.high_risk_days },
     { label: t('analysis', 'confidenceSignal'), value: formatPercent(summary.average_confidence) },
   ];
 
@@ -216,12 +221,12 @@ export default function AnalysisPage() {
       value: summary.stable_days,
     },
     {
-      label: t('analysis', 'totalScans'),
-      value: summary.total_scans,
+      label: t('analysis', 'diseaseDetections'),
+      value: summary.disease_count,
     },
     {
-      label: t('analysis', 'sensorSamples30d'),
-      value: summary.sensor_sample_count,
+      label: t('analysis', 'healthyDetections'),
+      value: summary.healthy_count,
     },
   ];
 
@@ -233,6 +238,11 @@ export default function AnalysisPage() {
 
         </div>
         <div className="analysis-header-actions">
+          {summary.latest_scan_timestamp && (
+            <div className="analysis-timestamp-chip">
+              {t('analysis', 'lastScanned')} {formatTimestampLabel(summary.latest_scan_timestamp)}
+            </div>
+          )}
           <div className="analysis-live-pill">
             <span className="analysis-live-dot"></span>
             {t('analysis', 'liveOverview')}
@@ -258,8 +268,6 @@ export default function AnalysisPage() {
             <div className="analysis-overview-main">
               <div className="analysis-overview-badges">
                 <span className={`analysis-risk-badge ${riskClass}`}>{riskLevelText(summary.risk_level)}</span>
-                <span className="analysis-meta-chip">{summary.total_scans} {t('analysis', 'totalScans')}</span>
-                <span className="analysis-meta-chip">{summary.sensor_sample_count} {t('analysis', 'sensorSamples30d')}</span>
               </div>
               <h3 className="analysis-overview-title">{overviewHeadline}</h3>
               <p className="analysis-overview-copy">{overviewBody}</p>
@@ -278,6 +286,10 @@ export default function AnalysisPage() {
                     style={{ width: `${Math.max(0, Math.min(100, summary.risk_score))}%` }}
                   ></span>
                 </div>
+              </div>
+
+              <div className={`analysis-action-banner ${riskClass}`}>
+                <strong>{actionText}</strong>
               </div>
             </div>
 
@@ -448,11 +460,7 @@ export default function AnalysisPage() {
               </div>
 
               <div className="analysis-mini-duo">
-                <div className="analysis-mini-panel">
-                  <span className="mini-label">{t('analysis', 'recentConfidenceTrend')}</span>
-                  {renderMiniBars(summary.confidence_trend, 'confidence', noDataText)}
-                </div>
-                <div className="analysis-mini-panel">
+                <div className="analysis-mini-panel full-width">
                   <span className="mini-label">{t('analysis', 'forecastOutlook')}</span>
                   {renderMiniBars(summary.forecast_risk_trend, 'risk', noDataText)}
                 </div>

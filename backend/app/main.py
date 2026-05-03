@@ -1023,6 +1023,7 @@ def build_analysis_summary(
         "temperature_trend": temperature_trend,
         "disease_breakdown": disease_breakdown,
         "forecast_risk_trend": forecast_risk_trend,
+        "latest_scan_timestamp": detections[0].timestamp if detections else None,
         "top_recommendations": localized_recommendations[:3],
     }
 
