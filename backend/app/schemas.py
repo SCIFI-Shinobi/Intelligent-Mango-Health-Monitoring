@@ -183,6 +183,7 @@ class CloudScanOut(BaseModel):
     input_shape: list[int]
     preprocessing: dict
     class_scores: dict[str, float]
+    severity: Optional[str] = None
     recommendation: Optional[RecommendationBase] = None
 
 # User Profile schemas

@@ -257,12 +257,12 @@ export default function Dashboard() {
               <SensorCard
                 name={t('sensor', 'temperature')}
                 value={formatTemp(sensorLatest?.temperature)}
-                unit={settings.temperatureUnit === 'fahrenheit' ? 'F' : 'C'}
+                unit={settings.temperatureUnit === 'fahrenheit' ? '°F' : '°C'}
                 icon="temp"
                 loading={loading}
                 statusLabel={freshness.statusLabel}
                 statusClass={freshness.statusClass}
-                lastScanTimestamp={sensorLatest?.timestamp}
+                lastScanTimestamp={sensorLatest?.timestamp || null}
                 lang={lang}
               />
               <SensorCard
@@ -273,7 +273,7 @@ export default function Dashboard() {
                 loading={loading}
                 statusLabel={freshness.statusLabel}
                 statusClass={freshness.statusClass}
-                lastScanTimestamp={sensorLatest?.timestamp}
+                lastScanTimestamp={sensorLatest?.timestamp || null}
                 lang={lang}
               />
             </div>

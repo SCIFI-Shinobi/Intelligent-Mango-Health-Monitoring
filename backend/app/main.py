@@ -1284,13 +1284,17 @@ async def upload_data(
             x_device_key=x_device_key,
             background_tasks=background_tasks,
         )
-        background_tasks.add_task(
-            check_and_send_alert,
-            result["disease_type"],
-            result["confidence_score"],
-            "edge",
-            result["timestamp"],
-        )
+        owner = db.query(models.User).filter(models.User.id == result["owner_id"]).first()
+        if owner and owner.notification_emails_enabled and owner.email:
+            background_tasks.add_task(
+                check_and_send_alert,
+                result["disease_type"],
+                result["confidence_score"],
+                "edge",
+                result["timestamp"],
+                float(owner.disease_confidence_threshold),
+                owner.email,
+            )
         return {
             "status": result["status"],
             "data_id": result["data_id"],
@@ -1789,25 +1793,9 @@ async def run_cloud_scan(
         db.add(recommendation)
         db.flush()
 
-    apply_notification_rules(
-        db,
-        owner_id=user.id,
-        disease_type=disease_type,
-        confidence_score=confidence_score,
-        forecast=None,
-        background_tasks=background_tasks,
-        timestamp=server_now,
-    )
-
     db.commit()
 
-    background_tasks.add_task(
-        check_and_send_alert,
-        disease_type,
-        confidence_score,
-        "cloud",
-        server_now.isoformat(),
-    )
+    # Removed email alert for web scans as previously agreed
 
     return {
         "disease_type": disease_type,
@@ -1818,6 +1806,7 @@ async def run_cloud_scan(
         "input_shape": prediction["input_shape"],
         "preprocessing": prediction["preprocessing"],
         "class_scores": prediction["class_scores"],
+        "severity": "High" if disease_type != "Healthy" else "Low",
         "recommendation": (
             {
                 "title": recommendation_payload["title_en"],
@@ -1850,13 +1839,17 @@ async def data_ingest(
             x_device_key=x_device_key,
             background_tasks=background_tasks,
         )
-        background_tasks.add_task(
-            check_and_send_alert,
-            result["disease_type"],
-            result["confidence_score"],
-            "edge",
-            result["timestamp"],
-        )
+        owner = db.query(models.User).filter(models.User.id == result["owner_id"]).first()
+        if owner and owner.notification_emails_enabled and owner.email:
+            background_tasks.add_task(
+                check_and_send_alert,
+                result["disease_type"],
+                result["confidence_score"],
+                "edge",
+                result["timestamp"],
+                float(owner.disease_confidence_threshold),
+                owner.email,
+            )
         return {
             "status": result["status"],
             "sensor_id": result["sensor_id"],

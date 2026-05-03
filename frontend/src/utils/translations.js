@@ -9,6 +9,7 @@ const translations = {
     logout: { en: 'Logout', am: 'ውጣ' },
     quickScan: { en: 'Quick Scan', am: 'ፈጣን ስካን' },
     notifications: { en: 'Notifications', am: 'ማሳወቂያዎች' },
+    scanForDisease: { en: 'Scan for Disease', am: 'ለበሽታ ስካን ያድርጉ' },
     markAllRead: { en: 'Mark all read', am: 'ሁሉንም አንብብ' },
     noNotifications: { en: 'No notifications yet', am: 'ምንም ማሳወቂያ የለም' },
     unreadOnly: { en: 'Unread', am: 'ያልተነበቡ' },

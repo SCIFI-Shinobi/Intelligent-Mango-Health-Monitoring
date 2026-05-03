@@ -80,8 +80,7 @@ export default function SensorCard({ name, value, unit, previousValue, icon, loa
     return Math.min(100, numValue);
   };
 
-  const displayTimestamp = lastScanTimestamp ? formatDateEAT(lastScanTimestamp, lang) : null;
-  const hasMeta = Boolean(subtitle || updatedAt || displayTimestamp);
+  const hasMeta = Boolean(subtitle || updatedAt);
 
   return (
     <div className={`sensor-card sensor-card-${icon === 'precip' ? 'moisture' : icon}`}>
@@ -118,7 +117,6 @@ export default function SensorCard({ name, value, unit, previousValue, icon, loa
         <div className="sensor-meta">
           {subtitle && <span>{subtitle}</span>}
           {updatedAt && <span>{updatedAt}</span>}
-          {displayTimestamp && <span className="last-scan">Last updated: {displayTimestamp}</span>}
         </div>
       )}
     </div>

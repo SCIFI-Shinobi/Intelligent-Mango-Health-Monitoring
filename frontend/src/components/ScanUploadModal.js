@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useLanguage } from '../context/LanguageContext';
 import { getApiBaseUrl } from '../utils/apiBase';
 
@@ -6,7 +7,7 @@ const API_BASE_URL = getApiBaseUrl();
 const MAX_SCAN_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export default function ScanUploadModal({ onClose }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -152,8 +153,8 @@ export default function ScanUploadModal({ onClose }) {
     }
   };
 
-  return (
-    <div className="modal-overlay" onClick={() => !submitting && onClose()}>
+  return ReactDOM.createPortal(
+    <div className="modal-overlay scan-modal-overlay" onClick={() => !submitting && onClose()}>
       <div className="scan-modal" onClick={(event) => event.stopPropagation()}>
         <div className="profile-modal-header">
           <div>
@@ -166,23 +167,34 @@ export default function ScanUploadModal({ onClose }) {
         </div>
 
         <div className="profile-modal-body scan-modal-body">
-          {scanResult ? (
-            <div className="scan-result-container">
-              <h3 className="scan-result-title">{scanResult.disease_type === 'Healthy' ? 'Healthy' : scanResult.disease_type}</h3>
-              <div className="scan-result-metrics">
-                <span className="scan-result-confidence">Confidence: {(scanResult.confidence_score * 100).toFixed(1)}%</span>
-                <span className={`scan-result-severity severity-${(scanResult.severity || 'low').toLowerCase()}`}>Severity: {scanResult.severity || 'Low'}</span>
+          {scanResult ? (() => {
+            const getTranslatedDisease = (disease) => {
+              if (disease === 'Healthy') return t('disease', 'healthy') || 'Healthy';
+              const key = disease.charAt(0).toLowerCase() + disease.slice(1).replace(' ', '');
+              return t('disease', key) || disease;
+            };
+            const getTranslatedRecommendation = (rec) => {
+              if (!rec) return 'Keep monitoring regularly.';
+              if (typeof rec === 'string') return rec;
+              return lang === 'am' ? (rec.title_am || rec.title) : rec.title;
+            };
+            return (
+              <div className="scan-result-container">
+                <h3 className="scan-result-title">{getTranslatedDisease(scanResult.disease_type)}</h3>
+                <div className="scan-result-metrics">
+                  <span className="scan-result-confidence">Confidence: {(scanResult.confidence_score * 100).toFixed(1)}%</span>
+                  <span className={`scan-result-severity severity-${(scanResult.severity || 'low').toLowerCase()}`}>Severity: {scanResult.severity || 'Low'}</span>
+                </div>
+                <p className="scan-result-recommendation">{getTranslatedRecommendation(scanResult.recommendation)}</p>
+                <button type="button" className="primary-btn" onClick={onClose}>Close</button>
               </div>
-              <p className="scan-result-recommendation">{scanResult.recommendation?.title || scanResult.recommendation || 'Keep monitoring regularly.'}</p>
-              <button type="button" className="primary-btn" onClick={onClose}>Close</button>
-            </div>
-          ) : (
+            );
+          })() : (
             <>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 onChange={handleFileChange}
                 style={{ display: 'none' }}
               />
@@ -205,19 +217,24 @@ export default function ScanUploadModal({ onClose }) {
                   </div>
                 </div>
               ) : (
-                <button type="button" className="scan-upload-dropzone" onClick={openPicker}>
+                <button type="button" className="scan-upload-dropzone" onClick={!submitting ? openCamera : undefined}>
                   {previewUrl ? (
-                    <>
+                    <div className={`scan-preview-container ${submitting ? 'is-scanning' : ''}`}>
                       <img src={previewUrl} alt={t('quickScan', 'previewAlt')} className="scan-upload-preview" />
+                      {submitting && (
+                        <div className="scanner-overlay">
+                          <div className="scanner-dots"></div>
+                        </div>
+                      )}
                       <span className="scan-upload-file">{selectedFile?.name}</span>
-                    </>
+                    </div>
                   ) : (
                     <>
                       <span className="scan-upload-icon">
                         <i className="fa-solid fa-camera"></i>
                       </span>
-                      <span className="scan-upload-title">{t('quickScan', 'pickImage')}</span>
-                      <span className="scan-upload-hint">{t('quickScan', 'pickImageHint')}</span>
+                      <span className="scan-upload-title">{t('quickScan', 'takePhoto') === 'takePhoto' ? 'Take a Photo' : t('quickScan', 'takePhoto')}</span>
+                      <span className="scan-upload-hint">Tap to open camera</span>
                     </>
                   )}
                 </button>
@@ -226,20 +243,9 @@ export default function ScanUploadModal({ onClose }) {
               {error && <div className="profile-error">{error}</div>}
 
               <div className="scan-modal-actions">
-                {isMobile ? (
-                  <>
-                    <button type="button" className="secondary-btn scan-secondary-btn" onClick={openCamera} disabled={submitting}>
-                      <i className="fa-solid fa-camera"></i> {t('quickScan', 'takePhoto') || 'Take Photo'}
-                    </button>
-                    <button type="button" className="secondary-btn scan-secondary-btn" onClick={openPicker} disabled={submitting}>
-                      <i className="fa-solid fa-image"></i> {t('quickScan', 'pickImage') || 'Pick Image'}
-                    </button>
-                  </>
-                ) : (
-                  <button type="button" className="secondary-btn scan-secondary-btn" onClick={openPicker} disabled={submitting}>
-                    {selectedFile ? t('quickScan', 'changeImage') : t('quickScan', 'pickImage')}
-                  </button>
-                )}
+                <button type="button" className="secondary-btn scan-secondary-btn" onClick={openPicker} disabled={submitting}>
+                  <i className="fa-solid fa-image"></i> {selectedFile ? t('quickScan', 'changeImage') : t('quickScan', 'pickImage') || 'Select Image'}
+                </button>
                 <button type="button" className="primary-btn scan-primary-btn" onClick={handleSubmit} disabled={!selectedFile || submitting}>
                   {submitting ? t('common', 'loading') : t('quickScan', 'runAction')}
                 </button>
@@ -248,6 +254,7 @@ export default function ScanUploadModal({ onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

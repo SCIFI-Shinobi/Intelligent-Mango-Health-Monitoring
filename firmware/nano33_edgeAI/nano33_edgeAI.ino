@@ -18,6 +18,9 @@
 #include <mango_health_inferencing.h>
 #include <Arduino_OV767X.h> //Click here to get the library: https://www.arduino.cc/reference/en/libraries/arduino_ov767x/
 #include <ArduinoBLE.h>
+#include <DHT.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -26,6 +29,16 @@
 /* Constant variables ------------------------------------------------------- */
 #define EI_CAMERA_RAW_FRAME_BUFFER_COLS     160
 #define EI_CAMERA_RAW_FRAME_BUFFER_ROWS     120
+
+#define DHTPIN 2
+#define DHTTYPE DHT22
+#define BUZZER_PIN 3
+#define LCD_I2C_ADDR 0x27
+#define LCD_COLS 16
+#define LCD_ROWS 2
+
+DHT dht(DHTPIN, DHTTYPE);
+LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLS, LCD_ROWS);
 
 #define DWORD_ALIGN_PTR(a)   ((a & 0x3) ?(((uintptr_t)a + 0x4) & ~(uintptr_t)0x3) : a)
 
@@ -122,7 +135,7 @@ static BLEService inferenceService("19B10010-E8F2-537E-4F6C-D104768A1214");
 static BLEStringCharacteristic inferenceResultCharacteristic(
     "19B10011-E8F2-537E-4F6C-D104768A1214",
     BLERead | BLENotify,
-    32
+    64
 );
 static BLEStringCharacteristic inferenceCommandCharacteristic(
     "19B10012-E8F2-537E-4F6C-D104768A1214",
@@ -139,7 +152,7 @@ int calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32_
 void resizeImage(int srcWidth, int srcHeight, uint8_t *srcImage, int dstWidth, int dstHeight, uint8_t *dstImage, int iBpp);
 void cropImage(int srcWidth, int srcHeight, uint8_t *srcImage, int startX, int startY, int dstWidth, int dstHeight, uint8_t *dstImage, int iBpp);
 bool ble_init(void);
-void ble_update_inference_result(const char *label, float confidence);
+void ble_update_inference_result(const char *label, float confidence, float temp, float hum);
 void find_top_classification(const ei_impulse_result_t *result, const char **label, float *confidence);
 
 /**
@@ -158,6 +171,15 @@ void setup()
     ei_printf("\tImage resolution: %dx%d\n", EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT);
     ei_printf("\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
     ei_printf("\tNo. of classes: %d\n", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
+
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
+    dht.begin();
+    Wire.begin();
+    lcd.init();
+    lcd.backlight();
+    lcd.setCursor(0, 0);
+    lcd.print("MangoGuard Edge");
 
     if (!ble_init()) {
         ei_printf("ERR: Failed to initialize BLE\r\n");
@@ -271,7 +293,32 @@ void loop()
     const char *top_label = "unknown";
     float top_confidence = 0.0f;
     find_top_classification(&result, &top_label, &top_confidence);
-    ble_update_inference_result(top_label, top_confidence);
+
+    float temp = dht.readTemperature();
+    float hum = dht.readHumidity();
+    if (isnan(temp) || isnan(hum)) {
+        temp = 25.0f;
+        hum = 70.0f;
+    }
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(top_label);
+    lcd.setCursor(0, 1);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "T:%.1fC H:%.0f%%", temp, hum);
+    lcd.print(buf);
+
+    if (strcmp(top_label, "Healthy") != 0 && top_confidence >= 0.70f) {
+        for(int i = 0; i < 3; i++) {
+            digitalWrite(BUZZER_PIN, HIGH);
+            delay(200);
+            digitalWrite(BUZZER_PIN, LOW);
+            delay(200);
+        }
+    }
+
+    ble_update_inference_result(top_label, top_confidence, temp, hum);
 #endif
 
     // Print anomaly result (if it exists)
@@ -311,7 +358,7 @@ bool ble_init(void) {
     inferenceService.addCharacteristic(inferenceResultCharacteristic);
     inferenceService.addCharacteristic(inferenceCommandCharacteristic);
     BLE.addService(inferenceService);
-    inferenceResultCharacteristic.writeValue("waiting,0.00000");
+    inferenceResultCharacteristic.writeValue("waiting,0.00000,0.0,0.0");
     inferenceCommandCharacteristic.writeValue("idle");
     BLE.advertise();
 
@@ -319,9 +366,9 @@ bool ble_init(void) {
     return true;
 }
 
-void ble_update_inference_result(const char *label, float confidence) {
-    char payload[32];
-    snprintf(payload, sizeof(payload), "%s,%.5f", label, confidence);
+void ble_update_inference_result(const char *label, float confidence, float temp, float hum) {
+    char payload[64];
+    snprintf(payload, sizeof(payload), "%s,%.5f,%.1f,%.1f", label, confidence, temp, hum);
     inferenceResultCharacteristic.writeValue(payload);
     ei_printf("BLE update: %s\r\n", payload);
 }
