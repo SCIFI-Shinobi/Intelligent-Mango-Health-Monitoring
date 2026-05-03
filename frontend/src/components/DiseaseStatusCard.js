@@ -15,15 +15,15 @@ export default function DiseaseStatusCard({ detection, loading, freshness }) {
 
   if (loading) {
     return (
-      <div className="disease-status-card loading">
+      <div className="disease-status-card skeleton-state">
         <div className="disease-status-content">
           <div className="disease-status-text">
             <div className="skeleton-line skeleton-chip"></div>
-            <div className="skeleton-line skeleton-heading"></div>
-            <div className="skeleton-line skeleton-subline"></div>
-            <div className="skeleton-line skeleton-subline short"></div>
+            <div className="skeleton-line skeleton-heading skeleton-delay-1"></div>
+            <div className="skeleton-line skeleton-subline skeleton-delay-2"></div>
+            <div className="skeleton-line skeleton-subline short skeleton-delay-3"></div>
           </div>
-          <div className="skeleton-circle"></div>
+          <div className="skeleton-circle skeleton-delay-1"></div>
         </div>
       </div>
     );
@@ -31,18 +31,15 @@ export default function DiseaseStatusCard({ detection, loading, freshness }) {
 
   if (!detection) {
     return (
-      <div className="disease-status-card status-unknown">
+      <div className="disease-status-card skeleton-state">
         <div className="disease-status-content">
           <div className="disease-status-text">
-            <h4 className="disease-status-title">{t('disease', 'healthStatus')}</h4>
-            <p className="disease-status-value">{t('disease', 'waitingForDevice')}</p>
+            <div className="skeleton-line skeleton-chip skeleton-delay-1"></div>
+            <div className="skeleton-line skeleton-heading skeleton-delay-2"></div>
+            <div className="skeleton-line skeleton-subline skeleton-delay-3"></div>
+            <div className="skeleton-line skeleton-subline short skeleton-delay-4"></div>
           </div>
-          <div className="disease-status-icon-wrapper">
-            <MdShield className="disease-status-icon" />
-            <div className="disease-status-checkmark">
-              <MdCheckCircle className="disease-checkmark-icon" />
-            </div>
-          </div>
+          <div className="skeleton-circle skeleton-delay-2"></div>
         </div>
       </div>
     );

@@ -314,7 +314,7 @@ const translations = {
     confidenceSignal: { en: 'Confidence signal', am: 'የእምነት ምልክት' },
     highRiskDays: { en: 'High-risk days', am: 'ከፍተኛ ስጋት ቀናት' },
     healthyOnlyBreakdown: { en: 'Only healthy detections have been recorded so far.', am: 'እስካሁን የተመዘገቡት ጤናማ ግኝቶች ብቻ ናቸው።' },
-    insightsLive: { en: 'Insights are computed live from your latest API data and update on refresh.', am: 'ትንታኔው ከአዲሱ API መረጃ በቀጥታ ይሰላል እና ሲያድሱ ይዘምናል።' },
+    insightsLive: { en: 'Insights are computed live from your field sensors.', am: 'ትንታኔው ከእርሻዎ ሴንሰሮች በቀጥታ ይሰላል።' },
     low: { en: 'Low', am: 'ዝቅተኛ' },
     medium: { en: 'Medium', am: 'መካከለኛ' },
     high: { en: 'High', am: 'ከፍተኛ' },

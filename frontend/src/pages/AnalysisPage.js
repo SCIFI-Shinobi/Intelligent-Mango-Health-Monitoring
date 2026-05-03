@@ -230,7 +230,7 @@ export default function AnalysisPage() {
       <div className="section-header analysis-header">
         <div className="analysis-title-group">
           <span className="section-title">{t('analysis', 'title')}</span>
-          <p className="analysis-subtitle">{t('analysis', 'insightsLive')}</p>
+
         </div>
         <div className="analysis-header-actions">
           <div className="analysis-live-pill">
@@ -501,7 +501,7 @@ export default function AnalysisPage() {
             </section>
           </div>
 
-          <p className="analysis-note">{t('analysis', 'insightsLive')}</p>
+
         </>
       )}
     </div>

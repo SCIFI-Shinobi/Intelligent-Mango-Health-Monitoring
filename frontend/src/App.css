@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 /* ================= GLOBAL ================= */
 
 :root {
@@ -13,6 +15,7 @@ body {
   background: #0d1117;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #fff;
+  letter-spacing: -0.02em;
 }
 
 * {
@@ -228,11 +231,13 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #161b22;
+  background: rgba(30, 30, 40, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   padding: 16px 20px;
   border-radius: 12px;
   margin-bottom: 24px;
-  border: 1px solid #30363d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .navbar-left {
@@ -248,7 +253,10 @@ body {
 .app-title {
   font-size: 22px;
   font-weight: 700;
-  color: #2f81f7;
+  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .navbar-right {
@@ -963,8 +971,10 @@ body {
 
 /* ================= SENSOR CARDS ================= */
 .sensor-card {
-  background: linear-gradient(135deg, #1a1f2e 0%, #252d3a 100%);
-  border: 1px solid #30363d;
+  background: rgba(30, 30, 40, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   padding: 24px;
   display: flex;
@@ -978,29 +988,32 @@ body {
 .sensor-card::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  border-radius: 16px 16px 0 0;
+  top: -50px;
+  right: -50px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.15;
+  pointer-events: none;
 }
 
 .sensor-card-temp::before {
-  background: linear-gradient(90deg, #f97316, #fb923c);
+  background: #f97316;
 }
 
 .sensor-card-humidity::before {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  background: #3b82f6;
 }
 
 .sensor-card-moisture::before {
-  background: linear-gradient(90deg, var(--leaf-green), var(--leaf-green-soft));
+  background: var(--leaf-green);
 }
 
 .sensor-card:hover {
-  border-color: #484f58;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px) scale(1.02);
 }
 
 .card-header {
@@ -1325,20 +1338,49 @@ body {
 
 .chart-skeleton-bar {
   border-radius: 8px 8px 0 0;
-  background: linear-gradient(180deg, rgba(88, 166, 255, 0.38), rgba(88, 166, 255, 0.08));
-  animation: pulse 1.5s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, rgba(48, 54, 61, 0.6), rgba(99, 110, 123, 0.22), rgba(48, 54, 61, 0.6));
+  background-size: 200% 100%;
+  animation: skeletonWave 2s ease-in-out infinite;
 }
 
-.chart-skeleton-bar:nth-child(1) { height: 34%; }
-.chart-skeleton-bar:nth-child(2) { height: 62%; }
-.chart-skeleton-bar:nth-child(3) { height: 48%; }
-.chart-skeleton-bar:nth-child(4) { height: 76%; }
-.chart-skeleton-bar:nth-child(5) { height: 58%; }
-.chart-skeleton-bar:nth-child(6) { height: 82%; }
-.chart-skeleton-bar:nth-child(7) { height: 46%; }
-.chart-skeleton-bar:nth-child(8) { height: 66%; }
-.chart-skeleton-bar:nth-child(9) { height: 56%; }
-.chart-skeleton-bar:nth-child(10) { height: 72%; }
+.chart-skeleton-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(88, 166, 255, 0.1) 40%,
+    rgba(255, 255, 255, 0.14) 50%,
+    rgba(88, 166, 255, 0.1) 60%,
+    transparent 100%
+  );
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+.chart-skeleton-bar:nth-child(1)  { height: 34%; animation-delay: 0s; }
+.chart-skeleton-bar:nth-child(1)::after  { animation-delay: 0s; }
+.chart-skeleton-bar:nth-child(2)  { height: 62%; animation-delay: 0.08s; }
+.chart-skeleton-bar:nth-child(2)::after  { animation-delay: 0.08s; }
+.chart-skeleton-bar:nth-child(3)  { height: 48%; animation-delay: 0.16s; }
+.chart-skeleton-bar:nth-child(3)::after  { animation-delay: 0.16s; }
+.chart-skeleton-bar:nth-child(4)  { height: 76%; animation-delay: 0.24s; }
+.chart-skeleton-bar:nth-child(4)::after  { animation-delay: 0.24s; }
+.chart-skeleton-bar:nth-child(5)  { height: 58%; animation-delay: 0.32s; }
+.chart-skeleton-bar:nth-child(5)::after  { animation-delay: 0.32s; }
+.chart-skeleton-bar:nth-child(6)  { height: 82%; animation-delay: 0.4s; }
+.chart-skeleton-bar:nth-child(6)::after  { animation-delay: 0.4s; }
+.chart-skeleton-bar:nth-child(7)  { height: 46%; animation-delay: 0.48s; }
+.chart-skeleton-bar:nth-child(7)::after  { animation-delay: 0.48s; }
+.chart-skeleton-bar:nth-child(8)  { height: 66%; animation-delay: 0.56s; }
+.chart-skeleton-bar:nth-child(8)::after  { animation-delay: 0.56s; }
+.chart-skeleton-bar:nth-child(9)  { height: 56%; animation-delay: 0.64s; }
+.chart-skeleton-bar:nth-child(9)::after  { animation-delay: 0.64s; }
+.chart-skeleton-bar:nth-child(10) { height: 72%; animation-delay: 0.72s; }
+.chart-skeleton-bar:nth-child(10)::after { animation-delay: 0.72s; }
 
 .section-header {
   display: flex;
@@ -3874,17 +3916,48 @@ body {
 .table-skeleton-row {
   height: 46px;
   border-radius: 10px;
-  background: linear-gradient(90deg, rgba(48, 54, 61, 0.7), rgba(99, 110, 123, 0.18), rgba(48, 54, 61, 0.7));
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, rgba(48, 54, 61, 0.6), rgba(99, 110, 123, 0.22), rgba(48, 54, 61, 0.6));
   background-size: 200% 100%;
-  animation: shimmer 1.8s infinite linear;
+  animation: skeletonWave 2s ease-in-out infinite;
 }
+
+.table-skeleton-row::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(88, 166, 255, 0.06) 30%,
+    rgba(255, 255, 255, 0.13) 50%,
+    rgba(88, 166, 255, 0.06) 70%,
+    transparent 100%
+  );
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+.table-skeleton-row:nth-child(1) { animation-delay: 0s; }
+.table-skeleton-row:nth-child(1)::after { animation-delay: 0s; }
+.table-skeleton-row:nth-child(2) { animation-delay: 0.1s; }
+.table-skeleton-row:nth-child(2)::after { animation-delay: 0.1s; }
+.table-skeleton-row:nth-child(3) { animation-delay: 0.2s; }
+.table-skeleton-row:nth-child(3)::after { animation-delay: 0.2s; }
+.table-skeleton-row:nth-child(4) { animation-delay: 0.3s; }
+.table-skeleton-row:nth-child(4)::after { animation-delay: 0.3s; }
+.table-skeleton-row:nth-child(5) { animation-delay: 0.4s; }
+.table-skeleton-row:nth-child(5)::after { animation-delay: 0.4s; }
 
 .skeleton-line,
 .skeleton-box,
 .skeleton-fill {
   position: relative;
   overflow: hidden;
-  background: rgba(99, 110, 123, 0.18);
+  background: linear-gradient(90deg, rgba(48, 54, 61, 0.6), rgba(99, 110, 123, 0.22), rgba(48, 54, 61, 0.6));
+  background-size: 200% 100%;
+  animation: skeletonWave 2s ease-in-out infinite;
   border-radius: 10px;
 }
 
@@ -3895,11 +3968,19 @@ body {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
-  animation: shimmer 1.6s infinite;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(88, 166, 255, 0.06) 30%,
+    rgba(255, 255, 255, 0.13) 50%,
+    rgba(88, 166, 255, 0.06) 70%,
+    transparent 100%
+  );
+  animation: shimmer 1.8s ease-in-out infinite;
 }
 
-.skeleton-chip { width: 72px; height: 24px; margin-bottom: 10px; }
+/* Skeleton shape presets */
+.skeleton-chip { width: 72px; height: 24px; margin-bottom: 10px; border-radius: 12px; }
 .skeleton-heading { width: 68%; height: 34px; margin-bottom: 12px; }
 .skeleton-subline { width: 88%; height: 14px; }
 .skeleton-subline.short { width: 52%; }
@@ -3911,10 +3992,41 @@ body {
 .skeleton-circle { width: 88px; height: 88px; border-radius: 50%; }
 .skeleton-fill { width: 60%; height: 100%; }
 
+/* New premium skeleton shapes */
+.skeleton-value-lg { width: 65%; height: 38px; border-radius: 8px; }
+.skeleton-meta-line { width: 45%; height: 11px; margin-top: 6px; border-radius: 6px; }
+.skeleton-icon-circle { border-radius: 50% !important; }
+.skeleton-fill-wide { width: 100%; height: 100%; border-radius: 0; }
+
+/* Staggered animation delays for organic feel */
+.skeleton-delay-1::after { animation-delay: 0.15s; }
+.skeleton-delay-2::after { animation-delay: 0.3s; }
+.skeleton-delay-3::after { animation-delay: 0.45s; }
+.skeleton-delay-4::after { animation-delay: 0.6s; }
+.skeleton-delay-1 { animation-delay: 0.1s; }
+.skeleton-delay-2 { animation-delay: 0.2s; }
+.skeleton-delay-3 { animation-delay: 0.3s; }
+.skeleton-delay-4 { animation-delay: 0.4s; }
+
+/* Skeleton card state — subtle border pulse */
+.skeleton-state {
+  border-color: rgba(48, 54, 61, 0.6) !important;
+  animation: skeletonBorderPulse 2.5s ease-in-out infinite;
+}
+
 @keyframes shimmer {
-  100% {
-    transform: translateX(100%);
-  }
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes skeletonWave {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes skeletonBorderPulse {
+  0%, 100% { border-color: rgba(48, 54, 61, 0.5); }
+  50% { border-color: rgba(88, 166, 255, 0.15); }
 }
 
 @keyframes pulse {
@@ -4126,35 +4238,42 @@ body {
   }
 
   .disease-status-content {
-    gap: 10px;
-    align-items: flex-start;
-    flex-direction: row;
+    display: block;
+    position: relative;
+  }
+
+  .disease-status-text {
+    width: calc(100% - 50px);
   }
 
   .disease-status-title {
-    font-size: 10px;
-    margin-bottom: 4px;
+    font-size: 11px;
+    margin-bottom: 6px;
   }
 
   .disease-status-value {
-    font-size: 24px;
-    line-height: 1;
-    margin: 0 0 6px 0;
+    font-size: 26px;
+    line-height: 1.1;
+    margin: 0 0 8px 0;
   }
 
   .disease-status-details {
-    gap: 3px;
+    gap: 4px;
+    margin-top: 8px;
   }
 
   .disease-status-details .confidence,
   .disease-status-details .time-ago {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .disease-status-icon-wrapper {
-    width: 48px;
-    height: 48px;
-    min-width: 48px;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
   }
 
   .disease-status-icon {
