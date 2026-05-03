@@ -14,15 +14,29 @@ try:
         import tensorflow as tf
     except Exception:
         tf = None
+    
+    # Try TensorFlow Lite first, then fallback to tflite_runtime
+    tflite = None
+    tflite_interpreter_class = None
     try:
         import tensorflow.lite as tflite
+        tflite_interpreter_class = tflite.Interpreter
     except Exception:
-        tflite = None
+        pass
+    
+    if tflite_interpreter_class is None:
+        try:
+            from tflite_runtime.interpreter import Interpreter
+            tflite_interpreter_class = Interpreter
+            tflite = True  # Mark as available
+        except Exception:
+            tflite = None
 except Exception as exc:  # pragma: no cover - optional runtime dependency
     np = None
     Image = None
     tf = None
     tflite = None
+    tflite_interpreter_class = None
     IMPORT_ERROR = exc
 else:
     IMPORT_ERROR = None
@@ -32,12 +46,20 @@ else:
 ML_MODELS_DIR = Path(__file__).resolve().parent / "ml_models"
 MODEL_PATH_TFLITE = ML_MODELS_DIR / "efficientnet_mango_leaf.tflite"
 MODEL_PATH_H5 = ML_MODELS_DIR / "efficientnet_mango_leaf.h5"
-MODEL_PATH = MODEL_PATH_TFLITE if MODEL_PATH_TFLITE.exists() else MODEL_PATH_H5
 DEFAULT_INPUT_SHAPE = (224, 224, 3)
 
 cloud_model = None
 cloud_model_error = None
 cloud_model_input_shape = DEFAULT_INPUT_SHAPE
+cloud_model_path = MODEL_PATH_TFLITE
+
+
+def _resolve_model_path() -> Path:
+    if MODEL_PATH_TFLITE.exists():
+        return MODEL_PATH_TFLITE
+    if MODEL_PATH_H5.exists():
+        return MODEL_PATH_H5
+    return MODEL_PATH_TFLITE
 
 
 def _extract_input_shape(model: Any) -> tuple[int, int, int]:
@@ -155,44 +177,79 @@ def _load_legacy_edge_impulse_h5_model(model_path: Path):
 
 def _load_tflite_model(model_path: Path):
     """Load TensorFlow Lite model (Edge Impulse .tflite format)"""
-    if tflite is None:
-        raise RuntimeError("TensorFlow Lite is not available")
+    if tflite_interpreter_class is None:
+        raise RuntimeError("TensorFlow Lite runtime is not available")
     
-    interpreter = tflite.Interpreter(model_path=str(model_path))
+    interpreter = tflite_interpreter_class(model_path=str(model_path))
     interpreter.allocate_tensors()
     return interpreter
 
 
+def _extract_tflite_input_shape(interpreter) -> tuple[int, int, int]:
+    """Extract input shape from TFLite interpreter."""
+    try:
+        input_details = interpreter.get_input_details()
+        if not input_details:
+            return DEFAULT_INPUT_SHAPE
+        
+        shape = input_details[0]['shape']
+        if len(shape) < 4:
+            return DEFAULT_INPUT_SHAPE
+        
+        batch, height, width, channels = shape
+        return (int(height), int(width), int(channels))
+    except Exception:
+        return DEFAULT_INPUT_SHAPE
+
+
 def load_cloud_scan_model():
-    global cloud_model, cloud_model_error, cloud_model_input_shape
+    global cloud_model, cloud_model_error, cloud_model_input_shape, cloud_model_path
 
     if IMPORT_ERROR is not None:
         cloud_model = None
         cloud_model_error = f"Cloud scan dependencies are unavailable: {IMPORT_ERROR}"
         return None
 
-    if not MODEL_PATH.exists():
+    if not MODEL_PATH_TFLITE.exists() and not MODEL_PATH_H5.exists():
         cloud_model = None
-        cloud_model_error = f"Cloud scan model not found at {MODEL_PATH}"
+        cloud_model_error = (
+            "Cloud scan model not found. "
+            f"Expected {MODEL_PATH_TFLITE} (preferred) or {MODEL_PATH_H5} (fallback)"
+        )
         cloud_model_input_shape = DEFAULT_INPUT_SHAPE
+        cloud_model_path = _resolve_model_path()
         return None
 
     # Try TensorFlow Lite first (Edge Impulse native format)
     if MODEL_PATH_TFLITE.exists():
         try:
             cloud_model = _load_tflite_model(MODEL_PATH_TFLITE)
-            cloud_model_input_shape = DEFAULT_INPUT_SHAPE
+            cloud_model_input_shape = _extract_tflite_input_shape(cloud_model)
             cloud_model_error = None
+            cloud_model_path = MODEL_PATH_TFLITE
             return cloud_model
         except Exception as tflite_exc:
             cloud_model_error = f"TensorFlow Lite model failed to load: {tflite_exc}"
             # Fall through to try H5
 
     # Try Keras H5 format
+    if not MODEL_PATH_H5.exists():
+        cloud_model = None
+        cloud_model_input_shape = DEFAULT_INPUT_SHAPE
+        cloud_model_path = _resolve_model_path()
+        cloud_model_error = (
+            "TensorFlow Lite model not found or failed to load, and no .h5 fallback model was found. "
+            f"Expected {MODEL_PATH_TFLITE}"
+        )
+        return None
+
     if tf is None:
         cloud_model = None
-        cloud_model_error = "TensorFlow not available and no .tflite model found"
+        cloud_model_error = (
+            "TensorFlow is not available for .h5 fallback loading, and no usable .tflite model was found"
+        )
         cloud_model_input_shape = DEFAULT_INPUT_SHAPE
+        cloud_model_path = MODEL_PATH_H5
         return None
 
     try:
@@ -203,6 +260,7 @@ def load_cloud_scan_model():
         except Exception as fallback_exc:
             cloud_model = None
             cloud_model_input_shape = DEFAULT_INPUT_SHAPE
+            cloud_model_path = MODEL_PATH_H5
             cloud_model_error = (
                 "Cloud scan model could not be loaded. "
                 f"Standard Keras load failed: {primary_exc}. "
@@ -212,6 +270,7 @@ def load_cloud_scan_model():
 
     cloud_model_input_shape = _extract_input_shape(cloud_model)
     cloud_model_error = None
+    cloud_model_path = MODEL_PATH_H5
     return cloud_model
 
 
@@ -219,7 +278,7 @@ def get_cloud_model_status() -> dict:
     height, width, channels = cloud_model_input_shape
     return {
         "loaded": cloud_model is not None,
-        "path": str(MODEL_PATH),
+        "path": str(cloud_model_path),
         "input_shape": [height, width, channels],
         "preprocessing": {
             "resize": [width, height],
@@ -239,13 +298,10 @@ def _prepare_image_bytes(image_bytes: bytes):
     height, width, _channels = cloud_model_input_shape
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     image = image.resize((width, height))
-    image_array = np.asarray(image, dtype=np.float32) / 255.0
+    # Return raw 0-255 pixel values as expected by Edge Impulse EfficientNet (normalizeData: "none")
+    image_array = np.asarray(image, dtype=np.float32)
     
-    # Handle both Keras and TFLite formats
-    if hasattr(cloud_model, 'predict'):  # Keras model
-        return np.expand_dims(image_array, axis=0)
-    else:  # TFLite interpreter
-        return image_array.astype(np.uint8) if np.max(image_array) > 1 else (image_array * 255).astype(np.uint8)
+    return image_array
 
 
 def _to_probabilities(raw_scores):
@@ -266,11 +322,25 @@ def run_cloud_scan_inference(image_bytes: bytes) -> dict:
         input_details = cloud_model.get_input_details()
         output_details = cloud_model.get_output_details()
         
+        # Convert image data to the expected input dtype
+        input_dtype = input_details[0]['dtype']
+        if input_dtype == np.uint8:
+            # Inputs are already 0-255, just cast
+            image_data = image_data.astype(np.uint8)
+        elif input_dtype == np.float32:
+            # Keep as 0-255 float32
+            image_data = image_data.astype(np.float32)
+        elif input_dtype == np.float64:
+            image_data = image_data.astype(np.float64)
+        else:
+            raise ValueError(f"Unsupported input dtype: {input_dtype}")
+        
         cloud_model.set_tensor(input_details[0]['index'], np.expand_dims(image_data, axis=0))
         cloud_model.invoke()
         predictions = cloud_model.get_tensor(output_details[0]['index'])[0]
     else:  # Keras model
         batch = _prepare_image_bytes(image_bytes)
+        batch = np.expand_dims(batch, axis=0)
         predictions = cloud_model.predict(batch, verbose=0)
         predictions = predictions[0] if getattr(predictions, "ndim", 1) > 1 else predictions
     
@@ -286,7 +356,7 @@ def run_cloud_scan_inference(image_bytes: bytes) -> dict:
             normalize_disease_type(class_name_from_index(idx)): float(score)
             for idx, score in enumerate(probabilities.tolist())
         },
-        "model_path": str(MODEL_PATH),
+        "model_path": str(cloud_model_path),
         "input_shape": list(cloud_model_input_shape),
         "preprocessing": {
             "resize": [cloud_model_input_shape[1], cloud_model_input_shape[0]],

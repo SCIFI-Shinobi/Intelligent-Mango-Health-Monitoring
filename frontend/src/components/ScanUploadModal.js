@@ -16,6 +16,7 @@ export default function ScanUploadModal({ onClose }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [scanResult, setScanResult] = useState(null);
+  const [usingCamera, setUsingCamera] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {

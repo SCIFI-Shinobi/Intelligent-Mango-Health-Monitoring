@@ -10,6 +10,6 @@ websockets
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 requests
-numpy
+numpy<2
 Pillow
 tflite-runtime

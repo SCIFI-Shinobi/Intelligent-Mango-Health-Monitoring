@@ -5,8 +5,8 @@ from typing import Optional
 
 CLOUD_SCAN_CLASS_ORDER = [
     "Anthracnose",
-    "Powdery Mildew",
     "Healthy",
+    "Powdery Mildew",
 ]
 
 
