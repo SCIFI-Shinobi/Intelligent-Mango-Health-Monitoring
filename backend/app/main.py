@@ -1418,7 +1418,10 @@ def get_detection_latest(db: Session = Depends(get_db), user: models.User = Depe
 
     detection = db.query(models.InferenceResult).order_by(
         models.InferenceResult.timestamp.desc()
-    ).filter(models.InferenceResult.device_id.in_(user_device_ids)).first()
+    ).filter(
+        models.InferenceResult.device_id.in_(user_device_ids),
+        models.InferenceResult.source == "gateway"
+    ).first()
 
     if not detection:
         raise HTTPException(status_code=404, detail="No detection data available")
@@ -1747,6 +1750,8 @@ def request_scan(
 async def run_cloud_scan(
     background_tasks: BackgroundTasks,
     image: UploadFile = File(...),
+    temperature: Optional[float] = Form(None),
+    humidity: Optional[float] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
@@ -1768,7 +1773,12 @@ async def run_cloud_scan(
     internal_device_id = web_app_device_id(user.id)
     disease_type = prediction["disease_type"]
     confidence_score = prediction["confidence_score"]
-    risk_level = "LOW RISK" if disease_type == "Healthy" else "HIGH RISK"
+
+    if temperature is not None and humidity is not None:
+        risk_result = logic.evaluate_risk(disease_type, temperature, humidity)
+        risk_level = risk_result["risk_level"]
+    else:
+        risk_level = "LOW RISK" if disease_type == "Healthy" else "HIGH RISK"
 
     detection = models.InferenceResult(
         device_id=internal_device_id,

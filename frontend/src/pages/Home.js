@@ -202,7 +202,7 @@ export default function Home() {
       </div>
 
       <ForecastCard forecast={forecast} loading={loading} />
-      {showQuickScan && <ScanUploadModal onClose={() => setShowQuickScan(false)} />}
+      {showQuickScan && <ScanUploadModal onClose={() => setShowQuickScan(false)} currentSensorData={sensorLatest} />}
     </div>
   );
 }

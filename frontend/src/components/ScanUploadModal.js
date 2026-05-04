@@ -6,7 +6,7 @@ import { getApiBaseUrl } from '../utils/apiBase';
 const API_BASE_URL = getApiBaseUrl();
 const MAX_SCAN_IMAGE_BYTES = 8 * 1024 * 1024;
 
-export default function ScanUploadModal({ onClose }) {
+export default function ScanUploadModal({ onClose, currentSensorData }) {
   const { t, lang } = useLanguage();
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
@@ -128,6 +128,12 @@ export default function ScanUploadModal({ onClose }) {
     const token = localStorage.getItem('token');
     const formData = new FormData();
     formData.append('image', selectedFile);
+    if (currentSensorData?.temperature !== undefined) {
+      formData.append('temperature', currentSensorData.temperature);
+    }
+    if (currentSensorData?.humidity !== undefined) {
+      formData.append('humidity', currentSensorData.humidity);
+    }
 
     try {
       setSubmitting(true);
@@ -173,20 +179,53 @@ export default function ScanUploadModal({ onClose }) {
               const key = disease.charAt(0).toLowerCase() + disease.slice(1).replace(' ', '');
               return t('disease', key) || disease;
             };
-            const getTranslatedRecommendation = (rec) => {
-              if (!rec) return 'Keep monitoring regularly.';
+            const getTranslatedRecommendationDesc = (rec) => {
+              if (!rec) return 'Keep monitoring regularly. Maintain standard irrigation and sanitation practices.';
               if (typeof rec === 'string') return rec;
-              return lang === 'am' ? (rec.title_am || rec.title) : rec.title;
+              return lang === 'am' ? (rec.description_am || rec.description) : rec.description;
             };
             return (
-              <div className="scan-result-container">
-                <h3 className="scan-result-title">{getTranslatedDisease(scanResult.disease_type)}</h3>
-                <div className="scan-result-metrics">
-                  <span className="scan-result-confidence">Confidence: {(scanResult.confidence_score * 100).toFixed(1)}%</span>
-                  <span className={`scan-result-severity severity-${(scanResult.severity || 'low').toLowerCase()}`}>Severity: {scanResult.severity || 'Low'}</span>
+              <div className="scan-result-container" style={{ textAlign: 'center', padding: '10px 0' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '80px', height: '80px', borderRadius: '50%', background: scanResult.disease_type === 'Healthy' ? 'rgba(63, 185, 80, 0.1)' : 'rgba(210, 153, 34, 0.1)', color: scanResult.disease_type === 'Healthy' ? '#3fb950' : '#d29922', fontSize: '36px', marginBottom: '20px' }}>
+                  <i className={scanResult.disease_type === 'Healthy' ? "fa-solid fa-leaf" : "fa-solid fa-triangle-exclamation"}></i>
                 </div>
-                <p className="scan-result-recommendation">{getTranslatedRecommendation(scanResult.recommendation)}</p>
-                <button type="button" className="primary-btn" onClick={onClose}>Close</button>
+                
+                <h3 className="scan-result-title" style={{ marginBottom: '8px', fontSize: '24px', fontWeight: '600', color: '#e6edf3', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                  {getTranslatedDisease(scanResult.disease_type)}
+                  {scanResult.confidence_score && (
+                    <span style={{ fontSize: '12px', padding: '4px 8px', borderRadius: '20px', background: 'rgba(47, 129, 247, 0.15)', color: '#58a6ff', fontWeight: '700', border: '1px solid rgba(47, 129, 247, 0.3)' }}>
+                      {(scanResult.confidence_score * 100).toFixed(1)}% Confident
+                    </span>
+                  )}
+                </h3>
+                
+                {scanResult.disease_type !== 'Healthy' && (
+                  <div style={{ display: 'inline-block', padding: '4px 12px', background: 'rgba(210, 153, 34, 0.15)', color: '#d29922', borderRadius: '20px', fontSize: '13px', fontWeight: '600', marginBottom: '24px' }}>
+                    <i className="fa-solid fa-microscope" style={{ marginRight: '6px' }}></i>
+                    {t('analysis', 'scanCompletedStatus') || 'AI Diagnostic Complete'}
+                  </div>
+                )}
+                {scanResult.disease_type === 'Healthy' && (
+                  <div style={{ display: 'inline-block', padding: '4px 12px', background: 'rgba(63, 185, 80, 0.15)', color: '#3fb950', borderRadius: '20px', fontSize: '13px', fontWeight: '600', marginBottom: '24px' }}>
+                    <i className="fa-solid fa-check-double" style={{ marginRight: '6px' }}></i>
+                    {t('analysis', 'healthyStatus') || 'Optimal Health Verified'}
+                  </div>
+                )}
+
+                <div style={{ background: '#161b22', padding: '24px', borderRadius: '16px', border: '1px solid #30363d', marginBottom: '28px', textAlign: 'left', position: 'relative', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: scanResult.disease_type === 'Healthy' ? '#3fb950' : '#d29922' }}></div>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <i className="fa-solid fa-clipboard-list" style={{ color: scanResult.disease_type === 'Healthy' ? '#3fb950' : '#d29922' }}></i>
+                    {t('rec', 'actionPlan') || 'Agronomist Action Plan'}
+                  </h4>
+                  <p className="scan-result-recommendation" style={{ margin: 0, fontSize: '15px', lineHeight: '1.6', color: '#c9d1d9' }}>
+                    {getTranslatedRecommendationDesc(scanResult.recommendation)}
+                  </p>
+                </div>
+                
+                <button type="button" className="primary-btn" onClick={onClose} style={{ width: '100%', padding: '12px', fontSize: '15px', fontWeight: '600' }}>
+                  {t('common', 'close') || 'Acknowledge & Close'}
+                </button>
               </div>
             );
           })() : (
@@ -209,11 +248,15 @@ export default function ScanUploadModal({ onClose }) {
               />
 
               {usingCamera ? (
-                <div className="camera-capture">
-                  <video ref={videoRef} autoPlay playsInline className="camera-preview" />
-                  <div className="camera-actions">
-                    <button type="button" className="secondary-btn" onClick={capturePhoto}>Capture</button>
-                    <button type="button" className="secondary-btn" onClick={stopCamera}>Cancel</button>
+                <div className="camera-capture" style={{ position: 'relative', width: '100%', minHeight: '350px', backgroundColor: '#000', borderRadius: '12px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                  <video ref={videoRef} autoPlay playsInline className="camera-preview" style={{ flex: 1, width: '100%', objectFit: 'cover', minHeight: '280px' }} />
+                  <div className="camera-actions" style={{ position: 'absolute', bottom: '16px', left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: '16px', zIndex: 10 }}>
+                    <button type="button" onClick={capturePhoto} style={{ padding: '12px 24px', borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', background: '#2f81f7', color: 'white', border: 'none', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '15px' }}>
+                      <i className="fa-solid fa-camera"></i> Capture
+                    </button>
+                    <button type="button" onClick={stopCamera} style={{ padding: '12px 24px', borderRadius: '30px', background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(4px)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '15px' }}>
+                      <i className="fa-solid fa-xmark"></i> Cancel
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -226,7 +269,6 @@ export default function ScanUploadModal({ onClose }) {
                           <div className="scanner-dots"></div>
                         </div>
                       )}
-                      <span className="scan-upload-file">{selectedFile?.name}</span>
                     </div>
                   ) : (
                     <>

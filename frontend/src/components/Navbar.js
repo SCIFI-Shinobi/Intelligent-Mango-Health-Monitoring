@@ -334,7 +334,7 @@ export default function Navbar({ activeTab }) {
                       </div>
                       <div className="notif-body">
                         <span className="notif-message">{notif.message}</span>
-                        <span className="notif-time">{formatTimeAgo(notif.created_at)}</span>
+                        <span className="notif-time">{formatTimeAgo(notif.timestamp)}</span>
                       </div>
                       {!notif.read && <div className="notif-unread-dot"></div>}
                     </div>

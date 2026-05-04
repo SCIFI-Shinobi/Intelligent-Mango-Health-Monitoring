@@ -86,49 +86,49 @@ RECOMMENDATIONS = {
     "Anthracnose": {
         "en": {
             "title": "Anthracnose Detected",
-            "targeted": "Spray with copper-based fungicide (Copper oxychloride). Ensure trees are well-ventilated.",
-            "preventive": "Remove diseased branches and improve air circulation around trees.",
+            "targeted": "Immediate Action Required: Apply a copper-based fungicide (like Copper oxychloride) to halt fungal spread. Prune and burn infected twigs immediately. Ensure the canopy is well-ventilated to reduce humidity, which fuels the disease.",
+            "preventive": "Preventive Care: Prune overcrowded branches to maximize sunlight penetration and airflow. Remove fallen leaves and debris from the orchard floor where fungal spores overwinter.",
         },
         "am": {
             "title": "አንትራክኖዝ ተገኝቷል",
-            "targeted": "በፈንገስ ማጥፊያ (Copper) ይርጩ",
-            "preventive": "የታመሙ ቅርንጫፎችን ያስወግዱ",
+            "targeted": "አስቸኳይ እርምጃ፡ የፈንገስ ስርጭትን ለማስቆም በኮፐር (Copper) የተሰራ መድሃኒት ይርጩ። የታመሙ ቅርንጫፎችን ቆርጠው ያቃጥሉ። እርጥበትን ለመቀነስ አየር በደንብ እንዲገባ ያድርጉ።",
+            "preventive": "መከላከያ፡ የፀሀይ ብርሀንና አየር እንዲገባ የተጨናነቁ ቅርንጫፎችን ይቀንሱ። በሽታ አምጪ ፈንገሶች እንዳይራቡ ከዛፉ ስር የወደቁ ቅጠሎችን ያፅዱ።",
         },
     },
     "Powdery Mildew": {
         "en": {
             "title": "Powdery Mildew Detected",
-            "targeted": "Apply sulfur-based fungicide or neem oil. Reduce humidity and remove infected leaves.",
-            "preventive": "Prune tree branches to allow air circulation.",
+            "targeted": "Immediate Action Required: Spray a sulfur-based fungicide or neem oil thoroughly over the canopy. Do not apply during peak sun hours. Reduce irrigation slightly to lower ambient humidity and remove heavily infected foliage.",
+            "preventive": "Preventive Care: Thin out the canopy by pruning excess branches. Avoid excessive nitrogen fertilizers which promote overly dense, susceptible new growth.",
         },
         "am": {
             "title": "የዱቄት ሻጋታ ተገኝቷል",
-            "targeted": "ሰልፈር (Sulfur) ያለው መድሃኒት ይርጩ",
-            "preventive": "አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ",
+            "targeted": "አስቸኳይ እርምጃ፡ ሰልፈር (Sulfur) ያለው መድሃኒት ወይም የኒም ዘይት ይርጩ (በፀሀይ ሰዓት አይርጩ)። እርጥበትን ለመቀነስ የውሃ መጠኑን በትንሹ ይቀንሱ።",
+            "preventive": "መከላከያ፡ አየር እንዲገባ የዛፉን ቅርንጫፎች ይቀንሱ። ብዙ ቅጠል የሚያመጣውን የናይትሮጅን ማዳበሪያ አብዝተው አይጠቀሙ።",
         },
     },
     "Die Back": {
         "en": {
             "title": "Die Back Detected",
-            "targeted": "Prune dieback-affected twigs, disinfect pruning tools, and protect wounds with a copper fungicide.",
-            "preventive": "Remove infected branches early and keep trees vigorous with balanced irrigation and nutrition.",
+            "targeted": "Immediate Action Required: Prune affected twigs at least 5cm below the visibly diseased area into healthy wood. Sterilize pruning shears between cuts. Apply a protective copper fungicide paste to the wounds.",
+            "preventive": "Preventive Care: Remove dead or infected branches early. Protect the trunk from mechanical injury and maintain strong tree vigor through balanced irrigation and proper nutrition.",
         },
         "am": {
             "title": "ዳይ ባክ ተገኝቷል",
-            "targeted": "የደረቁ ቅርንጫፎችን ይቈርጡ፣ መሳሪያዎችን ያጽዱ እና የኮፐር ፈንገስ ማጥፊያ ይጠቀሙ",
-            "preventive": "የተጎዱ ቅርንጫፎችን ቀድሞ ያስወግዱ እና በተመጣጠነ ውሃና ንጥረ ምግብ ዛፉን ያጠናክሩ",
+            "targeted": "አስቸኳይ እርምጃ፡ የደረቁ ቅርንጫፎችን ከበሽታው ምልክት 5 ሳ.ሜ ዝቅ ብለው ይቈርጡ። መሳሪያዎን በደንብ ያፅዱ እና በተቆረጠው ላይ የኮፐር ፈንገስ ማጥፊያ ይቀቡ።",
+            "preventive": "መከላከያ፡ የተጎዱ ቅርንጫፎችን ቀድሞ ያስወግዱ። ግንዱን ከጉዳት ይጠብቁ እና በተመጣጠነ ውሃና ማዳበሪያ ዛፉን ያጠናክሩ።",
         },
     },
     "Healthy": {
         "en": {
             "title": "Plant Healthy",
-            "targeted": "Continue regular monitoring and maintenance.",
-            "preventive": "Maintain field sanitation and monitor regularly.",
+            "targeted": "Status Optimal: Continue your regular monitoring schedule. Maintain orchard sanitation and follow your standard fertilization and irrigation plans.",
+            "preventive": "Status Optimal: Maintain strict field sanitation and monitor environmental sensors regularly.",
         },
         "am": {
             "title": "ተክሉ ጤናማ ነው",
-            "targeted": "መደበኛ ክትትልና ጽዳት ያድርጉ",
-            "preventive": "መደበኛ ክትትል ያድርጉ",
+            "targeted": "ሁኔታው በጥሩ ላይ ነው፡ መደበኛ ክትትልና ጽዳት ያድርጉ። የተለመደውን ማዳበሪያና የውሃ አሰጣጥ ይቀጥሉ።",
+            "preventive": "ሁኔታው በጥሩ ላይ ነው፡ መደበኛ የሜዳ ላይ ጽዳት እና ክትትል ያድርጉ።",
         },
     },
 }

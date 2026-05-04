@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { formatDateEAT, formatTimeAgo } from '../utils/formatTime';
 
 export default function RecommendationsPanel({ recommendations, loading }) {
   const { lang, t } = useLanguage();
+  const [expanded, setExpanded] = useState(false);
 
   const getTitle = (rec) => {
     if (lang === 'am' && rec.title_am) return rec.title_am;
@@ -73,6 +74,7 @@ export default function RecommendationsPanel({ recommendations, loading }) {
   }
 
   const latestTimestamp = recommendations[0]?.timestamp ? formatDateEAT(recommendations[0].timestamp, lang) : null;
+  const visibleRecs = expanded ? recommendations : recommendations.slice(0, 3);
 
   return (
     <div className="recommendation-container">
@@ -96,7 +98,7 @@ export default function RecommendationsPanel({ recommendations, loading }) {
         </div>
       ) : (
         <>
-          {recommendations.slice(0, 3).map((rec, index) => {
+          {visibleRecs.map((rec, index) => {
             const title = getTitle(rec);
             return (
               <div key={index} className="recommendation-card">
@@ -119,8 +121,14 @@ export default function RecommendationsPanel({ recommendations, loading }) {
             );
           })}
           {recommendations.length > 3 && (
-            <div className="recommendation-view-all">
-              <a href="#/analysis">{t('rec', 'viewAll') || 'View all'}</a>
+            <div className="recommendation-view-all" style={{ textAlign: 'center', marginTop: '12px' }}>
+              <button 
+                className="auth-link" 
+                onClick={() => setExpanded(!expanded)}
+                style={{ fontSize: '13px', padding: '4px 8px' }}
+              >
+                {expanded ? (t('rec', 'showLess') || 'Show less') : (t('rec', 'viewAll') || 'View all')}
+              </button>
             </div>
           )}
         </>
