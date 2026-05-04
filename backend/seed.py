@@ -1,13 +1,13 @@
 """
-Seed script - simulates a gateway sending data to the MangoGuard API.
-
-The gateway authenticates using the Device API Key generated on the website
-(Settings > Devices > Register Device).
+MangoGuard Gateway Simulator
+Sends data to the deployed backend exactly like a real ESP32 gateway would.
+Just replace the API_KEY below with the one from your website (Settings > Devices).
 
 Usage:
-  python seed.py --live --api-key YOUR_DEVICE_API_KEY
-  python seed.py --test-alert --api-key YOUR_DEVICE_API_KEY
-  python seed.py --seed   (local DB seeding for development only)
+  python seed.py              (interactive menu)
+  python seed.py --live       (send a healthy reading)
+  python seed.py --test-alert (send a diseased reading to trigger alerts)
+  python seed.py --seed       (local DB seeding for development only)
 """
 
 import os
@@ -18,13 +18,18 @@ import requests
 import argparse
 from datetime import datetime, timedelta
 
+# ──────────────────────────────────────────────────────────
+#  REPLACE THESE WITH YOUR OWN VALUES
+# ──────────────────────────────────────────────────────────
+API_KEY = "mg_c2a2bc944471a63f0ea2b5c9f4f432fc361172d5a76acd74"
+API_URL = "https://mango-guard-backend.onrender.com"
+# ──────────────────────────────────────────────────────────
+
 # Add parent dir so we can import the app package (only needed for --seed)
 sys.path.insert(0, os.path.dirname(__file__))
 
-DEFAULT_API_URL = "https://mango-guard-backend.onrender.com"
 
-
-def send_api_update(api_key, api_url=DEFAULT_API_URL, disease_type="Healthy", confidence=0.98, high_risk=False):
+def send_api_update(disease_type="Healthy", confidence=0.98, high_risk=False):
     """Send data to /data/ingest exactly like a real ESP32 gateway would."""
 
     payload = {
@@ -42,21 +47,21 @@ def send_api_update(api_key, api_url=DEFAULT_API_URL, disease_type="Healthy", co
             }
         ],
         "forecast": [
-            {"day": 1, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=1)).isoformat()},
-            {"day": 2, "risk_level": "High_Anthracnose_Risk" if high_risk else "Stable", "date": (datetime.now() + timedelta(days=2)).isoformat()},
-            {"day": 3, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=3)).isoformat()},
-            {"day": 4, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=4)).isoformat()},
-            {"day": 5, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=5)).isoformat()}
+            {"day": 1, "risk_level": "High_Anthracnose_Risk" if high_risk else "Stable", "date": datetime.now().isoformat()},
+            {"day": 2, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=1)).isoformat()},
+            {"day": 3, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=2)).isoformat()},
+            {"day": 4, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=3)).isoformat()},
+            {"day": 5, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=4)).isoformat()}
         ]
     }
 
-    print(f"\n[+] Sending to {api_url}/data/ingest")
+    print(f"\n[+] Sending to {API_URL}/data/ingest")
     print(f"    Disease: {disease_type} | Confidence: {confidence}")
-    print(f"    Temp: {payload['temperature']}°C | Humidity: {payload['humidity']}%")
+    print(f"    Temp: {payload['temperature']}C | Humidity: {payload['humidity']}%")
 
-    headers = {"X-Device-Key": api_key, "Content-Type": "application/json"}
+    headers = {"X-Device-Key": API_KEY, "Content-Type": "application/json"}
     try:
-        response = requests.post(f"{api_url}/data/ingest", json=payload, headers=headers)
+        response = requests.post(f"{API_URL}/data/ingest", json=payload, headers=headers)
         if response.ok:
             print(f"[SUCCESS] {response.json()}")
         else:
@@ -80,7 +85,7 @@ def run_historical_seed():
         if not user:
             user = User(
                 username="admin",
-                password=pwd_context.hash("admin123"),
+                password=pwd_context.hash("admin"),
                 email="",
                 notification_emails_enabled=False,
                 disease_confidence_threshold=70
@@ -88,7 +93,7 @@ def run_historical_seed():
             db.add(user)
             db.commit()
             db.refresh(user)
-            print(f"[+] Created user: admin / admin123")
+            print(f"[+] Created local dev user: admin / admin")
 
         device = db.query(Device).filter(Device.user_id == user.id).first()
         if not device:
@@ -104,7 +109,6 @@ def run_historical_seed():
 
         internal_device_id = f"device:{device.id}"
 
-        # --- Sensor data (last 7 days, every 30 minutes) ---
         now = datetime.utcnow()
         sensor_count = db.query(SensorData).filter(SensorData.device_id == internal_device_id).count()
         if sensor_count > 100:
@@ -122,7 +126,6 @@ def run_historical_seed():
             db.bulk_save_objects(entries)
             db.commit()
 
-        # --- Inference results ---
         inf_count = db.query(InferenceResult).filter(InferenceResult.device_id == internal_device_id).count()
         if inf_count > 20:
             print(f"[=] Detection results already exist, skipping")
@@ -142,12 +145,12 @@ def run_historical_seed():
         db.close()
 
 
-def show_menu(api_key, api_url):
+def show_menu():
     print("\n" + "=" * 50)
     print("   MangoGuard Gateway Simulator")
     print("=" * 50)
-    print(f"   API: {api_url}")
-    print(f"   Key: {api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else f"   Key: {api_key}")
+    print(f"   API: {API_URL}")
+    print(f"   Key: {API_KEY[:12]}...{API_KEY[-4:]}")
     print("=" * 50)
     print("1. Send Healthy Update")
     print("2. Send Anthracnose Detection (High Risk)")
@@ -160,8 +163,6 @@ def show_menu(api_key, api_url):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MangoGuard Gateway Simulator")
-    parser.add_argument("--api-key", type=str, help="Device API key from the website")
-    parser.add_argument("--api-url", type=str, default=DEFAULT_API_URL, help=f"Backend URL (default: {DEFAULT_API_URL})")
     parser.add_argument("--seed", action="store_true", help="Seed local DB with historical data (dev only)")
     parser.add_argument("--live", action="store_true", help="Send a healthy update via API")
     parser.add_argument("--test-alert", action="store_true", help="Send a diseased detection to trigger alerts")
@@ -170,35 +171,20 @@ if __name__ == "__main__":
 
     if args.seed:
         run_historical_seed()
-    elif args.live or args.test_alert:
-        key = args.api_key
-        if not key:
-            key = input("Paste your Device API Key: ").strip()
-        if not key:
-            print("[ERROR] API key is required. Get it from Settings > Devices on the website.")
-            sys.exit(1)
-
-        if args.test_alert:
-            send_api_update(key, args.api_url, disease_type="Anthracnose", confidence=0.92, high_risk=True)
-        else:
-            send_api_update(key, args.api_url)
+    elif args.live:
+        send_api_update()
+    elif args.test_alert:
+        send_api_update(disease_type="Anthracnose", confidence=0.92, high_risk=True)
     else:
         # Interactive menu
-        key = args.api_key
-        if not key:
-            key = input("Paste your Device API Key: ").strip()
-        if not key:
-            print("[ERROR] API key is required. Get it from Settings > Devices on the website.")
-            sys.exit(1)
-
         while True:
-            choice = show_menu(key, args.api_url)
+            choice = show_menu()
             if choice == "1":
-                send_api_update(key, args.api_url)
+                send_api_update()
             elif choice == "2":
-                send_api_update(key, args.api_url, disease_type="Anthracnose", confidence=0.92, high_risk=True)
+                send_api_update(disease_type="Anthracnose", confidence=0.92, high_risk=True)
             elif choice == "3":
-                send_api_update(key, args.api_url, disease_type="Powdery Mildew", confidence=0.85, high_risk=True)
+                send_api_update(disease_type="Powdery Mildew", confidence=0.85, high_risk=True)
             elif choice == "4":
                 run_historical_seed()
             elif choice == "5":
