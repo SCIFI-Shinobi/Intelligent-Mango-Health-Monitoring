@@ -18,6 +18,8 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
   const [error, setError] = useState('');
   const [scanResult, setScanResult] = useState(null);
   const [usingCamera, setUsingCamera] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [capturedFromCamera, setCapturedFromCamera] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -63,6 +65,7 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
 
   const startCamera = async () => {
     try {
+      setIsCameraReady(false);
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
@@ -86,17 +89,18 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
   };
 
   const capturePhoto = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !isCameraReady) return;
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
       setSelectedFile(file);
+      setCapturedFromCamera(true);
       setError('');
       stopCamera();
     }, 'image/jpeg', 0.9);
@@ -119,6 +123,7 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
     }
 
     setSelectedFile(nextFile);
+    setCapturedFromCamera(false);
     setError('');
   };
 
@@ -249,9 +254,36 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
 
               {usingCamera ? (
                 <div className="camera-capture" style={{ position: 'relative', width: '100%', minHeight: '350px', backgroundColor: '#000', borderRadius: '12px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                  <video ref={videoRef} autoPlay playsInline className="camera-preview" style={{ flex: 1, width: '100%', objectFit: 'cover', minHeight: '280px' }} />
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline 
+                    muted
+                    onLoadedMetadata={() => setIsCameraReady(true)}
+                    className="camera-preview" 
+                    style={{ flex: 1, width: '100%', objectFit: 'cover', minHeight: '280px' }} 
+                  />
                   <div className="camera-actions" style={{ position: 'absolute', bottom: '16px', left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: '16px', zIndex: 10 }}>
-                    <button type="button" onClick={capturePhoto} style={{ padding: '12px 24px', borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', background: '#2f81f7', color: 'white', border: 'none', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '15px' }}>
+                    <button 
+                      type="button" 
+                      onClick={capturePhoto} 
+                      disabled={!isCameraReady}
+                      style={{ 
+                        padding: '12px 24px', 
+                        borderRadius: '30px', 
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)', 
+                        background: isCameraReady ? '#2f81f7' : '#4a4f55', 
+                        color: 'white', 
+                        border: 'none', 
+                        fontWeight: '600', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        cursor: isCameraReady ? 'pointer' : 'not-allowed', 
+                        fontSize: '15px',
+                        opacity: isCameraReady ? 1 : 0.7
+                      }}
+                    >
                       <i className="fa-solid fa-camera"></i> Capture
                     </button>
                     <button type="button" onClick={stopCamera} style={{ padding: '12px 24px', borderRadius: '30px', background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(4px)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '15px' }}>
@@ -262,8 +294,35 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
               ) : (
                 <button type="button" className="scan-upload-dropzone" onClick={!submitting ? openCamera : undefined}>
                   {previewUrl ? (
-                    <div className={`scan-preview-container ${submitting ? 'is-scanning' : ''}`}>
+                    <div className={`scan-preview-container ${submitting ? 'is-scanning' : ''}`} style={{ position: 'relative' }}>
                       <img src={previewUrl} alt={t('quickScan', 'previewAlt')} className="scan-upload-preview" />
+                      {capturedFromCamera && !submitting && (
+                        <button 
+                          type="button" 
+                          className="retake-btn" 
+                          onClick={openCamera}
+                          style={{
+                            position: 'absolute',
+                            top: '12px',
+                            right: '12px',
+                            background: 'rgba(0,0,0,0.6)',
+                            color: 'white',
+                            border: '1px solid rgba(255,255,255,0.3)',
+                            padding: '6px 12px',
+                            borderRadius: '20px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            backdropFilter: 'blur(4px)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            cursor: 'pointer',
+                            zIndex: 10
+                          }}
+                        >
+                          <i className="fa-solid fa-rotate-left"></i> {t('quickScan', 'retake') || 'Retake'}
+                        </button>
+                      )}
                       {submitting && (
                         <div className="scanner-overlay">
                           <div className="scanner-dots"></div>
