@@ -306,6 +306,7 @@ body {
   border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
+  text-decoration: none;
   transition: all 0.2s;
 }
 
@@ -3892,6 +3893,7 @@ body {
   gap: 4px;
   cursor: pointer;
   font-size: 11px;
+  text-decoration: none;
   transition: all 0.2s;
 }
 
@@ -5707,4 +5709,28 @@ body {
 @keyframes pulse-dots {
   0% { opacity: 0.1; transform: scale(0.98); }
   100% { opacity: 0.8; transform: scale(1.02); }
+}
+
+/* ================= PROFILE PAGE ================= */
+.profile-page {
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.profile-content-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 16px;
+  padding: 40px;
+  margin-top: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.profile-page-footer {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid #30363d;
+  display: flex;
+  justify-content: center;
 }

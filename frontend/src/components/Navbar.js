@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { NavLink } from 'react-router-dom';
 import MangoLeafLogo from './MangoLeafLogo';
 import ProfileDropdown from './ProfileDropdown';
 import ScanUploadModal from './ScanUploadModal';
@@ -25,7 +26,7 @@ const NOTIF_COLORS = {
   forecast_alert: '#a371f7',
 };
 
-export default function Navbar({ activeTab, onTabChange }) {
+export default function Navbar({ activeTab }) {
   const { lang, switchLang, t } = useLanguage();
   const [showQuickScan, setShowQuickScan] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
@@ -237,10 +238,10 @@ export default function Navbar({ activeTab, onTabChange }) {
   };
 
   const navLinks = [
-    { id: 'home', labelKey: 'dashboard', icon: 'fa-house' },
-    { id: 'analysis', labelKey: 'analysis', icon: 'fa-chart-line' },
-    { id: 'logs', labelKey: 'logs', icon: 'fa-clipboard-list' },
-    { id: 'settings', labelKey: 'settings', icon: 'fa-sliders' },
+    { id: 'home', path: '/dashboard', labelKey: 'dashboard', icon: 'fa-house' },
+    { id: 'analysis', path: '/analysis', labelKey: 'analysis', icon: 'fa-chart-line' },
+    { id: 'logs', path: '/logs', labelKey: 'logs', icon: 'fa-clipboard-list' },
+    { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders' },
   ];
 
   const visibleNotifications = filterMode === 'unread'
@@ -256,14 +257,14 @@ export default function Navbar({ activeTab, onTabChange }) {
 
       <div className="navbar-center">
         {navLinks.map((link) => (
-          <button
+          <NavLink
             key={link.id}
-            className={`nav-link ${activeTab === link.id ? 'active' : ''}`}
-            onClick={() => onTabChange(link.id)}
+            to={link.path}
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
           >
             <i className={`fa-solid ${link.icon}`}></i>
             <span>{t('nav', link.labelKey)}</span>
-          </button>
+          </NavLink>
         ))}
       </div>
 

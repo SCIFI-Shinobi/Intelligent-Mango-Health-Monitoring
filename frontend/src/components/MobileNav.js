@@ -1,31 +1,32 @@
 import React, { useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 import ScanUploadModal from './ScanUploadModal';
 
-export default function MobileNav({ activeTab, onTabChange }) {
+export default function MobileNav({ activeTab }) {
   const { t } = useLanguage();
   const [showQuickScan, setShowQuickScan] = useState(false);
 
   const tabs = [
-    { id: 'home', labelKey: 'home', icon: 'fa-house', position: 'left' },
-    { id: 'analysis', labelKey: 'analysis', icon: 'fa-chart-line', position: 'left-center' },
-    { id: 'logs', labelKey: 'logs', icon: 'fa-clipboard-list', position: 'right-center' },
-    { id: 'settings', labelKey: 'settings', icon: 'fa-sliders', position: 'right' },
+    { id: 'home', path: '/dashboard', labelKey: 'home', icon: 'fa-house', position: 'left' },
+    { id: 'analysis', path: '/analysis', labelKey: 'analysis', icon: 'fa-chart-line', position: 'left-center' },
+    { id: 'logs', path: '/logs', labelKey: 'logs', icon: 'fa-clipboard-list', position: 'right-center' },
+    { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders', position: 'right' },
   ];
 
   return (
     <div className="mobile-nav">
       {tabs.slice(0, 2).map((tab) => (
-        <button
+        <NavLink
           key={tab.id}
-          className={`mobile-nav-btn ${activeTab === tab.id ? 'active' : ''}`}
-          onClick={() => onTabChange(tab.id)}
+          to={tab.path}
+          className={({ isActive }) => `mobile-nav-btn ${isActive ? 'active' : ''}`}
           title={t('nav', tab.labelKey)}
           data-position={tab.position}
         >
           <i className={`fa-solid ${tab.icon}`}></i>
           <span>{t('nav', tab.labelKey)}</span>
-        </button>
+        </NavLink>
       ))}
       
       <button
@@ -38,16 +39,16 @@ export default function MobileNav({ activeTab, onTabChange }) {
       </button>
 
       {tabs.slice(2).map((tab) => (
-        <button
+        <NavLink
           key={tab.id}
-          className={`mobile-nav-btn ${activeTab === tab.id ? 'active' : ''}`}
-          onClick={() => onTabChange(tab.id)}
+          to={tab.path}
+          className={({ isActive }) => `mobile-nav-btn ${isActive ? 'active' : ''}`}
           title={t('nav', tab.labelKey)}
           data-position={tab.position}
         >
           <i className={`fa-solid ${tab.icon}`}></i>
           <span>{t('nav', tab.labelKey)}</span>
-        </button>
+        </NavLink>
       ))}
 
       {showQuickScan && <ScanUploadModal onClose={() => setShowQuickScan(false)} />}

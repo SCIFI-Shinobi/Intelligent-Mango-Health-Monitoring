@@ -1,13 +1,12 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
+import { Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import ProfileModal from './ProfileModal';
 
 export default function ProfileDropdown() {
   const { user, logout, userLoading } = useContext(AuthContext);
   const { t } = useLanguage();
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showModal, setShowModal] = useState(false);
   const dropdownRef = useRef(null);
 
   // Click outside to close
@@ -27,11 +26,6 @@ export default function ProfileDropdown() {
   // Get initials for avatar
   const getInitials = (name) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  };
-
-  const handleViewProfile = () => {
-    setShowDropdown(false);
-    setShowModal(true);
   };
 
   const handleLogout = () => {
@@ -70,10 +64,10 @@ export default function ProfileDropdown() {
 
           <div className="profile-dropdown-divider"></div>
 
-          <button className="profile-dropdown-item" onClick={handleViewProfile}>
+          <Link to="/user" className="profile-dropdown-item" onClick={() => setShowDropdown(false)}>
             <i className="fa-solid fa-user"></i>
             <span>{t('profile', 'viewProfile')}</span>
-          </button>
+          </Link>
 
           <div className="profile-dropdown-divider"></div>
 
@@ -82,10 +76,6 @@ export default function ProfileDropdown() {
             <span>{t('nav', 'logout')}</span>
           </button>
         </div>
-      )}
-
-      {showModal && (
-        <ProfileModal onClose={() => setShowModal(false)} />
       )}
     </div>
   );

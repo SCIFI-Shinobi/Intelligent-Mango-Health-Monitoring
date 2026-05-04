@@ -6,16 +6,20 @@ import { AuthProvider } from "./context/AuthContext";
 import { LanguageProvider } from "./context/LanguageContext";
 import { SettingsProvider } from "./context/SettingsContext";
 
+import { SocketProvider } from "./context/SocketContext";
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
 root.render(
   <LanguageProvider>
       <AuthProvider>
-        <SettingsProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-        </SettingsProvider>
+        <SocketProvider>
+          <SettingsProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+          </SettingsProvider>
+        </SocketProvider>
       </AuthProvider>
   </LanguageProvider>
 );
