@@ -50,6 +50,15 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
     return () => stopCamera();
   }, []);
 
+  // Connect the media stream to the video element once both are available.
+  // This solves the race condition where the stream was obtained before
+  // the <video> element existed in the DOM (it only renders when usingCamera is true).
+  useEffect(() => {
+    if (usingCamera && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [usingCamera]);
+
   const openPicker = () => {
     fileInputRef.current?.click();
   };
@@ -68,7 +77,8 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
       setIsCameraReady(false);
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      // Set usingCamera=true so the <video> element renders in the DOM.
+      // The useEffect above will then connect the stream to the video element.
       setUsingCamera(true);
     } catch (e) {
       console.error('Camera access failed, falling back to file input', e);
@@ -79,7 +89,7 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
   const stopCamera = () => {
     try {
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current.getTracks().forEach((tr) => tr.stop());
       }
     } catch (e) {
       console.error('Error stopping camera stream', e);
