@@ -5111,6 +5111,7 @@ body {
   cursor: pointer;
   transition: background 0.15s;
   text-align: left;
+  text-decoration: none !important;
 }
 
 .profile-dropdown-item:hover {

@@ -47,11 +47,11 @@ def send_api_update(disease_type="Healthy", confidence=0.98, high_risk=False):
             }
         ],
         "forecast": [
-            {"day": 1, "risk_level": "High_Anthracnose_Risk" if high_risk else "Stable", "date": datetime.now().isoformat()},
-            {"day": 2, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=1)).isoformat()},
-            {"day": 3, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=2)).isoformat()},
-            {"day": 4, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=3)).isoformat()},
-            {"day": 5, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=4)).isoformat()}
+            {"day": 1, "risk_level": "Stable", "date": (datetime.now() - timedelta(days=4)).isoformat()},
+            {"day": 2, "risk_level": "Stable", "date": (datetime.now() - timedelta(days=3)).isoformat()},
+            {"day": 3, "risk_level": "Stable", "date": (datetime.now() - timedelta(days=2)).isoformat()},
+            {"day": 4, "risk_level": "Stable", "date": (datetime.now() - timedelta(days=1)).isoformat()},
+            {"day": 5, "risk_level": "High_Anthracnose_Risk" if high_risk else "Stable", "date": datetime.now().isoformat()}
         ]
     }
 
