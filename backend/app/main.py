@@ -76,13 +76,19 @@ def send_alert_email(email: str, subject: str, message: str):
     """
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_username = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
     smtp_password = os.getenv("SMTP_PASSWORD")
     smtp_from = os.getenv("SMTP_FROM_EMAIL") or smtp_username
     smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
 
-    if not smtp_host or not smtp_from:
-        print(f"\n[EMAIL SKIPPED]\nSMTP is not configured. Intended recipient: {email}\nSubject: {subject}\n")
+    if not smtp_host or not smtp_from or not smtp_password:
+        missing = []
+        if not smtp_host: missing.append("SMTP_HOST")
+        if not smtp_from: missing.append("SMTP_USERNAME/SMTP_FROM_EMAIL")
+        if not smtp_password: missing.append("SMTP_PASSWORD")
+        
+        print(f"\n[EMAIL SKIPPED]\nSMTP is not fully configured. Missing: {', '.join(missing)}")
+        print(f"Intended recipient: {email}\nSubject: {subject}\n")
         return
 
     email_message = EmailMessage()
@@ -137,6 +143,8 @@ def send_alert_email(email: str, subject: str, message: str):
         if smtp_username and smtp_password:
             server.login(smtp_username, smtp_password)
         server.send_message(email_message)
+    
+    print(f"[EMAIL SUCCESS] Sent to {email} | Subject: {subject}")
 
 app = FastAPI(title="Intelligent Plant Health Monitoring API")
 

@@ -49,9 +49,15 @@ def check_and_send_alert(disease_class, confidence, source, timestamp, confidenc
 
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER")
+    smtp_user = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
     smtp_password = os.getenv("SMTP_PASSWORD")
+    
     if not smtp_host or not smtp_user or not smtp_password:
+        missing = []
+        if not smtp_host: missing.append("SMTP_HOST")
+        if not smtp_user: missing.append("SMTP_USERNAME")
+        if not smtp_password: missing.append("SMTP_PASSWORD")
+        print(f"[EMAIL SKIPPED] SMTP not configured. Missing: {', '.join(missing)}")
         return False
 
     source_name = _normalize_source(source)
@@ -124,4 +130,6 @@ Recommended treatment: {treatment}"""
         server.ehlo()
         server.login(smtp_user, smtp_password)
         server.send_message(message)
+    
+    print(f"[EMAIL SUCCESS] Disease alert sent to {recipient} | Disease: {disease_name}")
     return True
