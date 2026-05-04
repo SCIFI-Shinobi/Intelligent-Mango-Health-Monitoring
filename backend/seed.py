@@ -6,7 +6,6 @@ The gateway authenticates using the Device API Key generated on the website
 
 Usage:
   python seed.py --live --api-key YOUR_DEVICE_API_KEY
-  python seed.py --live --api-key YOUR_DEVICE_API_KEY --api-url https://your-backend.onrender.com
   python seed.py --test-alert --api-key YOUR_DEVICE_API_KEY
   python seed.py --seed   (local DB seeding for development only)
 """
@@ -22,7 +21,7 @@ from datetime import datetime, timedelta
 # Add parent dir so we can import the app package (only needed for --seed)
 sys.path.insert(0, os.path.dirname(__file__))
 
-DEFAULT_API_URL = "http://localhost:8000"
+DEFAULT_API_URL = "https://mango-guard-backend.onrender.com"
 
 
 def send_api_update(api_key, api_url=DEFAULT_API_URL, disease_type="Healthy", confidence=0.98, high_risk=False):
