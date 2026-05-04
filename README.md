@@ -197,35 +197,7 @@ Run with Docker:
 docker-compose up -d
 ```
 
-If the Docker build times out while downloading Python packages, pre-download the
-entire Python 3.11 wheel set first:
-
-```bash
-./backend/download_wheels.sh
-docker compose up --build
-```
-
-This uses a temporary `python:3.11-slim` container to download all wheels into
-`backend/wheelhouse/`, then marks the folder as complete so the real backend
-image can install fully offline.
-
-If you only want to pre-download a few packages, Docker will still prefer any
-files you place in `backend/wheelhouse/` before falling back to PyPI.
-
-Example for TensorFlow only:
-
-```bash
-mkdir -p backend/wheelhouse
-python3 -m pip download \
-  --no-deps \
-  --only-binary=:all: \
-  --platform manylinux2014_x86_64 \
-  --implementation cp \
-  --python-version 311 \
-  --abi cp311 \
-  --dest backend/wheelhouse \
-  tensorflow-cpu==2.18.0
-```
+If the Docker build times out while downloading Python packages, check your internet connection or try building locally first.
 
 Or run locally:
 
