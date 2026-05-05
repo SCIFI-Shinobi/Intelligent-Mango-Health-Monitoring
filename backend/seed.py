@@ -51,10 +51,20 @@ def _post(payload: dict, label: str):
         print(f"    [ERROR] Could not connect to API: {e}")
 
 
+# Track simulated days to ensure distinct dates in the UI queue
+SIMULATED_DAY_OFFSET = 5
+
+def _get_next_date():
+    global SIMULATED_DAY_OFFSET
+    dt = datetime.now() + timedelta(days=SIMULATED_DAY_OFFSET)
+    SIMULATED_DAY_OFFSET += 1
+    return dt.isoformat()
+
+
 def _stable_forecast():
     """1-day stable forecast item to append to the queue."""
     return [
-        {"day": 5, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=5)).isoformat()}
+        {"day": 5, "risk_level": "Stable", "date": _get_next_date()}
     ]
 
 
@@ -62,7 +72,7 @@ def _high_risk_forecast(disease_type: str):
     """1-day high-risk forecast item to append to the queue."""
     tag = disease_type.replace(" ", "_")
     return [
-        {"day": 5, "risk_level": f"High_{tag}_Risk", "date": (datetime.now() + timedelta(days=5)).isoformat()}
+        {"day": 5, "risk_level": f"High_{tag}_Risk", "date": _get_next_date()}
     ]
 
 
