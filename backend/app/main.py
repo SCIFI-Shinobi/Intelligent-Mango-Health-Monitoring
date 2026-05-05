@@ -86,6 +86,9 @@ def _send_email(to: str, subject: str, html: str, text: str, *, label: str) -> b
         return False
 
     print(f"[{label}] Sending via Resend API to {to!r}...")
+    print(f"[{label}]   From: {smtp_from}")
+    print(f"[{label}]   Subject: {subject}")
+    
     try:
         resend.api_key = resend_api_key
         response = resend.Emails.send({
@@ -95,10 +98,15 @@ def _send_email(to: str, subject: str, html: str, text: str, *, label: str) -> b
             "html": html,
             "text": text,
         })
-        print(f"[{label}] SUCCESS via Resend — sent to {to!r}")
+        print(f"[{label}] SUCCESS via Resend — API Response: {response}")
         return True
     except Exception as e:
-        print(f"[{label}] ERROR via Resend — {type(e).__name__}: {e}")
+        print(f"[{label}] ❌ ERROR via Resend API! ❌")
+        print(f"[{label}] This usually means:")
+        print(f"[{label}]  1. Your RESEND_API_KEY is invalid")
+        print(f"[{label}]  2. The sender email '{smtp_from}' is not a verified domain on Resend")
+        print(f"[{label}]  3. You are on the free tier and trying to send to an unverified email address")
+        print(f"[{label}] Error details: {type(e).__name__}: {e}")
         traceback.print_exc()
         return False
 

@@ -135,6 +135,8 @@ Recommended treatment: {treatment}"""
             import resend
             resend.api_key = resend_api_key
             sender_email = smtp_user or "onboarding@resend.dev"
+            print(f"[EMAIL DEBUG]   From: {sender_email}")
+            print(f"    Subject: Mango Disease Alert: {disease_name}")
             response = resend.Emails.send({
                 "from": f"MangoGuard <{sender_email}>",
                 "to": recipient,
@@ -142,10 +144,15 @@ Recommended treatment: {treatment}"""
                 "html": html_content,
                 "text": text_content
             })
-            print(f"[EMAIL SUCCESS] Disease alert sent to {recipient} via Resend | Disease: {disease_name}")
+            print(f"[EMAIL SUCCESS] Disease alert sent to {recipient} via Resend | API Response: {response}")
             return True
         except Exception as e:
-            print(f"[EMAIL ERROR] Resend error: {e}")
+            print(f"[EMAIL ERROR] ❌ ERROR via Resend API! ❌")
+            print(f"[EMAIL ERROR] This usually means:")
+            print(f"[EMAIL ERROR]  1. Your RESEND_API_KEY is invalid")
+            print(f"[EMAIL ERROR]  2. The sender email '{sender_email}' is not a verified domain on Resend")
+            print(f"[EMAIL ERROR]  3. You are on the free tier and trying to send to an unverified email address")
+            print(f"[EMAIL ERROR] Error details: {type(e).__name__}: {e}")
             traceback.print_exc()
             return False
 
