@@ -16,7 +16,8 @@
 
 /* Includes ---------------------------------------------------------------- */
 #include <mango_health_inferencing.h>
-#include <Arduino_OV767X.h> //Click here to get the library: https://www.arduino.cc/reference/en/libraries/arduino_ov767x/
+#include <forcasting_inferencing.h>
+#include <Arduino_OV767X.h> 
 #include <ArduinoBLE.h>
 #include <DHT.h>
 #include <Wire.h>
@@ -39,6 +40,17 @@
 
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLS, LCD_ROWS);
+
+// --- Demo Timers & Buffers ---
+unsigned long lastScanMillis = 0;
+const unsigned long SCAN_INTERVAL = 30000; // 30s for demo (1hr for real)
+
+unsigned long lastForecastMillis = 0;
+const unsigned long FORECAST_INTERVAL = 120000; // 2min for demo (24hr for real)
+
+float forecast_features[48]; // 24 readings of (temp, hum)
+int features_collected = 0;
+// -----------------------------
 
 #define DWORD_ALIGN_PTR(a)   ((a & 0x3) ?(((uintptr_t)a + 0x4) & ~(uintptr_t)0x3) : a)
 
@@ -135,7 +147,7 @@ static BLEService inferenceService("19B10010-E8F2-537E-4F6C-D104768A1214");
 static BLEStringCharacteristic inferenceResultCharacteristic(
     "19B10011-E8F2-537E-4F6C-D104768A1214",
     BLERead | BLENotify,
-    64
+    128
 );
 static BLEStringCharacteristic inferenceCommandCharacteristic(
     "19B10012-E8F2-537E-4F6C-D104768A1214",
@@ -153,6 +165,9 @@ void resizeImage(int srcWidth, int srcHeight, uint8_t *srcImage, int dstWidth, i
 void cropImage(int srcWidth, int srcHeight, uint8_t *srcImage, int startX, int startY, int dstWidth, int dstHeight, uint8_t *dstImage, int iBpp);
 bool ble_init(void);
 void ble_update_inference_result(const char *label, float confidence, float temp, float hum);
+void ble_send_forecast(const char *d1, const char *d2, const char *d3, const char *d4, const char *d5);
+void run_automated_scan();
+void run_automated_forecast();
 void find_top_classification(const ei_impulse_result_t *result, const char **label, float *confidence);
 
 /**
@@ -194,26 +209,37 @@ void setup()
 void loop()
 {
     BLE.poll();
+    unsigned long currentMillis = millis();
 
+    // 1. Check for manual commands from Gateway
     if (inferenceCommandCharacteristic.written()) {
         String command = inferenceCommandCharacteristic.value();
         command.trim();
         command.toLowerCase();
         if (command == "scan") {
-            inferenceRequested = true;
-            inferenceResultCharacteristic.writeValue("pending,0.00000");
-            ei_printf("BLE command received: scan\r\n");
+            run_automated_scan();
+            ei_printf("Manual scan triggered via BLE\r\n");
         }
     }
 
-    if (!inferenceRequested) {
-        delay(20);
-        return;
+    // 2. Automated Scan Timer (Every 30s for demo)
+    if (currentMillis - lastScanMillis >= SCAN_INTERVAL) {
+        lastScanMillis = currentMillis;
+        run_automated_scan();
     }
 
-    inferenceRequested = false;
-    ei_printf("\nStarting on-demand inferencing...\n");
-    ei_printf("Taking photo...\n");
+    // 3. Automated Forecast Timer (Every 2min for demo)
+    if (currentMillis - lastForecastMillis >= FORECAST_INTERVAL) {
+        lastForecastMillis = currentMillis;
+        run_automated_forecast();
+    }
+
+    delay(10);
+}
+
+void run_automated_scan()
+{
+    ei_printf("\n--- Starting Automated Scan ---\n");
 
     if (ei_camera_init() == false) {
         ei_printf("ERR: Failed to initialize image sensor\r\n");
@@ -319,6 +345,17 @@ void loop()
     }
 
     ble_update_inference_result(top_label, top_confidence, temp, hum);
+    
+    // Store data for next forecast
+    if (features_collected < 48) {
+        forecast_features[features_collected++] = temp;
+        forecast_features[features_collected++] = hum;
+    } else {
+        // Shift buffer to make room
+        for (int i = 0; i < 46; i++) forecast_features[i] = forecast_features[i+2];
+        forecast_features[46] = temp;
+        forecast_features[47] = hum;
+    }
 #endif
 
     // Print anomaly result (if it exists)
@@ -347,6 +384,61 @@ void loop()
     ei_camera_deinit();
 }
 
+void run_automated_forecast()
+{
+    ei_printf("\n--- Running TinyML Forecasting ---\n");
+    
+    // Ensure we have at least some data (dummy-fill if empty for demo)
+    if (features_collected < 48) {
+        float t = dht.readTemperature();
+        float h = dht.readHumidity();
+        if (isnan(t)) t = 25.0; if (isnan(h)) h = 60.0;
+        for (int i = features_collected; i < 48; i += 2) {
+            forecast_features[i] = t;
+            forecast_features[i+1] = h;
+        }
+    }
+
+    // Using the specific handle for the forecasting impulse
+    ei_impulse_handle_t forecast_handle = impulse_handle_916176_2;
+    
+    signal_t signal;
+    numpy::signal_from_buffer(forecast_features, 48, &signal);
+    ei_impulse_result_t result = { 0 };
+
+    EI_IMPULSE_ERROR res = run_classifier_i(&forecast_handle, &signal, &result, false);
+    if (res != EI_IMPULSE_OK) {
+        ei_printf("Forecast failed (%d)\n", res);
+        return;
+    }
+
+    // Find top risk category from classification results
+    const char* top_risk_label = "Stable";
+    float top_val = 0.0f;
+    
+    // Use the handle's metadata instead of global macros to avoid conflicts
+    for (uint16_t i = 0; i < forecast_handle.impulse->label_count; i++) {
+        if (result.classification[i].value > top_val) {
+            top_val = result.classification[i].value;
+            top_risk_label = result.classification[i].label;
+        }
+    }
+
+    // Default to Stable if confidence is too low
+    if (top_val < 0.60f) {
+        top_risk_label = "Stable";
+    }
+    
+    ei_printf("Forecast Result: %s (%.2f)\n", top_risk_label, top_val);
+    
+    // For the demo, we project the current risk to Day 1 and Day 2
+    // and assume Day 3-5 are Stable unless it's a very high risk.
+    const char* d1 = top_risk_label;
+    const char* d2 = (top_val > 0.85f) ? top_risk_label : "Stable";
+    
+    ble_send_forecast(d1, d2, "Stable", "Stable", "Stable");
+}
+
 bool ble_init(void) {
     if (!BLE.begin()) {
         return false;
@@ -368,9 +460,16 @@ bool ble_init(void) {
 
 void ble_update_inference_result(const char *label, float confidence, float temp, float hum) {
     char payload[64];
-    snprintf(payload, sizeof(payload), "%s,%.5f,%.1f,%.1f", label, confidence, temp, hum);
+    snprintf(payload, sizeof(payload), "SCAN:%s,%.5f,%.1f,%.1f", label, confidence, temp, hum);
     inferenceResultCharacteristic.writeValue(payload);
-    ei_printf("BLE update: %s\r\n", payload);
+    ei_printf("BLE Push (Scan): %s\r\n", payload);
+}
+
+void ble_send_forecast(const char *d1, const char *d2, const char *d3, const char *d4, const char *d5) {
+    char payload[128];
+    snprintf(payload, sizeof(payload), "FORECAST:%s,%s,%s,%s,%s", d1, d2, d3, d4, d5);
+    inferenceResultCharacteristic.writeValue(payload);
+    ei_printf("BLE Push (Forecast): %s\r\n", payload);
 }
 
 void find_top_classification(const ei_impulse_result_t *result, const char **label, float *confidence) {
