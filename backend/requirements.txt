@@ -13,3 +13,4 @@ requests
 numpy<2
 Pillow
 tflite-runtime
+resend

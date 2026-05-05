@@ -73,35 +73,17 @@ def check_and_send_alert(disease_class, confidence, source, timestamp, confidenc
 
     print(f"[EMAIL DEBUG] All gate checks passed. Proceeding to SMTP...")
 
+    resend_api_key = os.getenv("RESEND_API_KEY")
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
     smtp_password = os.getenv("SMTP_PASSWORD")
-
-    print(f"[EMAIL DEBUG] SMTP config:")
-    print(f"  SMTP_HOST     = {smtp_host!r}")
-    print(f"  SMTP_PORT     = {smtp_port}")
-    print(f"  SMTP_USER     = {smtp_user!r}")
-    print(f"  SMTP_PASSWORD = {'***SET***' if smtp_password else 'NOT SET'}")
-
-    if not smtp_host or not smtp_user or not smtp_password:
-        missing = []
-        if not smtp_host: missing.append("SMTP_HOST")
-        if not smtp_user: missing.append("SMTP_USERNAME")
-        if not smtp_password: missing.append("SMTP_PASSWORD")
-        print(f"[EMAIL SKIPPED] SMTP not configured. Missing: {', '.join(missing)}")
-        return False
 
     source_name = _normalize_source(source)
     timestamp_text = _format_timestamp(timestamp)
     treatment = _build_treatment(disease_name)
     confidence_pct = confidence_value * 100
 
-    message = EmailMessage()
-    message["Subject"] = f"Mango Disease Alert: {disease_name}"
-    message["From"] = f"MangoGuard <{smtp_user}>"
-    message["To"] = recipient
-    
     text_content = f"""A mango disease alert was triggered.
 Disease: {disease_name}
 Confidence: {confidence_pct:.2f}%
@@ -147,6 +129,44 @@ Recommended treatment: {treatment}"""
     </html>
     """
 
+    if resend_api_key:
+        print(f"[EMAIL DEBUG] Sending via Resend API...")
+        try:
+            import resend
+            resend.api_key = resend_api_key
+            sender_email = smtp_user or "onboarding@resend.dev"
+            response = resend.Emails.send({
+                "from": f"MangoGuard <{sender_email}>",
+                "to": recipient,
+                "subject": f"Mango Disease Alert: {disease_name}",
+                "html": html_content,
+                "text": text_content
+            })
+            print(f"[EMAIL SUCCESS] Disease alert sent to {recipient} via Resend | Disease: {disease_name}")
+            return True
+        except Exception as e:
+            print(f"[EMAIL ERROR] Resend error: {e}")
+            traceback.print_exc()
+            return False
+
+    print(f"[EMAIL DEBUG] SMTP config:")
+    print(f"  SMTP_HOST     = {smtp_host!r}")
+    print(f"  SMTP_PORT     = {smtp_port}")
+    print(f"  SMTP_USER     = {smtp_user!r}")
+    print(f"  SMTP_PASSWORD = {'***SET***' if smtp_password else 'NOT SET'}")
+
+    if not smtp_host or not smtp_user or not smtp_password:
+        missing = []
+        if not smtp_host: missing.append("SMTP_HOST")
+        if not smtp_user: missing.append("SMTP_USERNAME")
+        if not smtp_password: missing.append("SMTP_PASSWORD")
+        print(f"[EMAIL SKIPPED] SMTP not configured. Missing: {', '.join(missing)}")
+        return False
+
+    message = EmailMessage()
+    message["Subject"] = f"Mango Disease Alert: {disease_name}"
+    message["From"] = f"MangoGuard <{smtp_user}>"
+    message["To"] = recipient
     message.set_content(text_content)
     message.add_alternative(html_content, subtype='html')
 
