@@ -152,14 +152,22 @@ def send_alert_email(email: str, subject: str, message: str):
     )
 
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-            server.ehlo()
-            if smtp_use_tls:
-                server.starttls()
+        if smtp_port == 465:
+            print(f"[FORECAST EMAIL DEBUG] Using SMTP_SSL on port 465...")
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
+                if smtp_username and smtp_password:
+                    server.login(smtp_username, smtp_password)
+                server.send_message(email_message)
+        else:
+            print(f"[FORECAST EMAIL DEBUG] Using SMTP + STARTTLS on port {smtp_port}...")
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
                 server.ehlo()
-            if smtp_username and smtp_password:
-                server.login(smtp_username, smtp_password)
-            server.send_message(email_message)
+                if smtp_use_tls:
+                    server.starttls()
+                    server.ehlo()
+                if smtp_username and smtp_password:
+                    server.login(smtp_username, smtp_password)
+                server.send_message(email_message)
         
         print(f"[FORECAST EMAIL SUCCESS] Sent to {email} | Subject: {subject}")
     except smtplib.SMTPAuthenticationError as e:
