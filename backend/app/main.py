@@ -71,55 +71,37 @@ APP_STARTED_AT = time.time()
 REQUEST_SLOW_MS = float(os.getenv("REQUEST_SLOW_MS", "800"))
 NOTIFICATION_DEDUPE_MINUTES = int(os.getenv("NOTIFICATION_DEDUPE_MINUTES", "30"))
 
-def _smtp_send(email_message: EmailMessage, *, label: str):
-    """Shared SMTP transport used by all outbound alert emails."""
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-    smtp_from = os.getenv("SMTP_FROM_EMAIL") or smtp_username
-    smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
+def _send_email(to: str, subject: str, html: str, text: str, *, label: str) -> bool:
+    """
+    Shared email transport for all MangoGuard alerts.
+    Exclusively uses Resend API (HTTPS / port 443 — works on Render).
+    """
+    import resend
+    
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    smtp_from = os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER") or "onboarding@resend.dev"
 
-    print(f"[{label}] SMTP config: host={smtp_host!r} port={smtp_port} user={smtp_username!r} password={'SET' if smtp_password else 'NOT SET'}")
-
-    if not smtp_host or not smtp_from or not smtp_password:
-        missing = []
-        if not smtp_host: missing.append("SMTP_HOST")
-        if not smtp_from: missing.append("SMTP_USERNAME/SMTP_FROM_EMAIL")
-        if not smtp_password: missing.append("SMTP_PASSWORD")
-        print(f"[{label}] SKIPPED — missing env vars: {', '.join(missing)}")
+    if not resend_api_key:
+        print(f"[{label}] SKIPPED — missing RESEND_API_KEY env var.")
         return False
 
+    print(f"[{label}] Sending via Resend API to {to!r}...")
     try:
-        if smtp_port == 465:
-            print(f"[{label}] Connecting via SMTP_SSL port 465...")
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
-                if smtp_username and smtp_password:
-                    server.login(smtp_username, smtp_password)
-                server.send_message(email_message)
-        else:
-            print(f"[{label}] Connecting via STARTTLS port {smtp_port}...")
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-                server.ehlo()
-                if smtp_use_tls:
-                    server.starttls()
-                    server.ehlo()
-                if smtp_username and smtp_password:
-                    server.login(smtp_username, smtp_password)
-                server.send_message(email_message)
-
-        print(f"[{label}] SUCCESS — sent to {email_message['To']}")
+        resend.api_key = resend_api_key
+        response = resend.Emails.send({
+            "from": f"MangoGuard <{smtp_from}>",
+            "to": to,
+            "subject": subject,
+            "html": html,
+            "text": text,
+        })
+        print(f"[{label}] SUCCESS via Resend — sent to {to!r}")
         return True
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"[{label}] ERROR — Auth failed: {e}")
-        traceback.print_exc()
-    except smtplib.SMTPException as e:
-        print(f"[{label}] ERROR — SMTP: {e}")
-        traceback.print_exc()
     except Exception as e:
-        print(f"[{label}] ERROR — {type(e).__name__}: {e}")
+        print(f"[{label}] ERROR via Resend — {type(e).__name__}: {e}")
         traceback.print_exc()
-    return False
+        return False
+
 
 
 def send_disease_alert_email(recipient: str, disease_name: str, confidence_pct: float, treatment: str):
@@ -133,37 +115,27 @@ def send_disease_alert_email(recipient: str, disease_name: str, confidence_pct: 
     print(f"  confidence   = {confidence_pct:.1f}%")
     print(f"{'='*60}")
 
-    smtp_from = os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
-    subject = f"🚨 MangoGuard Alert: {disease_name} Detected"
-
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = smtp_from or ""
-    msg["To"] = recipient
-    msg.set_content(
+    subject = f"MangoGuard Alert: {disease_name} Detected"
+    text = (
         f"MangoGuard Disease Alert\n\n"
         f"Disease: {disease_name}\n"
         f"Confidence: {confidence_pct:.1f}%\n\n"
         f"Recommended Treatment:\n{treatment}\n\n"
         f"Open your MangoGuard dashboard for full details."
     )
-    msg.add_alternative(f"""
+    html = f"""
     <html>
       <body style="margin:0;padding:0;background:#0d1117;font-family:'Segoe UI',Arial,sans-serif;color:#e6edf3;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
           <tr><td align="center">
             <table role="presentation" width="100%" style="max-width:620px;background:#161b22;border-radius:16px;overflow:hidden;border:1px solid #30363d;">
-
-              <!-- Header: RED — active disease -->
               <tr>
                 <td style="padding:28px 32px;background:linear-gradient(135deg,#7f1d1d,#b91c1c 55%,#dc2626);color:#fff;">
-                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;">MangoGuard · Disease Alert</div>
-                  <h1 style="margin:0;font-size:26px;line-height:1.25;">🚨 {disease_name} Detected</h1>
+                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;">MangoGuard &middot; Disease Alert</div>
+                  <h1 style="margin:0;font-size:26px;line-height:1.25;">&#x1F6A8; {disease_name} Detected</h1>
                   <p style="margin:10px 0 0;font-size:14px;opacity:0.9;">Immediate attention may be required.</p>
                 </td>
               </tr>
-
-              <!-- Confidence badge -->
               <tr>
                 <td style="padding:24px 32px 0;">
                   <table role="presentation" width="100%" style="background:#1c0a0a;border:1px solid #7f1d1d;border-radius:10px;padding:16px 20px;">
@@ -179,39 +151,27 @@ def send_disease_alert_email(recipient: str, disease_name: str, confidence_pct: 
                   </table>
                 </td>
               </tr>
-
-              <!-- Treatment -->
               <tr>
                 <td style="padding:20px 32px 0;">
                   <div style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Recommended Treatment</div>
-                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #ef4444;border-radius:8px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">
-                    {treatment}
-                  </div>
-                </td>
-              </tr>
-
-              <!-- Footer -->
-              <tr>
-                <td style="padding:24px 32px;margin-top:8px;">
-                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">
-                    Open your <strong style="color:#e6edf3;">MangoGuard dashboard</strong> for the full scan history, analysis, and management recommendations.
-                  </p>
+                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #ef4444;border-radius:8px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">{treatment}</div>
                 </td>
               </tr>
               <tr>
-                <td style="padding:16px 32px;background:#0d1117;border-top:1px solid #21262d;font-size:11px;color:#484f58;">
-                  You received this because disease email alerts are enabled in your MangoGuard profile.
+                <td style="padding:24px 32px;">
+                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">Open your <strong style="color:#e6edf3;">MangoGuard dashboard</strong> for the full scan history and management recommendations.</p>
                 </td>
               </tr>
-
+              <tr>
+                <td style="padding:16px 32px;background:#0d1117;border-top:1px solid #21262d;font-size:11px;color:#484f58;">You received this because disease email alerts are enabled in your MangoGuard profile.</td>
+              </tr>
             </table>
           </td></tr>
         </table>
       </body>
-    </html>
-    """, subtype="html")
+    </html>"""
 
-    return _smtp_send(msg, label="DISEASE EMAIL")
+    return _send_email(recipient, subject, html, text, label="DISEASE EMAIL")
 
 
 def send_forecast_alert_email(recipient: str, forecast_date_label: str, risk_name: str, advice: str):
@@ -225,36 +185,26 @@ def send_forecast_alert_email(recipient: str, forecast_date_label: str, risk_nam
     print(f"  risk         = {risk_name!r}")
     print(f"{'='*60}")
 
-    smtp_from = os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
-    subject = f"⚠️ MangoGuard Forecast: High {risk_name} Risk on {forecast_date_label}"
-
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = smtp_from or ""
-    msg["To"] = recipient
-    msg.set_content(
+    subject = f"MangoGuard Forecast: High {risk_name} Risk on {forecast_date_label}"
+    text = (
         f"MangoGuard Forecast Alert\n\n"
         f"High {risk_name} risk is predicted for {forecast_date_label}.\n\n"
         f"Preventive Advice:\n{advice}\n\n"
         f"Open your MangoGuard dashboard to view the full 5-day forecast."
     )
-    msg.add_alternative(f"""
+    html = f"""
     <html>
       <body style="margin:0;padding:0;background:#0d1117;font-family:'Segoe UI',Arial,sans-serif;color:#e6edf3;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
           <tr><td align="center">
             <table role="presentation" width="100%" style="max-width:620px;background:#161b22;border-radius:16px;overflow:hidden;border:1px solid #30363d;">
-
-              <!-- Header: AMBER — proactive forecast -->
               <tr>
                 <td style="padding:28px 32px;background:linear-gradient(135deg,#78350f,#b45309 55%,#d97706);color:#fff;">
-                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;">MangoGuard · Forecast Alert</div>
-                  <h1 style="margin:0;font-size:26px;line-height:1.25;">⚠️ High {risk_name} Risk Forecast</h1>
-                  <p style="margin:10px 0 0;font-size:14px;opacity:0.9;">Predicted for <strong>{forecast_date_label}</strong> — consider preventive action now.</p>
+                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;">MangoGuard &middot; Forecast Alert</div>
+                  <h1 style="margin:0;font-size:26px;line-height:1.25;">&#x26A0;&#xFE0F; High {risk_name} Risk Forecast</h1>
+                  <p style="margin:10px 0 0;font-size:14px;opacity:0.9;">Predicted for <strong>{forecast_date_label}</strong> &mdash; consider preventive action now.</p>
                 </td>
               </tr>
-
-              <!-- Risk summary card -->
               <tr>
                 <td style="padding:24px 32px 0;">
                   <table role="presentation" width="100%" style="background:#1c1407;border:1px solid #78350f;border-radius:10px;padding:16px 20px;">
@@ -262,7 +212,7 @@ def send_forecast_alert_email(recipient: str, forecast_date_label: str, risk_nam
                       <td>
                         <div style="font-size:12px;color:#fbbf24;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Forecast Date</div>
                         <div style="font-size:28px;font-weight:700;color:#f59e0b;">{forecast_date_label}</div>
-                        <div style="font-size:14px;color:#d97706;margin-top:4px;">{risk_name} · High Risk</div>
+                        <div style="font-size:14px;color:#d97706;margin-top:4px;">{risk_name} &middot; High Risk</div>
                       </td>
                       <td align="right">
                         <div style="background:#78350f;color:#fde68a;font-size:13px;padding:6px 14px;border-radius:20px;">Upcoming Risk</div>
@@ -271,44 +221,32 @@ def send_forecast_alert_email(recipient: str, forecast_date_label: str, risk_nam
                   </table>
                 </td>
               </tr>
-
-              <!-- Advice -->
               <tr>
                 <td style="padding:20px 32px 0;">
                   <div style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Preventive Action</div>
-                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #f59e0b;border-radius:8px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">
-                    {advice}
-                  </div>
+                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #f59e0b;border-radius:8px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">{advice}</div>
                 </td>
               </tr>
-
-              <!-- Footer -->
               <tr>
                 <td style="padding:24px 32px;">
-                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">
-                    Check the <strong style="color:#e6edf3;">5-day forecast</strong> on your MangoGuard dashboard for the full risk outlook.
-                  </p>
+                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">Check the <strong style="color:#e6edf3;">5-day forecast</strong> on your MangoGuard dashboard for the full risk outlook.</p>
                 </td>
               </tr>
               <tr>
-                <td style="padding:16px 32px;background:#0d1117;border-top:1px solid #21262d;font-size:11px;color:#484f58;">
-                  You received this because forecast email alerts are enabled in your MangoGuard profile.
-                </td>
+                <td style="padding:16px 32px;background:#0d1117;border-top:1px solid #21262d;font-size:11px;color:#484f58;">You received this because forecast email alerts are enabled in your MangoGuard profile.</td>
               </tr>
-
             </table>
           </td></tr>
         </table>
       </body>
-    </html>
-    """, subtype="html")
+    </html>"""
 
-    return _smtp_send(msg, label="FORECAST EMAIL")
+    return _send_email(recipient, subject, html, text, label="FORECAST EMAIL")
 
 
 def send_alert_email(email: str, subject: str, message: str):
     """
-    Send an alert email via SMTP when configured.
+    Send an alert email via Resend API.
     """
     print(f"\n{'='*60}")
     print(f"[FORECAST EMAIL DEBUG] send_alert_email CALLED")
@@ -317,38 +255,7 @@ def send_alert_email(email: str, subject: str, message: str):
     print(f"  message   = {message[:120]!r}...")
     print(f"{'='*60}")
 
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-    smtp_from = os.getenv("SMTP_FROM_EMAIL") or smtp_username
-    smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
-
-    print(f"[FORECAST EMAIL DEBUG] SMTP config:")
-    print(f"  SMTP_HOST     = {smtp_host!r}")
-    print(f"  SMTP_PORT     = {smtp_port}")
-    print(f"  SMTP_USER     = {smtp_username!r}")
-    print(f"  SMTP_FROM     = {smtp_from!r}")
-    print(f"  SMTP_PASSWORD = {'***SET***' if smtp_password else 'NOT SET'}")
-    print(f"  SMTP_USE_TLS  = {smtp_use_tls}")
-
-    if not smtp_host or not smtp_from or not smtp_password:
-        missing = []
-        if not smtp_host: missing.append("SMTP_HOST")
-        if not smtp_from: missing.append("SMTP_USERNAME/SMTP_FROM_EMAIL")
-        if not smtp_password: missing.append("SMTP_PASSWORD")
-        
-        print(f"\n[FORECAST EMAIL SKIPPED] SMTP not configured. Missing: {', '.join(missing)}")
-        print(f"Intended recipient: {email}\nSubject: {subject}\n")
-        return
-
-    email_message = EmailMessage()
-    email_message["Subject"] = subject
-    email_message["From"] = smtp_from
-    email_message["To"] = email
-    email_message.set_content(message)
-    email_message.add_alternative(
-        f"""
+    html_content = f"""
         <html>
           <body style="margin:0;padding:24px;background:#0d1117;font-family:Segoe UI,Arial,sans-serif;color:#e6edf3;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
@@ -382,38 +289,9 @@ def send_alert_email(email: str, subject: str, message: str):
             </table>
           </body>
         </html>
-        """,
-        subtype="html",
-    )
-
-    try:
-        if smtp_port == 465:
-            print(f"[FORECAST EMAIL DEBUG] Using SMTP_SSL on port 465...")
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
-                if smtp_username and smtp_password:
-                    server.login(smtp_username, smtp_password)
-                server.send_message(email_message)
-        else:
-            print(f"[FORECAST EMAIL DEBUG] Using SMTP + STARTTLS on port {smtp_port}...")
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-                server.ehlo()
-                if smtp_use_tls:
-                    server.starttls()
-                    server.ehlo()
-                if smtp_username and smtp_password:
-                    server.login(smtp_username, smtp_password)
-                server.send_message(email_message)
-        
-        print(f"[FORECAST EMAIL SUCCESS] Sent to {email} | Subject: {subject}")
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"[FORECAST EMAIL ERROR] SMTP Auth failed: {e}")
-        traceback.print_exc()
-    except smtplib.SMTPException as e:
-        print(f"[FORECAST EMAIL ERROR] SMTP error: {e}")
-        traceback.print_exc()
-    except Exception as e:
-        print(f"[FORECAST EMAIL ERROR] Unexpected: {type(e).__name__}: {e}")
-        traceback.print_exc()
+    """
+    
+    _send_email(email, subject, html_content, message, label="FORECAST EMAIL")
 
 app = FastAPI(title="Intelligent Plant Health Monitoring API")
 
