@@ -52,22 +52,17 @@ def _post(payload: dict, label: str):
 
 
 def _stable_forecast():
-    """5-day forecast with no high-risk days (used for pure detection tests)."""
+    """1-day stable forecast item to append to the queue."""
     return [
-        {"day": i + 1, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=i)).isoformat()}
-        for i in range(5)
+        {"day": 5, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=5)).isoformat()}
     ]
 
 
 def _high_risk_forecast(disease_type: str):
-    """5-day forecast with day 4 and 5 flagged as high-risk (used for forecast alerts)."""
+    """1-day high-risk forecast item to append to the queue."""
     tag = disease_type.replace(" ", "_")
     return [
-        {"day": 1, "risk_level": "Stable",                          "date": (datetime.now() + timedelta(days=0)).isoformat()},
-        {"day": 2, "risk_level": "Stable",                          "date": (datetime.now() + timedelta(days=1)).isoformat()},
-        {"day": 3, "risk_level": "Stable",                          "date": (datetime.now() + timedelta(days=2)).isoformat()},
-        {"day": 4, "risk_level": f"High_{tag}_Risk",                "date": (datetime.now() + timedelta(days=3)).isoformat()},
-        {"day": 5, "risk_level": f"High_{tag}_Risk",                "date": (datetime.now() + timedelta(days=4)).isoformat()},
+        {"day": 5, "risk_level": f"High_{tag}_Risk", "date": (datetime.now() + timedelta(days=5)).isoformat()}
     ]
 
 

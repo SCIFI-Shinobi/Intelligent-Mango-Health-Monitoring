@@ -541,22 +541,9 @@ def format_forecast_date_label(value: datetime) -> str:
 def get_sorted_forecast_records(db: Session, context_id: int) -> list[models.ForecastData]:
     records = db.query(models.ForecastData).filter(
         models.ForecastData.context_id == context_id
-    ).all()
+    ).order_by(models.ForecastData.id.asc()).all()
 
-    def sort_key(record: models.ForecastData):
-        forecast_date = record.forecast_date
-        normalized_date = None
-        if forecast_date:
-            normalized_date = forecast_date if forecast_date.tzinfo else forecast_date.replace(tzinfo=timezone.utc)
-
-        return (
-            0 if normalized_date else 1,
-            normalized_date or datetime.max.replace(tzinfo=timezone.utc),
-            normalize_forecast_day_index(record.day_index, 0),
-            record.id,
-        )
-
-    return sorted(records, key=sort_key)
+    return records
 
 
 def serialize_forecast_days(forecasts: list[models.ForecastData]) -> list[dict]:
@@ -692,8 +679,14 @@ def get_latest_forecast_for_device(db: Session, device_id: str) -> Optional[dict
 
     forecast_days = serialize_forecast_days(get_sorted_forecast_records(db, forecast_context.id))
 
-    if not forecast_days:
-        return None
+    # Pad to 5 days if less than 5 to maintain UI structure
+    while len(forecast_days) < 5:
+        forecast_days.insert(0, {
+            "day": len(forecast_days) + 1,
+            "risk_level": "Stable",
+            "date": None,
+            "created_at": None,
+        })
 
     return {
         "context": {
@@ -906,13 +899,21 @@ def persist_payload_records(
     forecast_ids = []
     context_id = None
     if payload.forecast:
-        new_context = models.ForecastContext(
-            device_id=internal_device_id,
-            timestamp=server_now,
-        )
-        db.add(new_context)
-        db.flush()
-        context_id = new_context.id
+        context = db.query(models.ForecastContext).filter(
+            models.ForecastContext.device_id == internal_device_id
+        ).first()
+
+        if not context:
+            context = models.ForecastContext(
+                device_id=internal_device_id,
+                timestamp=server_now,
+            )
+            db.add(context)
+            db.flush()
+        else:
+            context.timestamp = server_now
+            
+        context_id = context.id
 
         for idx, day in enumerate(payload.forecast):
             day_index = normalize_forecast_day_index(day.get("day"), idx)
@@ -922,11 +923,23 @@ def persist_payload_records(
                 day_index=day_index,
                 risk_level=day.get("risk_level", ""),
                 forecast_date=parse_forecast_date(day.get("date"), fallback_date),
-                context_id=new_context.id,
+                context_id=context_id,
             )
             db.add(new_forecast)
             db.flush()
             forecast_ids.append(new_forecast.id)
+
+        records_to_keep = db.query(models.ForecastData).filter(
+            models.ForecastData.context_id == context_id
+        ).order_by(models.ForecastData.id.desc()).limit(5).all()
+        
+        keep_ids = [r.id for r in records_to_keep]
+        
+        if keep_ids:
+            db.query(models.ForecastData).filter(
+                models.ForecastData.context_id == context_id,
+                ~models.ForecastData.id.in_(keep_ids)
+            ).delete(synchronize_session=False)
 
     return {
         "sensor": new_sensor,
