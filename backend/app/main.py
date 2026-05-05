@@ -138,28 +138,32 @@ def send_disease_alert_email(recipient: str, disease_name: str, confidence_pct: 
         f"Open your MangoGuard dashboard for full details."
     )
     html = f"""
+    <!DOCTYPE html>
     <html>
-      <body style="margin:0;padding:0;background:#0d1117;font-family:'Segoe UI',Arial,sans-serif;color:#e6edf3;">
+      <head>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+      </head>
+      <body style="margin:0;padding:0;background:#0d1117;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e6edf3;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
           <tr><td align="center">
-            <table role="presentation" width="100%" style="max-width:620px;background:#161b22;border-radius:16px;overflow:hidden;border:1px solid #30363d;">
+            <table role="presentation" width="100%" style="max-width:620px;background:#161b22;border-radius:16px;overflow:hidden;border:1px solid #30363d;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
               <tr>
-                <td style="padding:28px 32px;background:linear-gradient(135deg,#7f1d1d,#b91c1c 55%,#dc2626);color:#fff;">
-                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;">MangoGuard &middot; Disease Alert</div>
-                  <h1 style="margin:0;font-size:26px;line-height:1.25;">&#x1F6A8; {disease_name} Detected</h1>
+                <td style="padding:28px 32px;background:linear-gradient(135deg, #7f1d1d 0%, #991b1b 50%, #b91c1c 100%);color:#fff;">
+                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;font-weight:600;">MangoGuard &middot; Disease Alert</div>
+                  <h1 style="margin:0;font-size:26px;line-height:1.25;font-weight:700;">&#x1F6A8; {disease_name} Detected</h1>
                   <p style="margin:10px 0 0;font-size:14px;opacity:0.9;">Immediate attention may be required.</p>
                 </td>
               </tr>
               <tr>
                 <td style="padding:24px 32px 0;">
-                  <table role="presentation" width="100%" style="background:#1c0a0a;border:1px solid #7f1d1d;border-radius:10px;padding:16px 20px;">
+                  <table role="presentation" width="100%" style="background:#1c2128;border:1px solid #7f1d1d;border-radius:12px;padding:16px 20px;">
                     <tr>
                       <td>
-                        <div style="font-size:12px;color:#f87171;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Detection Confidence</div>
+                        <div style="font-size:12px;color:#f87171;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:600;">Detection Confidence</div>
                         <div style="font-size:36px;font-weight:700;color:#ef4444;">{confidence_pct:.1f}%</div>
                       </td>
                       <td align="right">
-                        <div style="background:#7f1d1d;color:#fca5a5;font-size:13px;padding:6px 14px;border-radius:20px;">Above Threshold</div>
+                        <div style="background:#7f1d1d;color:#fca5a5;font-size:13px;padding:6px 14px;border-radius:20px;font-weight:600;border:1px solid #991b1b;">Above Threshold</div>
                       </td>
                     </tr>
                   </table>
@@ -167,13 +171,13 @@ def send_disease_alert_email(recipient: str, disease_name: str, confidence_pct: 
               </tr>
               <tr>
                 <td style="padding:20px 32px 0;">
-                  <div style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Recommended Treatment</div>
-                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #ef4444;border-radius:8px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">{treatment}</div>
+                  <div style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600;">Recommended Treatment</div>
+                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #ef4444;border-radius:12px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">{treatment}</div>
                 </td>
               </tr>
               <tr>
                 <td style="padding:24px 32px;">
-                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">Open your <strong style="color:#e6edf3;">MangoGuard dashboard</strong> for the full scan history and management recommendations.</p>
+                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">Open your <strong style="color:#e6edf3;font-weight:600;">MangoGuard dashboard</strong> for the full scan history and management recommendations.</p>
                 </td>
               </tr>
               <tr>
@@ -207,29 +211,33 @@ def send_forecast_alert_email(recipient: str, forecast_date_label: str, risk_nam
         f"Open your MangoGuard dashboard to view the full 5-day forecast."
     )
     html = f"""
+    <!DOCTYPE html>
     <html>
-      <body style="margin:0;padding:0;background:#0d1117;font-family:'Segoe UI',Arial,sans-serif;color:#e6edf3;">
+      <head>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+      </head>
+      <body style="margin:0;padding:0;background:#0d1117;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e6edf3;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
           <tr><td align="center">
-            <table role="presentation" width="100%" style="max-width:620px;background:#161b22;border-radius:16px;overflow:hidden;border:1px solid #30363d;">
+            <table role="presentation" width="100%" style="max-width:620px;background:#161b22;border-radius:16px;overflow:hidden;border:1px solid #30363d;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
               <tr>
-                <td style="padding:28px 32px;background:linear-gradient(135deg,#78350f,#b45309 55%,#d97706);color:#fff;">
-                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;">MangoGuard &middot; Forecast Alert</div>
-                  <h1 style="margin:0;font-size:26px;line-height:1.25;">&#x26A0;&#xFE0F; High {risk_name} Risk Forecast</h1>
-                  <p style="margin:10px 0 0;font-size:14px;opacity:0.9;">Predicted for <strong>{forecast_date_label}</strong> &mdash; consider preventive action now.</p>
+                <td style="padding:28px 32px;background:linear-gradient(135deg, #9a3412 0%, #c2410c 50%, #ea580c 100%);color:#fff;">
+                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;font-weight:600;">MangoGuard &middot; Forecast Alert</div>
+                  <h1 style="margin:0;font-size:26px;line-height:1.25;font-weight:700;">&#x26A0;&#xFE0F; High {risk_name} Risk Forecast</h1>
+                  <p style="margin:10px 0 0;font-size:14px;opacity:0.9;">Predicted for <strong style="font-weight:600;">{forecast_date_label}</strong> &mdash; consider preventive action now.</p>
                 </td>
               </tr>
               <tr>
                 <td style="padding:24px 32px 0;">
-                  <table role="presentation" width="100%" style="background:#1c1407;border:1px solid #78350f;border-radius:10px;padding:16px 20px;">
+                  <table role="presentation" width="100%" style="background:#1c2128;border:1px solid #9a3412;border-radius:12px;padding:16px 20px;">
                     <tr>
                       <td>
-                        <div style="font-size:12px;color:#fbbf24;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Forecast Date</div>
+                        <div style="font-size:12px;color:#fbbf24;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:600;">Forecast Date</div>
                         <div style="font-size:28px;font-weight:700;color:#f59e0b;">{forecast_date_label}</div>
-                        <div style="font-size:14px;color:#d97706;margin-top:4px;">{risk_name} &middot; High Risk</div>
+                        <div style="font-size:14px;color:#d97706;margin-top:4px;font-weight:500;">{risk_name} &middot; High Risk</div>
                       </td>
                       <td align="right">
-                        <div style="background:#78350f;color:#fde68a;font-size:13px;padding:6px 14px;border-radius:20px;">Upcoming Risk</div>
+                        <div style="background:#9a3412;color:#fde68a;font-size:13px;padding:6px 14px;border-radius:20px;font-weight:600;border:1px solid #c2410c;">Upcoming Risk</div>
                       </td>
                     </tr>
                   </table>
@@ -237,13 +245,13 @@ def send_forecast_alert_email(recipient: str, forecast_date_label: str, risk_nam
               </tr>
               <tr>
                 <td style="padding:20px 32px 0;">
-                  <div style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Preventive Action</div>
-                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #f59e0b;border-radius:8px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">{advice}</div>
+                  <div style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600;">Preventive Action</div>
+                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #f59e0b;border-radius:12px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">{advice}</div>
                 </td>
               </tr>
               <tr>
                 <td style="padding:24px 32px;">
-                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">Check the <strong style="color:#e6edf3;">5-day forecast</strong> on your MangoGuard dashboard for the full risk outlook.</p>
+                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">Check the <strong style="color:#e6edf3;font-weight:600;">5-day forecast</strong> on your MangoGuard dashboard for the full risk outlook.</p>
                 </td>
               </tr>
               <tr>
@@ -270,16 +278,20 @@ def send_alert_email(email: str, subject: str, message: str):
     print(f"{'='*60}")
 
     html_content = f"""
+        <!DOCTYPE html>
         <html>
-          <body style="margin:0;padding:24px;background:#0d1117;font-family:Segoe UI,Arial,sans-serif;color:#e6edf3;">
+          <head>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+          </head>
+          <body style="margin:0;padding:24px;background:#0d1117;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e6edf3;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
               <tr>
                 <td align="center">
-                  <table role="presentation" width="100%" style="max-width:640px;background:#161b22;border-radius:18px;overflow:hidden;border:1px solid #30363d;">
+                  <table role="presentation" width="100%" style="max-width:640px;background:#161b22;border-radius:16px;overflow:hidden;border:1px solid #30363d;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
                     <tr>
-                      <td style="padding:24px 28px;background:linear-gradient(135deg,#1f6feb,#2f81f7 58%,#3fb950);color:#ffffff;">
-                        <div style="font-size:12px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.9;">Intelligent Mango Health Monitoring</div>
-                        <h1 style="margin:10px 0 0;font-size:24px;line-height:1.2;">{subject}</h1>
+                      <td style="padding:24px 28px;background:linear-gradient(90deg, #2563eb, #2f81f7);color:#ffffff;">
+                        <div style="font-size:12px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.9;font-weight:600;">MangoGuard System</div>
+                        <h1 style="margin:10px 0 0;font-size:24px;line-height:1.2;font-weight:700;">{subject}</h1>
                       </td>
                     </tr>
                     <tr>
@@ -833,7 +845,18 @@ def apply_notification_rules(
             timestamp=timestamp,
         )
         if notification:
-            queue_email(title, message)
+            print(f"[NOTIFY DEBUG] Forecast notification CREATED for day {i+1} (id={notification.id}).")
+            if background_tasks and user.email and email_enabled:
+                print(f"[NOTIFY DEBUG] Queuing forecast email to {user.email!r}")
+                background_tasks.add_task(
+                    send_forecast_alert_email,
+                    user.email,
+                    forecast_date_label,
+                    risk_name,
+                    message,
+                )
+            else:
+                print(f"[NOTIFY DEBUG] NOT queuing forecast email: bg_tasks={bool(background_tasks)}, email={user.email!r}, enabled={email_enabled}")
         else:
             print(f"[NOTIFY DEBUG] Forecast notification DEDUPLICATED for day {i+1}")
 
