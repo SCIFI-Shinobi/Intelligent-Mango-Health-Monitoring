@@ -659,9 +659,10 @@ def apply_notification_rules(
             timestamp=timestamp,
         )
         if notification:
-            print(f"[NOTIFY DEBUG] Disease notification CREATED (id={notification.id}). Email handled by check_and_send_alert.")
+            print(f"[NOTIFY DEBUG] Disease notification CREATED (id={notification.id}). No email sent (disabled for scans).")
         else:
             print(f"[NOTIFY DEBUG] Disease notification DEDUPLICATED (skipped).")
+
     else:
         print(f"[NOTIFY DEBUG] Disease notification gate failed: disease={disease_type!r}, conf={confidence_score} vs threshold={confidence_threshold}")
 
@@ -1332,27 +1333,11 @@ async def upload_data(
             background_tasks=background_tasks,
         )
         owner = db.query(models.User).filter(models.User.id == result["owner_id"]).first()
-        print(f"\n[UPLOAD DEBUG] /upload email gate check:")
-        print(f"  owner found     = {bool(owner)}")
-        if owner:
-            print(f"  owner.email     = {owner.email!r}")
-            print(f"  emails_enabled  = {owner.notification_emails_enabled}")
-            print(f"  threshold       = {owner.disease_confidence_threshold}")
-            print(f"  disease_type    = {result['disease_type']!r}")
-            print(f"  confidence      = {result['confidence_score']}")
-        if owner and owner.notification_emails_enabled and owner.email:
-            print(f"[UPLOAD DEBUG] Queuing check_and_send_alert for {owner.email}...")
-            background_tasks.add_task(
-                check_and_send_alert,
-                result["disease_type"],
-                result["confidence_score"],
-                "edge",
-                result["timestamp"],
-                float(owner.disease_confidence_threshold),
-                owner.email,
-            )
-        else:
-            print(f"[UPLOAD DEBUG] NOT queuing email — gate check failed.")
+        print(f"\n[UPLOAD DEBUG] /upload scan processed for {result['owner_id']}")
+        # Automated emails for manual scans are disabled as they are redundant when the user is viewing the dashboard.
+        # if owner and owner.notification_emails_enabled and owner.email:
+        #     background_tasks.add_task(...)
+
         return {
             "status": result["status"],
             "data_id": result["data_id"],
@@ -1908,27 +1893,11 @@ async def data_ingest(
             background_tasks=background_tasks,
         )
         owner = db.query(models.User).filter(models.User.id == result["owner_id"]).first()
-        print(f"\n[INGEST DEBUG] /ingest email gate check:")
-        print(f"  owner found     = {bool(owner)}")
-        if owner:
-            print(f"  owner.email     = {owner.email!r}")
-            print(f"  emails_enabled  = {owner.notification_emails_enabled}")
-            print(f"  threshold       = {owner.disease_confidence_threshold}")
-            print(f"  disease_type    = {result['disease_type']!r}")
-            print(f"  confidence      = {result['confidence_score']}")
-        if owner and owner.notification_emails_enabled and owner.email:
-            print(f"[INGEST DEBUG] Queuing check_and_send_alert for {owner.email}...")
-            background_tasks.add_task(
-                check_and_send_alert,
-                result["disease_type"],
-                result["confidence_score"],
-                "edge",
-                result["timestamp"],
-                float(owner.disease_confidence_threshold),
-                owner.email,
-            )
-        else:
-            print(f"[INGEST DEBUG] NOT queuing email — gate check failed.")
+        print(f"\n[INGEST DEBUG] /ingest scan processed for {result['owner_id']}")
+        # Automated emails for gateway scans are disabled to avoid alert fatigue.
+        # if owner and owner.notification_emails_enabled and owner.email:
+        #     background_tasks.add_task(...)
+
         return {
             "status": result["status"],
             "sensor_id": result["sensor_id"],
