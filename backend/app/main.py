@@ -2,6 +2,7 @@ import os
 import asyncio
 import secrets
 import smtplib
+import traceback
 import time
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -74,6 +75,13 @@ def send_alert_email(email: str, subject: str, message: str):
     """
     Send an alert email via SMTP when configured.
     """
+    print(f"\n{'='*60}")
+    print(f"[FORECAST EMAIL DEBUG] send_alert_email CALLED")
+    print(f"  recipient = {email!r}")
+    print(f"  subject   = {subject!r}")
+    print(f"  message   = {message[:120]!r}...")
+    print(f"{'='*60}")
+
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_username = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
@@ -81,13 +89,21 @@ def send_alert_email(email: str, subject: str, message: str):
     smtp_from = os.getenv("SMTP_FROM_EMAIL") or smtp_username
     smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
 
+    print(f"[FORECAST EMAIL DEBUG] SMTP config:")
+    print(f"  SMTP_HOST     = {smtp_host!r}")
+    print(f"  SMTP_PORT     = {smtp_port}")
+    print(f"  SMTP_USER     = {smtp_username!r}")
+    print(f"  SMTP_FROM     = {smtp_from!r}")
+    print(f"  SMTP_PASSWORD = {'***SET***' if smtp_password else 'NOT SET'}")
+    print(f"  SMTP_USE_TLS  = {smtp_use_tls}")
+
     if not smtp_host or not smtp_from or not smtp_password:
         missing = []
         if not smtp_host: missing.append("SMTP_HOST")
         if not smtp_from: missing.append("SMTP_USERNAME/SMTP_FROM_EMAIL")
         if not smtp_password: missing.append("SMTP_PASSWORD")
         
-        print(f"\n[EMAIL SKIPPED]\nSMTP is not fully configured. Missing: {', '.join(missing)}")
+        print(f"\n[FORECAST EMAIL SKIPPED] SMTP not configured. Missing: {', '.join(missing)}")
         print(f"Intended recipient: {email}\nSubject: {subject}\n")
         return
 
@@ -135,16 +151,26 @@ def send_alert_email(email: str, subject: str, message: str):
         subtype="html",
     )
 
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-        server.ehlo()
-        if smtp_use_tls:
-            server.starttls()
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
             server.ehlo()
-        if smtp_username and smtp_password:
-            server.login(smtp_username, smtp_password)
-        server.send_message(email_message)
-    
-    print(f"[EMAIL SUCCESS] Sent to {email} | Subject: {subject}")
+            if smtp_use_tls:
+                server.starttls()
+                server.ehlo()
+            if smtp_username and smtp_password:
+                server.login(smtp_username, smtp_password)
+            server.send_message(email_message)
+        
+        print(f"[FORECAST EMAIL SUCCESS] Sent to {email} | Subject: {subject}")
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"[FORECAST EMAIL ERROR] SMTP Auth failed: {e}")
+        traceback.print_exc()
+    except smtplib.SMTPException as e:
+        print(f"[FORECAST EMAIL ERROR] SMTP error: {e}")
+        traceback.print_exc()
+    except Exception as e:
+        print(f"[FORECAST EMAIL ERROR] Unexpected: {type(e).__name__}: {e}")
+        traceback.print_exc()
 
 app = FastAPI(title="Intelligent Plant Health Monitoring API")
 
@@ -602,16 +628,24 @@ def apply_notification_rules(
     background_tasks: Optional[BackgroundTasks],
     timestamp: datetime,
 ):
+    print(f"\n[NOTIFY DEBUG] apply_notification_rules called")
+    print(f"  owner_id={owner_id}, disease={disease_type!r}, conf={confidence_score}, forecast_count={len(forecast or [])}")
+
     user = db.query(models.User).filter(models.User.id == owner_id).first()
     if not user:
+        print(f"[NOTIFY DEBUG] User {owner_id} not found — skipping.")
         return
 
     confidence_threshold = max(50, min(95, int(user.disease_confidence_threshold or 70))) / 100.0
     email_enabled = bool(user.notification_emails_enabled)
+    print(f"[NOTIFY DEBUG] User settings: email={user.email!r}, emails_enabled={email_enabled}, threshold={confidence_threshold}")
 
     def queue_email(title: str, message: str):
         if background_tasks and user.email and email_enabled:
+            print(f"[NOTIFY DEBUG] Queuing forecast email to {user.email!r}: {title!r}")
             background_tasks.add_task(send_alert_email, user.email, title, message)
+        else:
+            print(f"[NOTIFY DEBUG] NOT queuing forecast email: bg_tasks={bool(background_tasks)}, email={user.email!r}, enabled={email_enabled}")
 
     if disease_type != "Healthy" and confidence_score >= confidence_threshold:
         disease_title = f"{disease_type} Detected"
@@ -625,9 +659,11 @@ def apply_notification_rules(
             timestamp=timestamp,
         )
         if notification:
-            # Disease emails are handled centrally by alert_service.check_and_send_alert
-            # after the inference result has been saved.
-            pass
+            print(f"[NOTIFY DEBUG] Disease notification CREATED (id={notification.id}). Email handled by check_and_send_alert.")
+        else:
+            print(f"[NOTIFY DEBUG] Disease notification DEDUPLICATED (skipped).")
+    else:
+        print(f"[NOTIFY DEBUG] Disease notification gate failed: disease={disease_type!r}, conf={confidence_score} vs threshold={confidence_threshold}")
 
     for i, day_forecast in enumerate(forecast or []):
         risk_level = (day_forecast.get("risk_level") or "Stable")
@@ -655,6 +691,8 @@ def apply_notification_rules(
         )
         if notification:
             queue_email(title, message)
+        else:
+            print(f"[NOTIFY DEBUG] Forecast notification DEDUPLICATED for day {i+1}")
 
 
 def persist_payload_records(
@@ -1294,7 +1332,16 @@ async def upload_data(
             background_tasks=background_tasks,
         )
         owner = db.query(models.User).filter(models.User.id == result["owner_id"]).first()
+        print(f"\n[UPLOAD DEBUG] /upload email gate check:")
+        print(f"  owner found     = {bool(owner)}")
+        if owner:
+            print(f"  owner.email     = {owner.email!r}")
+            print(f"  emails_enabled  = {owner.notification_emails_enabled}")
+            print(f"  threshold       = {owner.disease_confidence_threshold}")
+            print(f"  disease_type    = {result['disease_type']!r}")
+            print(f"  confidence      = {result['confidence_score']}")
         if owner and owner.notification_emails_enabled and owner.email:
+            print(f"[UPLOAD DEBUG] Queuing check_and_send_alert for {owner.email}...")
             background_tasks.add_task(
                 check_and_send_alert,
                 result["disease_type"],
@@ -1304,6 +1351,8 @@ async def upload_data(
                 float(owner.disease_confidence_threshold),
                 owner.email,
             )
+        else:
+            print(f"[UPLOAD DEBUG] NOT queuing email — gate check failed.")
         return {
             "status": result["status"],
             "data_id": result["data_id"],
@@ -1859,7 +1908,16 @@ async def data_ingest(
             background_tasks=background_tasks,
         )
         owner = db.query(models.User).filter(models.User.id == result["owner_id"]).first()
+        print(f"\n[INGEST DEBUG] /ingest email gate check:")
+        print(f"  owner found     = {bool(owner)}")
+        if owner:
+            print(f"  owner.email     = {owner.email!r}")
+            print(f"  emails_enabled  = {owner.notification_emails_enabled}")
+            print(f"  threshold       = {owner.disease_confidence_threshold}")
+            print(f"  disease_type    = {result['disease_type']!r}")
+            print(f"  confidence      = {result['confidence_score']}")
         if owner and owner.notification_emails_enabled and owner.email:
+            print(f"[INGEST DEBUG] Queuing check_and_send_alert for {owner.email}...")
             background_tasks.add_task(
                 check_and_send_alert,
                 result["disease_type"],
@@ -1869,6 +1927,8 @@ async def data_ingest(
                 float(owner.disease_confidence_threshold),
                 owner.email,
             )
+        else:
+            print(f"[INGEST DEBUG] NOT queuing email — gate check failed.")
         return {
             "status": result["status"],
             "sensor_id": result["sensor_id"],

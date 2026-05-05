@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import traceback
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from typing import Union
@@ -33,25 +34,56 @@ def _build_treatment(disease_class: str) -> str:
 
 
 def check_and_send_alert(disease_class, confidence, source, timestamp, confidence_threshold_pct: float | None = None, recipient_email: str | None = None):
+    print(f"\n{'='*60}")
+    print(f"[EMAIL DEBUG] check_and_send_alert CALLED")
+    print(f"  disease_class  = {disease_class!r}")
+    print(f"  confidence     = {confidence!r}")
+    print(f"  source         = {source!r}")
+    print(f"  timestamp      = {timestamp!r}")
+    print(f"  threshold_pct  = {confidence_threshold_pct!r}")
+    print(f"  recipient_email= {recipient_email!r}")
+    print(f"{'='*60}")
+
     disease_name = normalize_disease_type(disease_class)
     confidence_value = float(confidence or 0)
+    print(f"[EMAIL DEBUG] Normalized disease: {disease_name!r}, confidence_value: {confidence_value}")
 
     # Prefer caller-supplied per-user threshold; fall back to env var, then 70 %
     if confidence_threshold_pct is not None:
         threshold = float(confidence_threshold_pct) / 100.0
     else:
         threshold = float(os.getenv("CONFIDENCE_THRESHOLD", "70")) / 100.0
+    print(f"[EMAIL DEBUG] Threshold: {threshold} (from {'arg' if confidence_threshold_pct is not None else 'env/default'})")
 
     recipient = recipient_email or os.getenv("ALERT_EMAIL_TO")
+    print(f"[EMAIL DEBUG] Final recipient: {recipient!r}")
 
-    if not recipient or disease_name == "Healthy" or confidence_value < threshold:
+    # --- Gate checks ---
+    if not recipient:
+        print(f"[EMAIL SKIPPED] No recipient email available.")
         return False
+
+    if disease_name == "Healthy":
+        print(f"[EMAIL SKIPPED] Disease is 'Healthy' — no alert needed.")
+        return False
+
+    if confidence_value < threshold:
+        print(f"[EMAIL SKIPPED] Confidence {confidence_value:.4f} < threshold {threshold:.4f}")
+        return False
+
+    print(f"[EMAIL DEBUG] All gate checks passed. Proceeding to SMTP...")
 
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
     smtp_password = os.getenv("SMTP_PASSWORD")
-    
+
+    print(f"[EMAIL DEBUG] SMTP config:")
+    print(f"  SMTP_HOST     = {smtp_host!r}")
+    print(f"  SMTP_PORT     = {smtp_port}")
+    print(f"  SMTP_USER     = {smtp_user!r}")
+    print(f"  SMTP_PASSWORD = {'***SET***' if smtp_password else 'NOT SET'}")
+
     if not smtp_host or not smtp_user or not smtp_password:
         missing = []
         if not smtp_host: missing.append("SMTP_HOST")
@@ -118,18 +150,40 @@ Recommended treatment: {treatment}"""
     message.set_content(text_content)
     message.add_alternative(html_content, subtype='html')
 
-    if smtp_port == 465:
-        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
+    try:
+        if smtp_port == 465:
+            print(f"[EMAIL DEBUG] Using SMTP_SSL on port 465...")
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
+                server.login(smtp_user, smtp_password)
+                server.send_message(message)
+            print(f"[EMAIL SUCCESS] Disease alert sent to {recipient} | Disease: {disease_name} (SSL)")
+            return True
+
+        print(f"[EMAIL DEBUG] Using SMTP + STARTTLS on port {smtp_port}...")
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
             server.login(smtp_user, smtp_password)
             server.send_message(message)
+
+        print(f"[EMAIL SUCCESS] Disease alert sent to {recipient} | Disease: {disease_name}")
         return True
 
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        server.login(smtp_user, smtp_password)
-        server.send_message(message)
-    
-    print(f"[EMAIL SUCCESS] Disease alert sent to {recipient} | Disease: {disease_name}")
-    return True
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"[EMAIL ERROR] SMTP Authentication failed: {e}")
+        print(f"[EMAIL ERROR] Check SMTP_USERNAME and SMTP_PASSWORD env vars.")
+        traceback.print_exc()
+        return False
+    except smtplib.SMTPRecipientsRefused as e:
+        print(f"[EMAIL ERROR] Recipient refused: {e}")
+        traceback.print_exc()
+        return False
+    except smtplib.SMTPException as e:
+        print(f"[EMAIL ERROR] SMTP error: {e}")
+        traceback.print_exc()
+        return False
+    except Exception as e:
+        print(f"[EMAIL ERROR] Unexpected error sending email: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        return False
