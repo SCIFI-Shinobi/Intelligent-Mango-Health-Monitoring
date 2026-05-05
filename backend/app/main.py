@@ -69,7 +69,7 @@ ensure_inference_result_source_column()
 
 APP_STARTED_AT = time.time()
 REQUEST_SLOW_MS = float(os.getenv("REQUEST_SLOW_MS", "800"))
-NOTIFICATION_DEDUPE_MINUTES = int(os.getenv("NOTIFICATION_DEDUPE_MINUTES", "30"))
+NOTIFICATION_DEDUPE_MINUTES = int(os.getenv("NOTIFICATION_DEDUPE_MINUTES", "0"))
 
 def _send_email(to: str, subject: str, html: str, text: str, *, label: str) -> bool:
     """
