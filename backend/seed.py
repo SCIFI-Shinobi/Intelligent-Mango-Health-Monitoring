@@ -29,46 +29,123 @@ API_URL = "https://mango-guard-backend.onrender.com"
 sys.path.insert(0, os.path.dirname(__file__))
 
 
-def send_api_update(disease_type="Healthy", confidence=0.98, high_risk=False):
-    """Send data to /data/ingest exactly like a real ESP32 gateway would."""
-
-    payload = {
-        "device_id": "esp32-gateway",
-        "temperature": 32.0 if high_risk else round(random.uniform(24, 30), 1),
-        "humidity": 85.0 if high_risk else round(random.uniform(55, 75), 1),
-        "disease_type": disease_type,
-        "confidence_score": confidence,
-        "recommendations": [
-            {
-                "title": f"{disease_type} Treatment" if disease_type != "Healthy" else "Routine Maintenance",
-                "description": f"Apply recommended treatment for {disease_type}." if disease_type != "Healthy" else "Plants look healthy. Continue regular care.",
-                "title_am": "የአያያዝ መመሪያ" if disease_type != "Healthy" else "መደበኛ ክትትል",
-                "description_am": "መደበኛ የህክምና ክትትል ያድርጉ።" if disease_type != "Healthy" else "ተክሉ በጥሩ ሁኔታ ላይ ነው። ውሃ ማጠጣትዎን ይቀጥሉ።"
-            }
-        ],
-        "forecast": [
-            {"day": 1, "risk_level": "Stable", "date": (datetime.now() - timedelta(days=4)).isoformat()},
-            {"day": 2, "risk_level": "Stable", "date": (datetime.now() - timedelta(days=3)).isoformat()},
-            {"day": 3, "risk_level": "Stable", "date": (datetime.now() - timedelta(days=2)).isoformat()},
-            {"day": 4, "risk_level": "Stable", "date": (datetime.now() - timedelta(days=1)).isoformat()},
-            {"day": 5, "risk_level": "High_Anthracnose_Risk" if high_risk else "Stable", "date": datetime.now().isoformat()}
-        ]
-    }
-
-    print(f"\n[+] Sending to {API_URL}/data/ingest")
-    print(f"    Disease: {disease_type} | Confidence: {confidence}")
-    print(f"    Temp: {payload['temperature']}C | Humidity: {payload['humidity']}%")
+def _post(payload: dict, label: str):
+    """Send a payload to /data/ingest and print the result."""
+    print(f"\n[+] {label}")
+    print(f"    Sending to {API_URL}/data/ingest")
+    print(f"    Disease   : {payload['disease_type']} | Confidence: {payload['confidence_score']}")
+    print(f"    Temp      : {payload['temperature']}C | Humidity: {payload['humidity']}%")
+    if any(d.get("risk_level", "Stable") != "Stable" for d in payload.get("forecast", [])):
+        risky = [d for d in payload["forecast"] if d.get("risk_level", "Stable") != "Stable"]
+        for r in risky:
+            print(f"    Forecast  : Day {r['day']} → {r['risk_level']}")
 
     headers = {"X-Device-Key": API_KEY, "Content-Type": "application/json"}
     try:
         response = requests.post(f"{API_URL}/data/ingest", json=payload, headers=headers)
         if response.ok:
-            print(f"[SUCCESS] {response.json()}")
+            print(f"    [SUCCESS] {response.json()}")
         else:
-            print(f"[FAILED] HTTP {response.status_code}: {response.text}")
+            print(f"    [FAILED] HTTP {response.status_code}: {response.text}")
     except Exception as e:
-        print(f"[ERROR] Could not connect to API: {e}")
+        print(f"    [ERROR] Could not connect to API: {e}")
 
+
+def _stable_forecast():
+    """5-day forecast with no high-risk days (used for pure detection tests)."""
+    return [
+        {"day": i + 1, "risk_level": "Stable", "date": (datetime.now() + timedelta(days=i)).isoformat()}
+        for i in range(5)
+    ]
+
+
+def _high_risk_forecast(disease_type: str):
+    """5-day forecast with day 4 and 5 flagged as high-risk (used for forecast alerts)."""
+    tag = disease_type.replace(" ", "_")
+    return [
+        {"day": 1, "risk_level": "Stable",                          "date": (datetime.now() + timedelta(days=0)).isoformat()},
+        {"day": 2, "risk_level": "Stable",                          "date": (datetime.now() + timedelta(days=1)).isoformat()},
+        {"day": 3, "risk_level": "Stable",                          "date": (datetime.now() + timedelta(days=2)).isoformat()},
+        {"day": 4, "risk_level": f"High_{tag}_Risk",                "date": (datetime.now() + timedelta(days=3)).isoformat()},
+        {"day": 5, "risk_level": f"High_{tag}_Risk",                "date": (datetime.now() + timedelta(days=4)).isoformat()},
+    ]
+
+
+# ── Simulation helpers ─────────────────────────────────────────────────────────
+
+def send_healthy():
+    """Choice 1 — healthy reading, stable forecast, no alerts triggered."""
+    _post({
+        "device_id": "esp32-gateway",
+        "temperature": round(random.uniform(24, 29), 1),
+        "humidity": round(random.uniform(55, 70), 1),
+        "disease_type": "Healthy",
+        "confidence_score": round(random.uniform(0.90, 0.99), 2),
+        "recommendations": [{
+            "title": "Routine Maintenance",
+            "description": "Plants look healthy. Continue regular care.",
+            "title_am": "መደበኛ ክትትል",
+            "description_am": "ተክሉ በጥሩ ሁኔታ ላይ ነው። ውሃ ማጠጣትዎን ይቀጥሉ።",
+        }],
+        "forecast": _stable_forecast(),
+    }, label="Healthy Reading (no alerts)")
+
+
+def send_disease_detection(disease_type: str, confidence: float):
+    """Choices 2 & 3 — disease detected above threshold → triggers DISEASE email only."""
+    _post({
+        "device_id": "esp32-gateway",
+        "temperature": round(random.uniform(28, 33), 1),
+        "humidity": round(random.uniform(70, 85), 1),
+        "disease_type": disease_type,
+        "confidence_score": confidence,
+        "recommendations": [{
+            "title": f"{disease_type} Treatment",
+            "description": f"Apply recommended treatment for {disease_type}.",
+            "title_am": "የህክምና ሕክምና",
+            "description_am": "የሚመከሩ መድሃኒቶችን ይጠቀሙ።",
+        }],
+        "forecast": _stable_forecast(),   # ← no high-risk days, so NO forecast email
+    }, label=f"{disease_type} Detection (disease email only)")
+
+
+def send_forecast_alert(disease_type: str):
+    """Choices 4 & 5 — healthy reading but high-risk forecast → triggers FORECAST email only."""
+    _post({
+        "device_id": "esp32-gateway",
+        "temperature": round(random.uniform(29, 34), 1),
+        "humidity": round(random.uniform(75, 90), 1),
+        "disease_type": "Healthy",          # ← no active disease → no disease email
+        "confidence_score": 0.91,
+        "recommendations": [{
+            "title": "Preventive Action Recommended",
+            "description": f"High {disease_type} risk forecast. Apply preventive measures now.",
+            "title_am": "የቅድሚያ እርምጃ",
+            "description_am": "ከፍተኛ የበሽታ አደጋ ተንብዮ ። አስቀድሞ እርምጃ ይውሰዱ።",
+        }],
+        "forecast": _high_risk_forecast(disease_type),  # ← high-risk days → forecast email sent
+    }, label=f"High {disease_type} Risk Forecast (forecast email only)")
+
+
+def send_combined_alert(disease_type: str, confidence: float):
+    """Choice 6 — disease detected AND high-risk forecast → triggers BOTH emails."""
+    _post({
+        "device_id": "esp32-gateway",
+        "temperature": 34.0,
+        "humidity": 90.0,
+        "disease_type": disease_type,
+        "confidence_score": confidence,
+        "recommendations": [{
+            "title": f"Urgent: {disease_type} Treatment Required",
+            "description": f"Active {disease_type} detected. Immediate treatment and monitoring required.",
+            "title_am": "አስቸኳይ ህክምና",
+            "description_am": "ንቁ በሽታ ተደርሶ ። ወዲያውኑ ህክምና ያድርጉ።",
+        }],
+        "forecast": _high_risk_forecast(disease_type),  # ← both disease + forecast emails
+    }, label=f"Combined Alert: {disease_type} + High-Risk Forecast (BOTH emails)")
+
+
+# ── Historical seed ────────────────────────────────────────────────────────────
 
 def run_historical_seed():
     """Seed the local database with 7 days of sample data (dev only)."""
@@ -145,20 +222,31 @@ def run_historical_seed():
         db.close()
 
 
+# ── Menu ───────────────────────────────────────────────────────────────────────
+
 def show_menu():
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 55)
     print("   MangoGuard Gateway Simulator")
-    print("=" * 50)
+    print("=" * 55)
     print(f"   API: {API_URL}")
     print(f"   Key: {API_KEY[:12]}...{API_KEY[-4:]}")
-    print("=" * 50)
-    print("1. Send Healthy Update")
-    print("2. Send Anthracnose Detection (High Risk)")
-    print("3. Send Powdery Mildew Detection")
-    print("4. Seed Local DB (dev only)")
-    print("5. Exit")
-    print("=" * 50)
-    return input("Select (1-5): ")
+    print("=" * 55)
+    print("  DETECTION TESTS  (triggers disease email if above threshold)")
+    print("  1. Send Healthy Update               → no email")
+    print("  2. Send Anthracnose Detection         → 🚨 disease email")
+    print("  3. Send Powdery Mildew Detection      → 🚨 disease email")
+    print()
+    print("  FORECAST TESTS   (triggers forecast email)")
+    print("  4. Send High Anthracnose Forecast     → ⚠️  forecast email")
+    print("  5. Send High Powdery Mildew Forecast  → ⚠️  forecast email")
+    print()
+    print("  COMBINED TEST    (triggers both emails)")
+    print("  6. Send Anthracnose + High Forecast   → 🚨 + ⚠️  both emails")
+    print()
+    print("  7. Seed Local DB (dev only)")
+    print("  8. Exit")
+    print("=" * 55)
+    return input("Select (1-8): ").strip()
 
 
 if __name__ == "__main__":
@@ -172,22 +260,27 @@ if __name__ == "__main__":
     if args.seed:
         run_historical_seed()
     elif args.live:
-        send_api_update()
+        send_healthy()
     elif args.test_alert:
-        send_api_update(disease_type="Anthracnose", confidence=0.92, high_risk=True)
+        send_disease_detection("Anthracnose", 0.92)
     else:
-        # Interactive menu
         while True:
             choice = show_menu()
             if choice == "1":
-                send_api_update()
+                send_healthy()
             elif choice == "2":
-                send_api_update(disease_type="Anthracnose", confidence=0.92, high_risk=True)
+                send_disease_detection("Anthracnose", 0.92)
             elif choice == "3":
-                send_api_update(disease_type="Powdery Mildew", confidence=0.85, high_risk=True)
+                send_disease_detection("Powdery Mildew", 0.87)
             elif choice == "4":
-                run_historical_seed()
+                send_forecast_alert("Anthracnose")
             elif choice == "5":
+                send_forecast_alert("Powdery Mildew")
+            elif choice == "6":
+                send_combined_alert("Anthracnose", 0.91)
+            elif choice == "7":
+                run_historical_seed()
+            elif choice == "8":
                 print("Exiting...")
                 break
             else:

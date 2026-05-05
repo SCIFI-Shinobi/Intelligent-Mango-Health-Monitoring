@@ -71,6 +71,241 @@ APP_STARTED_AT = time.time()
 REQUEST_SLOW_MS = float(os.getenv("REQUEST_SLOW_MS", "800"))
 NOTIFICATION_DEDUPE_MINUTES = int(os.getenv("NOTIFICATION_DEDUPE_MINUTES", "30"))
 
+def _smtp_send(email_message: EmailMessage, *, label: str):
+    """Shared SMTP transport used by all outbound alert emails."""
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_from = os.getenv("SMTP_FROM_EMAIL") or smtp_username
+    smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
+
+    print(f"[{label}] SMTP config: host={smtp_host!r} port={smtp_port} user={smtp_username!r} password={'SET' if smtp_password else 'NOT SET'}")
+
+    if not smtp_host or not smtp_from or not smtp_password:
+        missing = []
+        if not smtp_host: missing.append("SMTP_HOST")
+        if not smtp_from: missing.append("SMTP_USERNAME/SMTP_FROM_EMAIL")
+        if not smtp_password: missing.append("SMTP_PASSWORD")
+        print(f"[{label}] SKIPPED — missing env vars: {', '.join(missing)}")
+        return False
+
+    try:
+        if smtp_port == 465:
+            print(f"[{label}] Connecting via SMTP_SSL port 465...")
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
+                if smtp_username and smtp_password:
+                    server.login(smtp_username, smtp_password)
+                server.send_message(email_message)
+        else:
+            print(f"[{label}] Connecting via STARTTLS port {smtp_port}...")
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+                server.ehlo()
+                if smtp_use_tls:
+                    server.starttls()
+                    server.ehlo()
+                if smtp_username and smtp_password:
+                    server.login(smtp_username, smtp_password)
+                server.send_message(email_message)
+
+        print(f"[{label}] SUCCESS — sent to {email_message['To']}")
+        return True
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"[{label}] ERROR — Auth failed: {e}")
+        traceback.print_exc()
+    except smtplib.SMTPException as e:
+        print(f"[{label}] ERROR — SMTP: {e}")
+        traceback.print_exc()
+    except Exception as e:
+        print(f"[{label}] ERROR — {type(e).__name__}: {e}")
+        traceback.print_exc()
+    return False
+
+
+def send_disease_alert_email(recipient: str, disease_name: str, confidence_pct: float, treatment: str):
+    """
+    RED urgent alert — sent when a disease is detected above the user's confidence threshold.
+    """
+    print(f"\n{'='*60}")
+    print(f"[DISEASE EMAIL] send_disease_alert_email CALLED")
+    print(f"  recipient    = {recipient!r}")
+    print(f"  disease      = {disease_name!r}")
+    print(f"  confidence   = {confidence_pct:.1f}%")
+    print(f"{'='*60}")
+
+    smtp_from = os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
+    subject = f"🚨 MangoGuard Alert: {disease_name} Detected"
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = smtp_from or ""
+    msg["To"] = recipient
+    msg.set_content(
+        f"MangoGuard Disease Alert\n\n"
+        f"Disease: {disease_name}\n"
+        f"Confidence: {confidence_pct:.1f}%\n\n"
+        f"Recommended Treatment:\n{treatment}\n\n"
+        f"Open your MangoGuard dashboard for full details."
+    )
+    msg.add_alternative(f"""
+    <html>
+      <body style="margin:0;padding:0;background:#0d1117;font-family:'Segoe UI',Arial,sans-serif;color:#e6edf3;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
+          <tr><td align="center">
+            <table role="presentation" width="100%" style="max-width:620px;background:#161b22;border-radius:16px;overflow:hidden;border:1px solid #30363d;">
+
+              <!-- Header: RED — active disease -->
+              <tr>
+                <td style="padding:28px 32px;background:linear-gradient(135deg,#7f1d1d,#b91c1c 55%,#dc2626);color:#fff;">
+                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;">MangoGuard · Disease Alert</div>
+                  <h1 style="margin:0;font-size:26px;line-height:1.25;">🚨 {disease_name} Detected</h1>
+                  <p style="margin:10px 0 0;font-size:14px;opacity:0.9;">Immediate attention may be required.</p>
+                </td>
+              </tr>
+
+              <!-- Confidence badge -->
+              <tr>
+                <td style="padding:24px 32px 0;">
+                  <table role="presentation" width="100%" style="background:#1c0a0a;border:1px solid #7f1d1d;border-radius:10px;padding:16px 20px;">
+                    <tr>
+                      <td>
+                        <div style="font-size:12px;color:#f87171;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Detection Confidence</div>
+                        <div style="font-size:36px;font-weight:700;color:#ef4444;">{confidence_pct:.1f}%</div>
+                      </td>
+                      <td align="right">
+                        <div style="background:#7f1d1d;color:#fca5a5;font-size:13px;padding:6px 14px;border-radius:20px;">Above Threshold</div>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Treatment -->
+              <tr>
+                <td style="padding:20px 32px 0;">
+                  <div style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Recommended Treatment</div>
+                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #ef4444;border-radius:8px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">
+                    {treatment}
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Footer -->
+              <tr>
+                <td style="padding:24px 32px;margin-top:8px;">
+                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">
+                    Open your <strong style="color:#e6edf3;">MangoGuard dashboard</strong> for the full scan history, analysis, and management recommendations.
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:16px 32px;background:#0d1117;border-top:1px solid #21262d;font-size:11px;color:#484f58;">
+                  You received this because disease email alerts are enabled in your MangoGuard profile.
+                </td>
+              </tr>
+
+            </table>
+          </td></tr>
+        </table>
+      </body>
+    </html>
+    """, subtype="html")
+
+    return _smtp_send(msg, label="DISEASE EMAIL")
+
+
+def send_forecast_alert_email(recipient: str, forecast_date_label: str, risk_name: str, advice: str):
+    """
+    AMBER proactive warning — sent when the weather forecast predicts high disease risk on an upcoming day.
+    """
+    print(f"\n{'='*60}")
+    print(f"[FORECAST EMAIL] send_forecast_alert_email CALLED")
+    print(f"  recipient    = {recipient!r}")
+    print(f"  date         = {forecast_date_label!r}")
+    print(f"  risk         = {risk_name!r}")
+    print(f"{'='*60}")
+
+    smtp_from = os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
+    subject = f"⚠️ MangoGuard Forecast: High {risk_name} Risk on {forecast_date_label}"
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = smtp_from or ""
+    msg["To"] = recipient
+    msg.set_content(
+        f"MangoGuard Forecast Alert\n\n"
+        f"High {risk_name} risk is predicted for {forecast_date_label}.\n\n"
+        f"Preventive Advice:\n{advice}\n\n"
+        f"Open your MangoGuard dashboard to view the full 5-day forecast."
+    )
+    msg.add_alternative(f"""
+    <html>
+      <body style="margin:0;padding:0;background:#0d1117;font-family:'Segoe UI',Arial,sans-serif;color:#e6edf3;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
+          <tr><td align="center">
+            <table role="presentation" width="100%" style="max-width:620px;background:#161b22;border-radius:16px;overflow:hidden;border:1px solid #30363d;">
+
+              <!-- Header: AMBER — proactive forecast -->
+              <tr>
+                <td style="padding:28px 32px;background:linear-gradient(135deg,#78350f,#b45309 55%,#d97706);color:#fff;">
+                  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;margin-bottom:8px;">MangoGuard · Forecast Alert</div>
+                  <h1 style="margin:0;font-size:26px;line-height:1.25;">⚠️ High {risk_name} Risk Forecast</h1>
+                  <p style="margin:10px 0 0;font-size:14px;opacity:0.9;">Predicted for <strong>{forecast_date_label}</strong> — consider preventive action now.</p>
+                </td>
+              </tr>
+
+              <!-- Risk summary card -->
+              <tr>
+                <td style="padding:24px 32px 0;">
+                  <table role="presentation" width="100%" style="background:#1c1407;border:1px solid #78350f;border-radius:10px;padding:16px 20px;">
+                    <tr>
+                      <td>
+                        <div style="font-size:12px;color:#fbbf24;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Forecast Date</div>
+                        <div style="font-size:28px;font-weight:700;color:#f59e0b;">{forecast_date_label}</div>
+                        <div style="font-size:14px;color:#d97706;margin-top:4px;">{risk_name} · High Risk</div>
+                      </td>
+                      <td align="right">
+                        <div style="background:#78350f;color:#fde68a;font-size:13px;padding:6px 14px;border-radius:20px;">Upcoming Risk</div>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Advice -->
+              <tr>
+                <td style="padding:20px 32px 0;">
+                  <div style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Preventive Action</div>
+                  <div style="background:#0d1117;border:1px solid #30363d;border-left:4px solid #f59e0b;border-radius:8px;padding:16px 18px;font-size:14px;color:#c9d1d9;line-height:1.7;">
+                    {advice}
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Footer -->
+              <tr>
+                <td style="padding:24px 32px;">
+                  <p style="margin:0;font-size:13px;color:#8b949e;line-height:1.6;">
+                    Check the <strong style="color:#e6edf3;">5-day forecast</strong> on your MangoGuard dashboard for the full risk outlook.
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:16px 32px;background:#0d1117;border-top:1px solid #21262d;font-size:11px;color:#484f58;">
+                  You received this because forecast email alerts are enabled in your MangoGuard profile.
+                </td>
+              </tr>
+
+            </table>
+          </td></tr>
+        </table>
+      </body>
+    </html>
+    """, subtype="html")
+
+    return _smtp_send(msg, label="FORECAST EMAIL")
+
+
 def send_alert_email(email: str, subject: str, message: str):
     """
     Send an alert email via SMTP when configured.
@@ -648,13 +883,7 @@ def apply_notification_rules(
     email_enabled = bool(user.notification_emails_enabled)
     print(f"[NOTIFY DEBUG] User settings: email={user.email!r}, emails_enabled={email_enabled}, threshold={confidence_threshold}")
 
-    def queue_email(title: str, message: str):
-        if background_tasks and user.email and email_enabled:
-            print(f"[NOTIFY DEBUG] Queuing forecast email to {user.email!r}: {title!r}")
-            background_tasks.add_task(send_alert_email, user.email, title, message)
-        else:
-            print(f"[NOTIFY DEBUG] NOT queuing forecast email: bg_tasks={bool(background_tasks)}, email={user.email!r}, enabled={email_enabled}")
-
+    # ── Disease detection alert ───────────────────────────────────
     if disease_type != "Healthy" and confidence_score >= confidence_threshold:
         disease_title = f"{disease_type} Detected"
         disease_message = f"{disease_type} detected with {confidence_score * 100:.1f}% confidence. Check your mango plants."
@@ -667,13 +896,26 @@ def apply_notification_rules(
             timestamp=timestamp,
         )
         if notification:
-            print(f"[NOTIFY DEBUG] Disease notification CREATED (id={notification.id}). No email sent (disabled for scans).")
+            print(f"[NOTIFY DEBUG] Disease notification CREATED (id={notification.id}).")
+            if background_tasks and user.email and email_enabled:
+                rec = logic.get_recommendation_bilingual(disease_type, "HIGH RISK")
+                treatment = rec["description_en"]
+                print(f"[NOTIFY DEBUG] Queuing disease email to {user.email!r}")
+                background_tasks.add_task(
+                    send_disease_alert_email,
+                    user.email,
+                    disease_type,
+                    confidence_score * 100,
+                    treatment,
+                )
+            else:
+                print(f"[NOTIFY DEBUG] NOT queuing disease email: bg_tasks={bool(background_tasks)}, email={user.email!r}, enabled={email_enabled}")
         else:
             print(f"[NOTIFY DEBUG] Disease notification DEDUPLICATED (skipped).")
-
     else:
-        print(f"[NOTIFY DEBUG] Disease notification gate failed: disease={disease_type!r}, conf={confidence_score} vs threshold={confidence_threshold}")
+        print(f"[NOTIFY DEBUG] Disease gate failed: disease={disease_type!r}, conf={confidence_score} vs threshold={confidence_threshold}")
 
+    # ── Forecast alerts ───────────────────────────────────────────
     for i, day_forecast in enumerate(forecast or []):
         risk_level = (day_forecast.get("risk_level") or "Stable")
         if "high" not in risk_level.lower():
