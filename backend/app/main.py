@@ -74,38 +74,44 @@ NOTIFICATION_DEDUPE_MINUTES = int(os.getenv("NOTIFICATION_DEDUPE_MINUTES", "30")
 def _send_email(to: str, subject: str, html: str, text: str, *, label: str) -> bool:
     """
     Shared email transport for all MangoGuard alerts.
-    Exclusively uses Resend API (HTTPS / port 443 — works on Render).
+    Exclusively uses Brevo API (HTTPS / port 443 — works on Render).
     """
-    import resend
     
-    resend_api_key = os.getenv("RESEND_API_KEY")
-    smtp_from = os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER") or "onboarding@resend.dev"
+    brevo_api_key = os.getenv("BREVO_API_KEY")
+    sender_email = os.getenv("BREVO_SENDER_EMAIL") or "ariavixen0@gmail.com"
 
-    if not resend_api_key:
-        print(f"[{label}] SKIPPED — missing RESEND_API_KEY env var.")
+    if not brevo_api_key:
+        print(f"[{label}] SKIPPED — missing BREVO_API_KEY env var.")
         return False
 
-    print(f"[{label}] Sending via Resend API to {to!r}...")
-    print(f"[{label}]   From: {smtp_from}")
-    print(f"[{label}]   Subject: {subject}")
-    
+    print(f"[{label}] Sending via Brevo API to {to!r}...")
     try:
-        resend.api_key = resend_api_key
-        response = resend.Emails.send({
-            "from": f"MangoGuard <{smtp_from}>",
-            "to": to,
-            "subject": subject,
-            "html": html,
-            "text": text,
-        })
-        print(f"[{label}] SUCCESS via Resend — API Response: {response}")
-        return True
+        import requests as _requests
+        response = _requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": brevo_api_key,
+                "Content-Type": "application/json"
+            },
+            json={
+                "sender": {"name": "MangoGuard", "email": sender_email},
+                "to": [{"email": to}],
+                "subject": subject,
+                "htmlContent": html,
+                "textContent": text
+            },
+            timeout=20
+        )
+        if response.status_code in (200, 201, 202):
+            print(f"[{label}] SUCCESS via Brevo — API Response: {response.json()}")
+            return True
+        else:
+            print(f"[{label}] ❌ ERROR via Brevo API! ❌")
+            print(f"[{label}] Status: {response.status_code}")
+            print(f"[{label}] Response: {response.text}")
+            return False
     except Exception as e:
-        print(f"[{label}] ❌ ERROR via Resend API! ❌")
-        print(f"[{label}] This usually means:")
-        print(f"[{label}]  1. Your RESEND_API_KEY is invalid")
-        print(f"[{label}]  2. The sender email '{smtp_from}' is not a verified domain on Resend")
-        print(f"[{label}]  3. You are on the free tier and trying to send to an unverified email address")
+        print(f"[{label}] ❌ UNEXPECTED ERROR via Brevo! ❌")
         print(f"[{label}] Error details: {type(e).__name__}: {e}")
         traceback.print_exc()
         return False

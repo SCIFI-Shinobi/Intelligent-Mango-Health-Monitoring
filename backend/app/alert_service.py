@@ -71,13 +71,8 @@ def check_and_send_alert(disease_class, confidence, source, timestamp, confidenc
         print(f"[EMAIL SKIPPED] Confidence {confidence_value:.4f} < threshold {threshold:.4f}")
         return False
 
-    print(f"[EMAIL DEBUG] All gate checks passed. Proceeding to SMTP...")
-
-    resend_api_key = os.getenv("RESEND_API_KEY")
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
-    smtp_password = os.getenv("SMTP_PASSWORD")
+    brevo_api_key = os.getenv("BREVO_API_KEY")
+    sender_email = os.getenv("BREVO_SENDER_EMAIL") or "ariavixen0@gmail.com"
 
     source_name = _normalize_source(source)
     timestamp_text = _format_timestamp(timestamp)
@@ -129,32 +124,38 @@ Recommended treatment: {treatment}"""
     </html>
     """
 
-    if resend_api_key:
-        print(f"[EMAIL DEBUG] Sending via Resend API...")
+    if brevo_api_key:
+        print(f"[EMAIL DEBUG] Sending via Brevo API to {recipient}...")
         try:
-            import resend
-            resend.api_key = resend_api_key
-            sender_email = smtp_user or "onboarding@resend.dev"
-            print(f"[EMAIL DEBUG]   From: {sender_email}")
-            print(f"    Subject: Mango Disease Alert: {disease_name}")
-            response = resend.Emails.send({
-                "from": f"MangoGuard <{sender_email}>",
-                "to": recipient,
-                "subject": f"Mango Disease Alert: {disease_name}",
-                "html": html_content,
-                "text": text_content
-            })
-            print(f"[EMAIL SUCCESS] Disease alert sent to {recipient} via Resend | API Response: {response}")
-            return True
+            import requests as _requests
+            response = _requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": brevo_api_key,
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "sender": {"name": "MangoGuard", "email": sender_email},
+                    "to": [{"email": recipient}],
+                    "subject": f"Mango Disease Alert: {disease_name}",
+                    "htmlContent": html_content,
+                    "textContent": text_content
+                },
+                timeout=20
+            )
+            if response.status_code in (200, 201, 202):
+                print(f"[EMAIL SUCCESS] Disease alert sent to {recipient} via Brevo | API Response: {response.json()}")
+                return True
+            else:
+                print(f"[EMAIL ERROR] ❌ ERROR via Brevo API! ❌")
+                print(f"[EMAIL ERROR] Status: {response.status_code}")
+                print(f"[EMAIL ERROR] Response: {response.text}")
+                return False
         except Exception as e:
-            print(f"[EMAIL ERROR] ❌ ERROR via Resend API! ❌")
-            print(f"[EMAIL ERROR] This usually means:")
-            print(f"[EMAIL ERROR]  1. Your RESEND_API_KEY is invalid")
-            print(f"[EMAIL ERROR]  2. The sender email '{sender_email}' is not a verified domain on Resend")
-            print(f"[EMAIL ERROR]  3. You are on the free tier and trying to send to an unverified email address")
+            print(f"[EMAIL ERROR] ❌ UNEXPECTED ERROR via Brevo! ❌")
             print(f"[EMAIL ERROR] Error details: {type(e).__name__}: {e}")
             traceback.print_exc()
             return False
 
-    print(f"[EMAIL SKIPPED] missing RESEND_API_KEY env var.")
+    print(f"[EMAIL SKIPPED] missing BREVO_API_KEY env var.")
     return False
