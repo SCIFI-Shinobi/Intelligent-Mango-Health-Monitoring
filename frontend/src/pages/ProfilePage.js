@@ -2,6 +2,7 @@ import React, { useState, useContext, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { getApiBaseUrl } from '../utils/apiBase';
+import { MdVisibility, MdVisibilityOff } from 'react-icons/md';
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -22,6 +23,7 @@ export default function ProfilePage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
 
   // UI state
   const [saving, setSaving] = useState(false);
@@ -220,29 +222,44 @@ export default function ProfilePage() {
 
           {showPasswordForm && (
             <div className="password-form">
-              <div className="profile-form-group">
+              <div className="profile-form-group password-group">
                 <label>{t('profile', 'currentPassword')}</label>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
+                <div className="password-input-wrapper">
+                  <input
+                    type={showPasswords ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                  <button type="button" className="password-toggle-btn" onClick={() => setShowPasswords(!showPasswords)} tabIndex="-1">
+                    {showPasswords ? <MdVisibilityOff /> : <MdVisibility />}
+                  </button>
+                </div>
               </div>
-              <div className="profile-form-group">
+              <div className="profile-form-group password-group">
                 <label>{t('profile', 'newPassword')}</label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
+                <div className="password-input-wrapper">
+                  <input
+                    type={showPasswords ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <button type="button" className="password-toggle-btn" onClick={() => setShowPasswords(!showPasswords)} tabIndex="-1">
+                    {showPasswords ? <MdVisibilityOff /> : <MdVisibility />}
+                  </button>
+                </div>
               </div>
-              <div className="profile-form-group">
+              <div className="profile-form-group password-group">
                 <label>{t('profile', 'confirmPassword')}</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
+                <div className="password-input-wrapper">
+                  <input
+                    type={showPasswords ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                  <button type="button" className="password-toggle-btn" onClick={() => setShowPasswords(!showPasswords)} tabIndex="-1">
+                    {showPasswords ? <MdVisibilityOff /> : <MdVisibility />}
+                  </button>
+                </div>
               </div>
               <button
                 className="primary-btn"

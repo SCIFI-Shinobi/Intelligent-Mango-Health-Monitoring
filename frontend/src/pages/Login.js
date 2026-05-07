@@ -4,6 +4,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { useNavigate } from "react-router-dom";
 import MangoLeafLogo from "../components/MangoLeafLogo";
 import { getApiBaseUrl } from "../utils/apiBase";
+import { MdVisibility, MdVisibilityOff } from 'react-icons/md';
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -14,6 +15,7 @@ function Login() {
   const [error, setError] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { login } = useContext(AuthContext);
   const { lang, switchLang, t } = useLanguage();
   const navigate = useNavigate();
@@ -111,17 +113,27 @@ function Login() {
             </div>
           )}
 
-          <div className="form-group">
+          <div className="form-group password-group">
             <label htmlFor="password">{t('auth', 'password')}</label>
-            <input
-              id="password"
-              type="password"
-              placeholder={t('auth', 'enterPassword')}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-              required
-            />
+            <div className="password-input-wrapper">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder={t('auth', 'enterPassword')}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex="-1"
+              >
+                {showPassword ? <MdVisibilityOff /> : <MdVisibility />}
+              </button>
+            </div>
           </div>
 
           <button className="auth-btn" type="submit" disabled={loading}>

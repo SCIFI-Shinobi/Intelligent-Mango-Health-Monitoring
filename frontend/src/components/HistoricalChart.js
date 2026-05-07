@@ -88,7 +88,7 @@ const labels = data.map((d) => {
 
   const chartOptions = {
     responsive: true,
-    maintainAspectRatio: true,
+    maintainAspectRatio: false,
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: { position: 'top', labels: { color: '#7b8bbd', font: { size: 12 } } },
@@ -120,7 +120,9 @@ const labels = data.map((d) => {
           {t('common', 'lastUpdated')}: {lastUpdatedText}
         </div>
       )}
-      <Line data={chartData} options={chartOptions} />
+      <div className="chart-canvas-wrapper">
+        <Line data={chartData} options={chartOptions} />
+      </div>
     </div>
   );
 }

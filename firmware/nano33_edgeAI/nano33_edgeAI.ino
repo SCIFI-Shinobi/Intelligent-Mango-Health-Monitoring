@@ -16,8 +16,7 @@
 
 /* Includes ---------------------------------------------------------------- */
 #include <mango_health_inferencing.h>
-#include <forcasting_inferencing.h>
-#include <Arduino_OV767X.h> 
+#include <Arduino_OV767X.h> //Click here to get the library: https://www.arduino.cc/reference/en/libraries/arduino_ov767x/
 #include <ArduinoBLE.h>
 #include <DHT.h>
 #include <Wire.h>
@@ -25,49 +24,35 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <stdio.h>
 
 /* Constant variables ------------------------------------------------------- */
 #define EI_CAMERA_RAW_FRAME_BUFFER_COLS     160
 #define EI_CAMERA_RAW_FRAME_BUFFER_ROWS     120
 
-#define DHTPIN 2
-#define DHTTYPE DHT22
-#define BUZZER_PIN 3
-#define LCD_I2C_ADDR 0x27
-#define LCD_COLS 16
-#define LCD_ROWS 2
-
-DHT dht(DHTPIN, DHTTYPE);
-LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLS, LCD_ROWS);
-
-// --- Demo Timers & Buffers ---
-unsigned long lastScanMillis = 0;
-const unsigned long SCAN_INTERVAL = 30000; // 30s for demo (1hr for real)
-
-unsigned long lastForecastMillis = 0;
-const unsigned long FORECAST_INTERVAL = 120000; // 2min for demo (24hr for real)
-
-float forecast_features[48]; // 24 readings of (temp, hum)
-int features_collected = 0;
-// -----------------------------
-
 #define DWORD_ALIGN_PTR(a)   ((a & 0x3) ?(((uintptr_t)a + 0x4) & ~(uintptr_t)0x3) : a)
 
-/*
- ** NOTE: If you run into TFLite arena allocation issue.
- **
- ** This may be due to may dynamic memory fragmentation.
- ** Try defining "-DEI_CLASSIFIER_ALLOCATION_STATIC" in boards.local.txt (create
- ** if it doesn't exist) and copy this file to
- ** `<ARDUINO_CORE_INSTALL_PATH>/arduino/hardware/<mbed_core>/<core_version>/`.
- **
- ** See
- ** (https://support.arduino.cc/hc/en-us/articles/360012076960-Where-are-the-installed-cores-located-)
- ** to find where Arduino installs cores on your machine.
- **
- ** If the problem persists then there's not enough memory for this model and application.
- */
+#define DHTPIN        12
+#define DHTTYPE       DHT22
+#define BUZZER_PIN    A6
+#define LED_RED_PIN   11
+#define LCD_I2C_ADDR  0x27
+#define LCD_COLS      16
+#define LCD_ROWS      2
+
+/* Timing ------------------------------------------------------------------ */
+static const unsigned long SCAN_INTERVAL = 30000UL;  // 30 s per scan
+static unsigned long lastScanMs = 0;
+
+/* Peripheral objects ------------------------------------------------------ */
+DHT               dht(DHTPIN, DHTTYPE);
+LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLS, LCD_ROWS);
+
+/* BLE --------------------------------------------------------------------- */
+static BLEService inferenceService("19B10010-E8F2-537E-4F6C-D104768A1214");
+static BLEStringCharacteristic inferenceResultCharacteristic(
+    "19B10011-E8F2-537E-4F6C-D104768A1214", BLERead | BLENotify, 128);
+static BLEStringCharacteristic inferenceCommandCharacteristic(
+    "19B10012-E8F2-537E-4F6C-D104768A1214", BLERead | BLEWrite, 16);
 
 /* Edge Impulse ------------------------------------------------------------- */
 class OV7675 : public OV767X {
@@ -143,19 +128,6 @@ bool do_crop = false;
 
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 
-static BLEService inferenceService("19B10010-E8F2-537E-4F6C-D104768A1214");
-static BLEStringCharacteristic inferenceResultCharacteristic(
-    "19B10011-E8F2-537E-4F6C-D104768A1214",
-    BLERead | BLENotify,
-    128
-);
-static BLEStringCharacteristic inferenceCommandCharacteristic(
-    "19B10012-E8F2-537E-4F6C-D104768A1214",
-    BLERead | BLEWrite,
-    16
-);
-static bool inferenceRequested = false;
-
 /* Function definitions ------------------------------------------------------- */
 bool ei_camera_init(void);
 void ei_camera_deinit(void);
@@ -163,12 +135,10 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 int calculate_resize_dimensions(uint32_t out_width, uint32_t out_height, uint32_t *resize_col_sz, uint32_t *resize_row_sz, bool *do_resize);
 void resizeImage(int srcWidth, int srcHeight, uint8_t *srcImage, int dstWidth, int dstHeight, uint8_t *dstImage, int iBpp);
 void cropImage(int srcWidth, int srcHeight, uint8_t *srcImage, int startX, int startY, int dstWidth, int dstHeight, uint8_t *dstImage, int iBpp);
+
 bool ble_init(void);
-void ble_update_inference_result(const char *label, float confidence, float temp, float hum);
-void ble_send_forecast(const char *d1, const char *d2, const char *d3, const char *d4, const char *d5);
-void run_automated_scan();
-void run_automated_forecast();
-void find_top_classification(const ei_impulse_result_t *result, const char **label, float *confidence);
+void ble_send_scan(const char *label, float confidence, float temp, float hum);
+void run_automated_scan(void);
 
 /**
 * @brief      Arduino setup function
@@ -179,7 +149,7 @@ void setup()
     Serial.begin(115200);
     // comment out the below line to cancel the wait for USB connection (needed for native USB)
     while (!Serial);
-    Serial.println("Edge Impulse Inferencing Demo");
+    Serial.println("MangoGuard Edge Impulse Demo");
 
     // summary of inferencing settings (from model_metadata.h)
     ei_printf("Inferencing settings:\n");
@@ -187,18 +157,24 @@ void setup()
     ei_printf("\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
     ei_printf("\tNo. of classes: %d\n", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
 
+    // Hardware setup
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
+    pinMode(LED_RED_PIN, OUTPUT);
+    digitalWrite(LED_RED_PIN, LOW);
+
     dht.begin();
     Wire.begin();
     lcd.init();
     lcd.backlight();
     lcd.setCursor(0, 0);
-    lcd.print("MangoGuard Edge");
+    lcd.print("MangoGuard Ready");
 
     if (!ble_init()) {
-        ei_printf("ERR: Failed to initialize BLE\r\n");
+        ei_printf("ERR: BLE init failed\r\n");
     }
+
+    lastScanMs = millis();
 }
 
 /**
@@ -209,37 +185,28 @@ void setup()
 void loop()
 {
     BLE.poll();
-    unsigned long currentMillis = millis();
+    unsigned long now = millis();
 
-    // 1. Check for manual commands from Gateway
+    // Manual scan via BLE command
     if (inferenceCommandCharacteristic.written()) {
-        String command = inferenceCommandCharacteristic.value();
-        command.trim();
-        command.toLowerCase();
-        if (command == "scan") {
+        String cmd = inferenceCommandCharacteristic.value();
+        cmd.trim(); cmd.toLowerCase();
+        if (cmd == "scan") {
             run_automated_scan();
-            ei_printf("Manual scan triggered via BLE\r\n");
         }
     }
 
-    // 2. Automated Scan Timer (Every 30s for demo)
-    if (currentMillis - lastScanMillis >= SCAN_INTERVAL) {
-        lastScanMillis = currentMillis;
+    // Periodic scan
+    if (now - lastScanMs >= SCAN_INTERVAL) {
+        lastScanMs = now;
         run_automated_scan();
-    }
-
-    // 3. Automated Forecast Timer (Every 2min for demo)
-    if (currentMillis - lastForecastMillis >= FORECAST_INTERVAL) {
-        lastForecastMillis = currentMillis;
-        run_automated_forecast();
     }
 
     delay(10);
 }
 
-void run_automated_scan()
-{
-    ei_printf("\n--- Starting Automated Scan ---\n");
+void run_automated_scan(void) {
+    ei_printf("\n--- Starting Health Scan ---\n");
 
     if (ei_camera_init() == false) {
         ei_printf("ERR: Failed to initialize image sensor\r\n");
@@ -284,166 +251,57 @@ void run_automated_scan()
     EI_IMPULSE_ERROR ei_error = run_classifier(&signal, &result, debug_nn);
     if (ei_error != EI_IMPULSE_OK) {
         ei_printf("Failed to run impulse (%d)\n", ei_error);
-        ei_free(snapshot_mem);
+        if (snapshot_mem) ei_free(snapshot_mem);
         ei_camera_deinit();
         return;
     }
 
-    // print the predictions
-    ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
-              result.timing.dsp, result.timing.classification, result.timing.anomaly);
-#if EI_CLASSIFIER_OBJECT_DETECTION == 1
-    ei_printf("Object detection bounding boxes:\r\n");
-    for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
-        ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
-        if (bb.value == 0) {
-            continue;
-        }
-        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                bb.label,
-                bb.value,
-                bb.x,
-                bb.y,
-                bb.width,
-                bb.height);
-    }
+    if (snapshot_mem) ei_free(snapshot_mem);
+    ei_camera_deinit();
 
-    // Print the prediction results (classification)
-#else
-    ei_printf("Predictions:\r\n");
+    // Find the highest confidence prediction
+    float best_confidence = 0.0f;
+    const char* best_label = "Unknown";
+    
     for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
-        ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
-        ei_printf("%.5f\r\n", result.classification[i].value);
+        if (result.classification[i].value > best_confidence) {
+            best_confidence = result.classification[i].value;
+            best_label = ei_classifier_inferencing_categories[i];
+        }
     }
 
-    const char *top_label = "unknown";
-    float top_confidence = 0.0f;
-    find_top_classification(&result, &top_label, &top_confidence);
+    ei_printf("Result: %s (%.2f%%)\n", best_label, best_confidence * 100.0f);
 
     float temp = dht.readTemperature();
     float hum = dht.readHumidity();
-    if (isnan(temp) || isnan(hum)) {
-        temp = 25.0f;
-        hum = 70.0f;
-    }
+    if (isnan(temp)) temp = 25.0f;
+    if (isnan(hum))  hum  = 70.0f;
 
     lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print(top_label);
+    lcd.setCursor(0, 0); 
+    lcd.print(best_label);
     lcd.setCursor(0, 1);
-    char buf[16];
-    snprintf(buf, sizeof(buf), "T:%.1fC H:%.0f%%", temp, hum);
-    lcd.print(buf);
+    char lbuf[16];
+    snprintf(lbuf, sizeof(lbuf), "T:%.1fC H:%.0f%%", temp, hum);
+    lcd.print(lbuf);
 
-    if (strcmp(top_label, "Healthy") != 0 && top_confidence >= 0.70f) {
-        for(int i = 0; i < 3; i++) {
-            digitalWrite(BUZZER_PIN, HIGH);
-            delay(200);
-            digitalWrite(BUZZER_PIN, LOW);
-            delay(200);
+    if (strcmp(best_label, "Healthy") != 0 && best_confidence >= 0.70f) {
+        digitalWrite(LED_RED_PIN, HIGH);
+        for (int i = 0; i < 3; i++) {
+            digitalWrite(BUZZER_PIN, HIGH); delay(200);
+            digitalWrite(BUZZER_PIN, LOW);  delay(200);
         }
+        digitalWrite(LED_RED_PIN, LOW);
     }
 
-    ble_update_inference_result(top_label, top_confidence, temp, hum);
-    
-    // Store data for next forecast
-    if (features_collected < 48) {
-        forecast_features[features_collected++] = temp;
-        forecast_features[features_collected++] = hum;
-    } else {
-        // Shift buffer to make room
-        for (int i = 0; i < 46; i++) forecast_features[i] = forecast_features[i+2];
-        forecast_features[46] = temp;
-        forecast_features[47] = hum;
-    }
-#endif
-
-    // Print anomaly result (if it exists)
-#if EI_CLASSIFIER_HAS_ANOMALY
-    ei_printf("Anomaly prediction: %.3f\r\n", result.anomaly);
-#endif
-
-#if EI_CLASSIFIER_HAS_VISUAL_ANOMALY
-    ei_printf("Visual anomalies:\r\n");
-    for (uint32_t i = 0; i < result.visual_ad_count; i++) {
-        ei_impulse_result_bounding_box_t bb = result.visual_ad_grid_cells[i];
-        if (bb.value == 0) {
-            continue;
-        }
-        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                bb.label,
-                bb.value,
-                bb.x,
-                bb.y,
-                bb.width,
-                bb.height);
-    }
-#endif
-
-    if (snapshot_mem) ei_free(snapshot_mem);
-    ei_camera_deinit();
+    ble_send_scan(best_label, best_confidence, temp, hum);
 }
 
-void run_automated_forecast()
-{
-    ei_printf("\n--- Running TinyML Forecasting ---\n");
-    
-    // Ensure we have at least some data (dummy-fill if empty for demo)
-    if (features_collected < 48) {
-        float t = dht.readTemperature();
-        float h = dht.readHumidity();
-        if (isnan(t)) t = 25.0; if (isnan(h)) h = 60.0;
-        for (int i = features_collected; i < 48; i += 2) {
-            forecast_features[i] = t;
-            forecast_features[i+1] = h;
-        }
-    }
-
-    // Using the specific handle for the forecasting impulse
-    ei_impulse_handle_t forecast_handle = impulse_handle_916176_2;
-    
-    signal_t signal;
-    numpy::signal_from_buffer(forecast_features, 48, &signal);
-    ei_impulse_result_t result = { 0 };
-
-    EI_IMPULSE_ERROR res = run_classifier_i(&forecast_handle, &signal, &result, false);
-    if (res != EI_IMPULSE_OK) {
-        ei_printf("Forecast failed (%d)\n", res);
-        return;
-    }
-
-    // Find top risk category from classification results
-    const char* top_risk_label = "Stable";
-    float top_val = 0.0f;
-    
-    // Use the handle's metadata instead of global macros to avoid conflicts
-    for (uint16_t i = 0; i < forecast_handle.impulse->label_count; i++) {
-        if (result.classification[i].value > top_val) {
-            top_val = result.classification[i].value;
-            top_risk_label = result.classification[i].label;
-        }
-    }
-
-    // Default to Stable if confidence is too low
-    if (top_val < 0.60f) {
-        top_risk_label = "Stable";
-    }
-    
-    ei_printf("Forecast Result: %s (%.2f)\n", top_risk_label, top_val);
-    
-    // For the demo, we project the current risk to Day 1 and Day 2
-    // and assume Day 3-5 are Stable unless it's a very high risk.
-    const char* d1 = top_risk_label;
-    const char* d2 = (top_val > 0.85f) ? top_risk_label : "Stable";
-    
-    ble_send_forecast(d1, d2, "Stable", "Stable", "Stable");
-}
-
-bool ble_init(void) {
-    if (!BLE.begin()) {
-        return false;
-    }
-
+/* =========================================================================
+ *  BLE helpers
+ * ========================================================================= */
+bool ble_init() {
+    if (!BLE.begin()) return false;
     BLE.setLocalName("Nano33-Classifier");
     BLE.setDeviceName("Nano33-Classifier");
     BLE.setAdvertisedService(inferenceService);
@@ -453,38 +311,15 @@ bool ble_init(void) {
     inferenceResultCharacteristic.writeValue("waiting,0.00000,0.0,0.0");
     inferenceCommandCharacteristic.writeValue("idle");
     BLE.advertise();
-
     ei_printf("BLE advertising as Nano33-Classifier\r\n");
     return true;
 }
 
-void ble_update_inference_result(const char *label, float confidence, float temp, float hum) {
+void ble_send_scan(const char *label, float confidence, float temp, float hum) {
     char payload[64];
     snprintf(payload, sizeof(payload), "SCAN:%s,%.5f,%.1f,%.1f", label, confidence, temp, hum);
     inferenceResultCharacteristic.writeValue(payload);
-    ei_printf("BLE Push (Scan): %s\r\n", payload);
-}
-
-void ble_send_forecast(const char *d1, const char *d2, const char *d3, const char *d4, const char *d5) {
-    char payload[128];
-    snprintf(payload, sizeof(payload), "FORECAST:%s,%s,%s,%s,%s", d1, d2, d3, d4, d5);
-    inferenceResultCharacteristic.writeValue(payload);
-    ei_printf("BLE Push (Forecast): %s\r\n", payload);
-}
-
-void find_top_classification(const ei_impulse_result_t *result, const char **label, float *confidence) {
-    uint16_t best_index = 0;
-    float best_value = result->classification[0].value;
-
-    for (uint16_t i = 1; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
-        if (result->classification[i].value > best_value) {
-            best_value = result->classification[i].value;
-            best_index = i;
-        }
-    }
-
-    *label = ei_classifier_inferencing_categories[best_index];
-    *confidence = best_value;
+    ei_printf("BLE: %s\r\n", payload);
 }
 
 /**

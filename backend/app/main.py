@@ -17,6 +17,7 @@ from sqlalchemy import case, text, inspect
 from jose import jwt, JWTError
 
 from . import models, schemas, logic, database, cloud_scan_service
+from . import forecast_service
 from .alert_service import check_and_send_alert
 from .database import engine, get_db
 from .disease_labels import normalize_disease_type as normalize_disease_label
@@ -323,7 +324,8 @@ app = FastAPI(title="Intelligent Plant Health Monitoring API")
 
 
 @app.on_event("startup")
-def load_cloud_scan_model_on_startup():
+def load_models_on_startup():
+    # Disease detection model
     cloud_scan_service.load_cloud_scan_model()
     model_status = cloud_scan_service.get_cloud_model_status()
     if model_status["loaded"]:
@@ -333,6 +335,14 @@ def load_cloud_scan_model_on_startup():
         )
     else:
         print(f"[cloud_scan] unavailable: {model_status['error']}")
+
+    # Forecasting model
+    forecast_service.load_forecast_model()
+    fc_status = forecast_service.get_forecast_model_status()
+    if fc_status["loaded"]:
+        print(f"[forecast] loaded model from {fc_status['path']}")
+    else:
+        print(f"[forecast] using placeholder — {fc_status['error']}")
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -883,18 +893,8 @@ def persist_payload_records(
     db.flush()
 
     recommendation_ids = []
-    for recommendation in resolve_ingest_recommendations(payload, disease_type, risk_level):
-        new_rec = models.Recommendation(
-            device_id=internal_device_id,
-            title=recommendation["title"],
-            description=recommendation["description"],
-            title_am=recommendation.get("title_am"),
-            description_am=recommendation.get("description_am"),
-            timestamp=server_now,
-        )
-        db.add(new_rec)
-        db.flush()
-        recommendation_ids.append(new_rec.id)
+    # DO NOT save per-scan recommendations to the DB
+    # This prevents scan results from leaking into the dashboard's general recommendations section
 
     forecast_ids = []
     context_id = None
@@ -997,6 +997,11 @@ async def ingest_device_payload(
         timestamp=server_now,
     )
 
+    # ── Auto-forecast from stored sensor history ────────────────────────────
+    # After every ingest, check if we have ≥ 24 sensor readings for this device.
+    # If yes, pull the last 24 and run the TFLite forecasting model.
+    _maybe_auto_forecast(db, internal_device_id=internal_device_id, server_now=server_now)
+
     db.commit()
 
     dashboard_payload = build_dashboard_payload(persisted["sensor"], persisted["detection"], db)
@@ -1069,7 +1074,19 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
             "timestamp": inference.timestamp.isoformat() if inference.timestamp else None,
         })
 
-    latest_recommendations = get_latest_recommendations_for_device(db, inference.device_id) or recommendations
+    # Dashboard Recommendations section should only show general tips
+    latest_recommendations = [
+        {
+            "id": i,
+            "title": tip["en"]["title"],
+            "description": tip["en"]["description"],
+            "title_am": tip["am"]["title"],
+            "description_am": tip["am"]["description"],
+            "timestamp": inference.timestamp.isoformat() if inference.timestamp else None
+        }
+        for i, tip in enumerate(logic.GENERAL_TIPS)
+    ][:5]
+
     latest_forecast = get_latest_forecast_for_device(db, inference.device_id)
 
     return {
@@ -1251,6 +1268,132 @@ def build_analysis_summary(
         "latest_scan_timestamp": detections[0].timestamp if detections else None,
         "top_recommendations": localized_recommendations[:3],
     }
+
+
+# ------------------------------------------------------------------
+# Auto-forecast helper (called from ingest)
+# ------------------------------------------------------------------
+
+FORECAST_MIN_READINGS = 24  # need at least 24 sensor rows to forecast
+
+
+def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: datetime) -> None:
+    """
+    Pull the last FORECAST_MIN_READINGS sensor rows for the device and run the
+    TFLite forecast model.  Persists the result into ForecastContext / ForecastData
+    using the same shape the frontend already reads from /forecast/latest.
+    """
+    sensor_rows = (
+        db.query(models.SensorData)
+        .filter(models.SensorData.device_id == internal_device_id)
+        .order_by(models.SensorData.timestamp.desc())
+        .limit(FORECAST_MIN_READINGS)
+        .all()
+    )
+
+    if len(sensor_rows) < FORECAST_MIN_READINGS:
+        print(
+            f"[forecast_auto] {internal_device_id}: only {len(sensor_rows)}/{FORECAST_MIN_READINGS} "
+            "readings — skipping forecast."
+        )
+        return
+
+    # oldest first so the model sees the time series in order
+    readings = [
+        {"temperature": row.temperature, "humidity": row.humidity}
+        for row in reversed(sensor_rows)
+    ]
+
+    result = forecast_service.run_forecast(readings)
+    label = result["label"]
+    confidence = result["confidence"]
+    model_loaded = result["model_loaded"]
+
+    print(
+        f"[forecast_auto] {internal_device_id}: {label} ({confidence*100:.1f}%) "
+        f"model_loaded={model_loaded}"
+    )
+
+    # Build a simple 5-day forecast from the single label.
+    # Days 1-2 carry the predicted risk; days 3-5 default to Stable unless
+    # the model is very confident.
+    day_risks = []
+    for day_idx in range(5):
+        if label == "Stable":
+            day_risks.append("Stable")
+        elif day_idx < 2:
+            day_risks.append(label)  # near-term risk
+        elif day_idx == 2 and confidence >= 0.85:
+            day_risks.append(label)  # extend if high confidence
+        else:
+            day_risks.append("Stable")
+
+    # Upsert ForecastContext
+    context = (
+        db.query(models.ForecastContext)
+        .filter(models.ForecastContext.device_id == internal_device_id)
+        .first()
+    )
+    if not context:
+        context = models.ForecastContext(
+            device_id=internal_device_id,
+            timestamp=server_now,
+        )
+        db.add(context)
+        db.flush()
+    else:
+        context.timestamp = server_now
+        db.flush()
+
+    # Replace forecast days for this context
+    db.query(models.ForecastData).filter(
+        models.ForecastData.context_id == context.id
+    ).delete(synchronize_session=False)
+    db.flush()
+
+    for idx, risk in enumerate(day_risks):
+        db.add(models.ForecastData(
+            device_id=internal_device_id,
+            day_index=idx,
+            risk_level=risk,
+            forecast_date=server_now + timedelta(days=idx + 1),
+            context_id=context.id,
+        ))
+
+    db.flush()
+
+
+# ------------------------------------------------------------------
+# POST /api/forecast  —  direct inference endpoint
+# ------------------------------------------------------------------
+
+class _ForecastReading(schemas.BaseModel):
+    temperature: float
+    humidity: float
+
+
+class _ForecastRequest(schemas.BaseModel):
+    readings: list[_ForecastReading]
+
+
+@app.post("/api/forecast")
+def run_forecast_endpoint(payload: _ForecastRequest):
+    """
+    Run the TFLite forecasting model against a caller-supplied list of readings.
+    Requires exactly 24 {temperature, humidity} entries.
+    """
+    if len(payload.readings) != 24:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Exactly 24 readings are required, received {len(payload.readings)}.",
+        )
+
+    readings = [
+        {"temperature": r.temperature, "humidity": r.humidity}
+        for r in payload.readings
+    ]
+    result = forecast_service.run_forecast(readings)
+    return result
 
 
 # ------------------------------------------------------------------
@@ -1807,26 +1950,20 @@ def get_recommendations_latest(
     """
     Get the latest recommendations.
     """
-    user_device_ids = get_user_scoped_device_ids(db, user.id)
-    if not user_device_ids:
-        return {"data": []}
-
-    recommendations = db.query(models.Recommendation).filter(
-        models.Recommendation.device_id.in_(user_device_ids)
-    ).order_by(
-        models.Recommendation.timestamp.desc()
-    ).limit(limit).all()
-
+    # Dashboard Recommendations section should only show general tips
+    import datetime
+    now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return {
         "data": [
             {
-                "id": r.id,
-                "title": r.title,
-                "description": r.description,
-                "title_am": r.title_am,
-                "description_am": r.description_am,
-                "timestamp": r.timestamp
-            } for r in recommendations
+                "id": i,
+                "title": tip["en"]["title"],
+                "description": tip["en"]["description"],
+                "title_am": tip["am"]["title"],
+                "description_am": tip["am"]["description"],
+                "timestamp": now_str
+            }
+            for i, tip in enumerate(logic.GENERAL_TIPS[:limit])
         ]
     }
 
@@ -2013,16 +2150,8 @@ async def run_cloud_scan(
     recommendation_payload = None
     if disease_type != "Healthy":
         recommendation_payload = logic.get_recommendation_bilingual(disease_type, risk_level)
-        recommendation = models.Recommendation(
-            device_id=internal_device_id,
-            title=recommendation_payload["title_en"],
-            description=recommendation_payload["description_en"],
-            title_am=recommendation_payload["title_am"],
-            description_am=recommendation_payload["description_am"],
-            timestamp=server_now,
-        )
-        db.add(recommendation)
-        db.flush()
+        # DO NOT save per-scan recommendations to the DB
+        # This prevents scan results from leaking into the dashboard's general recommendations section
 
     db.commit()
 
