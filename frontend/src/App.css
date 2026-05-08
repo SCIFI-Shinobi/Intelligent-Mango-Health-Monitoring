@@ -1360,6 +1360,11 @@ body {
 @media (max-width: 768px) {
   .chart-canvas-wrapper {
     height: 300px;
+    min-height: 280px;
+  }
+
+  .chart-skeleton {
+    min-height: 280px;
   }
 }
 
@@ -4296,10 +4301,14 @@ body {
   .dashboard-wrapper {
     padding-bottom: 70px;
     overflow-x: hidden;
+    min-height: 0; /* Fix: flex child needs min-height:0 for overflow-y:auto to work on mobile */
   }
 
   .subpage-wrapper {
     padding: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .dashboard-content {
@@ -5528,24 +5537,6 @@ body {
 
   .profile-trigger {
     padding: 6px;
-  }
-
-  .profile-trigger i.fa-chevron-up,
-  .profile-trigger i.fa-chevron-down {
-    display: none;
-  }
-
-  .profile-dropdown-menu {
-    position: fixed;
-    top: auto;
-    bottom: 70px;
-    right: 12px;
-    left: 12px;
-    width: auto;
-  }
-
-  .profile-modal {
-    max-height: 85vh;
   }
 
   .scan-modal {

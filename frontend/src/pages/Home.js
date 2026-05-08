@@ -104,9 +104,9 @@ export default function Home() {
           timestamp: incoming.timestamp || new Date().toISOString()
         });
       }
-      if (incoming.recommendations !== undefined) {
-        setRecommendations(normalizeRecommendations(incoming.recommendations || []));
-      }
+      // NOTE: Do NOT update dashboard recommendations from live scan events.
+      // Per-scan recommendations belong only in the scan result modal/card.
+      // General recommendations are refreshed via fetchDashboardData() on scan complete.
       if (incoming.forecast) {
         setForecast(incoming.forecast);
       }

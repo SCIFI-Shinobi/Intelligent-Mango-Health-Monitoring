@@ -895,6 +895,9 @@ def persist_payload_records(
     recommendation_ids = []
     # DO NOT save per-scan recommendations to the DB
     # This prevents scan results from leaking into the dashboard's general recommendations section
+    # Per-scan recommendations are sent via WebSocket for live results or retrieved via detection logs
+    # for historical results, but the dashboard Recommendations panel should remain general.
+    pass
 
     forecast_ids = []
     context_id = None
@@ -1075,6 +1078,7 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
         })
 
     # Dashboard Recommendations section should only show general tips
+    now_str = (inference.timestamp if inference.timestamp else datetime.now(timezone.utc)).isoformat()
     latest_recommendations = [
         {
             "id": i,
@@ -1082,7 +1086,7 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
             "description": tip["en"]["description"],
             "title_am": tip["am"]["title"],
             "description_am": tip["am"]["description"],
-            "timestamp": inference.timestamp.isoformat() if inference.timestamp else None
+            "timestamp": now_str
         }
         for i, tip in enumerate(logic.GENERAL_TIPS)
     ][:5]
@@ -1951,8 +1955,7 @@ def get_recommendations_latest(
     Get the latest recommendations.
     """
     # Dashboard Recommendations section should only show general tips
-    import datetime
-    now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    now_str = datetime.now(timezone.utc).isoformat()
     return {
         "data": [
             {
