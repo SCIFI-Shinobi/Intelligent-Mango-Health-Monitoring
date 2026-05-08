@@ -12,7 +12,6 @@ export default function MobileNav({ activeTab }) {
     { id: 'analysis', path: '/analysis', labelKey: 'analysis', icon: 'fa-chart-line', position: 'left-center' },
     { id: 'logs', path: '/logs', labelKey: 'logs', icon: 'fa-clipboard-list', position: 'right-center' },
     { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders', position: 'right' },
-    { id: 'user', path: '/user', labelKey: 'profile', icon: 'fa-user', position: 'far-right' },
   ];
 
   return (
@@ -29,7 +28,7 @@ export default function MobileNav({ activeTab }) {
           <span>{t('nav', tab.labelKey)}</span>
         </NavLink>
       ))}
-      
+
       <button
         className="mobile-nav-scan-btn"
         onClick={() => setShowQuickScan(true)}
