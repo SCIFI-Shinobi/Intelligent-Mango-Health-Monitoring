@@ -18,7 +18,6 @@
 #include <Arduino_OV767X.h>
 #include <DHT.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -243,17 +242,14 @@ static std::string riskToStr(RiskLevel r) {
 #define DHTTYPE       DHT22
 #define BUZZER_PIN    A6
 #define LED_RED_PIN   11
-static const uint8_t LCD_I2C_ADDR = 0x3F;
-static const uint8_t LCD_COLS     = 16;
-static const uint8_t LCD_ROWS     = 2;
 
-/* Timing ------------------------------------------------------------------ */
-static const unsigned long SCAN_INTERVAL = 30000UL;  // 30 s per scan
-static unsigned long lastScanMs = 0;
+/* Button (TinyML Shield D13) --------------------------------------------- */
+#define BUTTON_PIN    13
+static bool          btnLastState  = HIGH;  // INPUT_PULLUP idles HIGH
+static unsigned long btnDebounceMs = 0;
 
 /* Peripheral objects ------------------------------------------------------ */
 DHT               dht(DHTPIN, DHTTYPE);
-LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLS, LCD_ROWS);
 
 /* Edge Impulse ------------------------------------------------------------- */
 class OV7675 : public OV767X {
@@ -345,35 +341,23 @@ void setup()
     digitalWrite(BUZZER_PIN, LOW);
     pinMode(LED_RED_PIN, OUTPUT);
     digitalWrite(LED_RED_PIN, LOW);
+    pinMode(BUTTON_PIN, INPUT_PULLUP);  // TinyML shield button
 
     dht.begin();
     Wire.begin();
-    #if defined(ARDUINO_ARCH_MBED)
-    Wire.setWireTimeout(3000, true); // Prevent freezing if LCD is wired incorrectly!
-    #endif
-    lcd.init();
-    lcd.backlight();
-    lcd.setCursor(0, 0);
-    lcd.print("MangoGuard Ready");
 
-    lcd.setCursor(0, 1);
-    lcd.print("Waiting for Pi..");
-    
     unsigned long startWait = millis();
     while (!Serial && millis() - startWait < 3000) {
         delay(10);
     }
-    
-    lcd.setCursor(0, 1);
+
     if (Serial) {
-        lcd.print("Pi Connected!   ");
+        Serial.println("Pi Connected!");
     } else {
-        lcd.print("Offline Mode    ");
+        Serial.println("Offline Mode");
     }
 
-    Serial.println("Serial USB ready. Waiting for commands or auto-scan...");
-
-    lastScanMs = millis() - SCAN_INTERVAL;
+    Serial.println("Serial USB ready. Press D13 button or send 'scan' command.");
 }
 
 /**
@@ -381,7 +365,7 @@ void setup()
 */
 void loop()
 {
-    // Check for "scan" command from Pi over Serial
+    // ── Remote "scan" command from Raspberry Pi ──────────────────────────────
     if (Serial.available()) {
         String cmd = Serial.readStringUntil('\n');
         cmd.trim();
@@ -391,12 +375,21 @@ void loop()
         }
     }
 
-    // Periodic auto-scan every 30 seconds
-    unsigned long now = millis();
-    if (now - lastScanMs >= SCAN_INTERVAL) {
-        lastScanMs = now;
-        run_automated_scan();
+    // ── Physical button on D13 (HIGH → LOW edge, 50 ms debounce) ─────────────
+    bool btnNow = (bool)digitalRead(BUTTON_PIN);
+    if (btnLastState == HIGH && btnNow == LOW) {
+        // Falling edge detected – start debounce window
+        btnDebounceMs = millis();
     }
+    if (btnNow == LOW && btnLastState == LOW &&
+        (millis() - btnDebounceMs) >= 50UL) {
+        // Confirmed press – run scan
+        run_automated_scan();
+        // Wait for button release so the press is not repeated
+        while (digitalRead(BUTTON_PIN) == LOW) { delay(10); }
+        btnNow = HIGH;
+    }
+    btnLastState = btnNow;
 
     delay(10);
 }
@@ -479,16 +472,8 @@ void run_automated_scan(void) {
     EnvironmentalData env = { temp, hum, 0.0f }; // 0.0f rainfall
     RecommendationOutput out = engine.run(dType, env);
 
-    // Send result over Serial USB to Raspberry Pi first!
+    // Send result over Serial USB to Raspberry Pi
     serial_send_scan(best_label, best_confidence, temp, hum, out.category_en.c_str(), out.category_am.c_str());
-
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print(best_label);
-    lcd.setCursor(0, 1);
-    char lbuf[16];
-    snprintf(lbuf, sizeof(lbuf), "T:%.1fC H:%.0f%%", temp, hum);
-    lcd.print(lbuf);
 
     if (dType != DiseaseType::HEALTHY && best_confidence >= 0.70f) {
         digitalWrite(LED_RED_PIN, HIGH);
@@ -497,14 +482,6 @@ void run_automated_scan(void) {
             digitalWrite(BUZZER_PIN, LOW);  delay(200);
         }
         digitalWrite(LED_RED_PIN, LOW);
-
-        delay(1500); // Leave temp/hum on screen for 1.5s
-        lcd.setCursor(0, 1);
-        lcd.print("                "); // Clear line 2
-        lcd.setCursor(0, 1);
-        
-        std::string riskStr = riskToStr(out.risk_level) + " RISK!";
-        lcd.print(riskStr.c_str());
     }
 }
 
