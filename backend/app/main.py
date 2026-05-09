@@ -689,15 +689,6 @@ def get_latest_forecast_for_device(db: Session, device_id: str) -> Optional[dict
 
     forecast_days = serialize_forecast_days(get_sorted_forecast_records(db, forecast_context.id))
 
-    # Pad to 5 days if less than 5 to maintain UI structure
-    while len(forecast_days) < 5:
-        forecast_days.insert(0, {
-            "day": len(forecast_days) + 1,
-            "risk_level": "Stable",
-            "date": None,
-            "created_at": None,
-        })
-
     return {
         "context": {
             "id": forecast_context.id,
@@ -893,11 +884,19 @@ def persist_payload_records(
     db.flush()
 
     recommendation_ids = []
-    # DO NOT save per-scan recommendations to the DB
-    # This prevents scan results from leaking into the dashboard's general recommendations section
-    # Per-scan recommendations are sent via WebSocket for live results or retrieved via detection logs
-    # for historical results, but the dashboard Recommendations panel should remain general.
-    pass
+    recs_data = resolve_ingest_recommendations(payload, disease_type, risk_level)
+    for r_data in recs_data:
+        new_rec = models.Recommendation(
+            device_id=internal_device_id,
+            title=r_data["title"],
+            description=r_data["description"],
+            title_am=r_data["title_am"],
+            description_am=r_data["description_am"],
+            timestamp=server_now,
+        )
+        db.add(new_rec)
+        db.flush()
+        recommendation_ids.append(new_rec.id)
 
     forecast_ids = []
     context_id = None
@@ -1318,26 +1317,10 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
         f"model_loaded={model_loaded}"
     )
 
-    # Build a simple 5-day forecast from the single label.
-    # Days 1-2 carry the predicted risk; days 3-5 default to Stable unless
-    # the model is very confident.
-    day_risks = []
-    for day_idx in range(5):
-        if label == "Stable":
-            day_risks.append("Stable")
-        elif day_idx < 2:
-            day_risks.append(label)  # near-term risk
-        elif day_idx == 2 and confidence >= 0.85:
-            day_risks.append(label)  # extend if high confidence
-        else:
-            day_risks.append("Stable")
+    context = db.query(models.ForecastContext).filter(
+        models.ForecastContext.device_id == internal_device_id
+    ).first()
 
-    # Upsert ForecastContext
-    context = (
-        db.query(models.ForecastContext)
-        .filter(models.ForecastContext.device_id == internal_device_id)
-        .first()
-    )
     if not context:
         context = models.ForecastContext(
             device_id=internal_device_id,
@@ -1347,22 +1330,38 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
         db.flush()
     else:
         context.timestamp = server_now
-        db.flush()
 
-    # Replace forecast days for this context
-    db.query(models.ForecastData).filter(
-        models.ForecastData.context_id == context.id
-    ).delete(synchronize_session=False)
+    new_forecast = models.ForecastData(
+        device_id=internal_device_id,
+        day_index=0,
+        risk_level=label,
+        forecast_date=server_now + timedelta(days=1),
+        context_id=context.id,
+    )
+    db.add(new_forecast)
     db.flush()
 
-    for idx, risk in enumerate(day_risks):
-        db.add(models.ForecastData(
-            device_id=internal_device_id,
-            day_index=idx,
-            risk_level=risk,
-            forecast_date=server_now + timedelta(days=idx + 1),
-            context_id=context.id,
-        ))
+    # Maintain a rolling window of the last 5 forecasts for this context (queue behavior)
+    records_to_keep = (
+        db.query(models.ForecastData)
+        .filter(models.ForecastData.context_id == context.id)
+        .order_by(models.ForecastData.id.desc())
+        .limit(5)
+        .all()
+    )
+    
+    keep_ids = [r.id for r in records_to_keep]
+    if keep_ids:
+        db.query(models.ForecastData).filter(
+            models.ForecastData.context_id == context.id,
+            ~models.ForecastData.id.in_(keep_ids)
+        ).delete(synchronize_session=False)
+
+    # Rewrite dates so they appear as consecutive future days (Day 1 to Day N) for the demo
+    records_to_keep.reverse() # Oldest first
+    for idx, rec in enumerate(records_to_keep):
+        rec.forecast_date = server_now + timedelta(days=idx + 1)
+        rec.day_index = idx
 
     db.flush()
 
@@ -1952,21 +1951,24 @@ def get_recommendations_latest(
     user: models.User = Depends(get_current_user)
 ):
     """
-    Get the latest recommendations.
+    Get the latest recommendations from manual quick scans.
     """
-    # Dashboard Recommendations section should only show general tips
-    now_str = datetime.now(timezone.utc).isoformat()
+    virtual_device_id = web_app_device_id(user.id)
+    recommendations = db.query(models.Recommendation).filter(
+        models.Recommendation.device_id == virtual_device_id
+    ).order_by(models.Recommendation.timestamp.desc()).limit(limit).all()
+
     return {
         "data": [
             {
-                "id": i,
-                "title": tip["en"]["title"],
-                "description": tip["en"]["description"],
-                "title_am": tip["am"]["title"],
-                "description_am": tip["am"]["description"],
-                "timestamp": now_str
+                "id": r.id,
+                "title": r.title,
+                "description": r.description,
+                "title_am": r.title_am,
+                "description_am": r.description_am,
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None
             }
-            for i, tip in enumerate(logic.GENERAL_TIPS[:limit])
+            for r in recommendations
         ]
     }
 
@@ -2153,8 +2155,8 @@ async def run_cloud_scan(
     recommendation_payload = None
     if disease_type != "Healthy":
         recommendation_payload = logic.get_recommendation_bilingual(disease_type, risk_level)
-        # DO NOT save per-scan recommendations to the DB
-        # This prevents scan results from leaking into the dashboard's general recommendations section
+        # We do not save manual scan recommendations to the DB here,
+        # so they don't overwrite the Raspberry Pi's standing recommendations on the dashboard.
 
     db.commit()
 
