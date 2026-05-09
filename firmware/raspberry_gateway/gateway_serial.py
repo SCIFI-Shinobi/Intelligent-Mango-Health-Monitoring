@@ -5,6 +5,18 @@ import logging
 import time
 import threading
 
+try:
+    from lcd_driver import LCD
+    lcd = LCD(port=1, address=0x3F)
+    lcd.print_line("Gateway Ready", 1)
+    lcd.print_line("Waiting...", 2)
+except ImportError:
+    logging.warning("lcd_driver not found, LCD will not be used.")
+    class DummyLCD:
+        def print_line(self, *args): pass
+        def clear(self): pass
+    lcd = DummyLCD()
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # ================= CONFIGURATION =================
@@ -112,6 +124,20 @@ def handle_line(line: str) -> None:
             return
 
         logging.info(f"Scan → {disease_type} ({confidence*100:.1f}%)  T:{temp}°C  H:{hum}%  Rec:{recommendation_en}")
+
+        # Update LCD
+        # Line 1: D:Anthracn T:28C
+        short_disease = disease_type[:8] if disease_type != "Powdery Mildew" else "Powdery"
+        lcd.print_line(f"D:{short_disease} T:{int(temp)}C", 1)
+        
+        # Line 2: HIGH RISK
+        # Since we don't receive risk_level explicitly, infer from recommendation_en
+        if "URGENT" in recommendation_en:
+            lcd.print_line("HIGH RISK!", 2)
+        elif "Spray Now" in recommendation_en:
+            lcd.print_line("MEDIUM RISK!", 2)
+        else:
+            lcd.print_line("LOW RISK", 2)
 
         # Upload in background so serial reading isn't blocked
         t = threading.Thread(target=upload_scan, args=(disease_type, confidence, temp, hum, recommendation_en, recommendation_am))
