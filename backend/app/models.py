@@ -99,3 +99,19 @@ class ScanRequest(Base):
     result_inference_id = Column(Integer, ForeignKey("inference_results.id"), nullable=True)
     result_disease_type = Column(String, nullable=True)
     result_confidence_score = Column(Float, nullable=True)
+
+
+class TrainingSample(Base):
+    """Stores every scan result for admin review and Edge Impulse retraining export."""
+    __tablename__ = "training_samples"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    device_id        = Column(String, index=True)                      # internal device id
+    disease_type     = Column(String)                                  # model's predicted label
+    confirmed_label  = Column(String, nullable=True)                   # admin-corrected label (None = unreviewed)
+    confidence_score = Column(Float)
+    source           = Column(String, default="gateway")               # 'web_app' or 'gateway'
+    image_path       = Column(String, nullable=True)                   # relative path; None for gateway scans
+    reviewed         = Column(Boolean, default=False)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+

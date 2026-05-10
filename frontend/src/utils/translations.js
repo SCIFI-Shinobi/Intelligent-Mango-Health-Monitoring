@@ -18,6 +18,7 @@ const translations = {
     unreadOnly: { en: 'Unread', am: 'ያልተነበቡ' },
     allItems: { en: 'All', am: 'ሁሉም' },
     notificationsSyncing: { en: 'Background sync pauses when this tab is hidden.', am: 'ይህ ትር ሲደበቅ የጀርባ ማመሳሰል ይቆማል።' },
+    admin: { en: 'Admin', am: 'አስተዳዳሪ' },
   },
 
   // ---- Login / Auth ----

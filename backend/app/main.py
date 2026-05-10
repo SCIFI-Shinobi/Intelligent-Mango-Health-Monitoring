@@ -2207,6 +2207,23 @@ async def run_cloud_scan(
 
     db.commit()
 
+    # Save training sample (image + metadata) for admin retraining workflow
+    try:
+        ts = models.TrainingSample(
+            device_id=internal_device_id,
+            disease_type=disease_type,
+            confidence_score=confidence_score,
+            source="web_app",
+        )
+        db.add(ts)
+        db.flush()
+        rel = _save_training_image(image_bytes, disease_type, ts.id)
+        ts.image_path = rel
+        db.commit()
+    except Exception as _ts_err:
+        print(f"[training_sample] failed to save (non-fatal): {_ts_err}")
+        db.rollback()
+
     # Removed email alert for web scans as previously agreed
 
     return {
@@ -2253,9 +2270,21 @@ async def data_ingest(
         )
         owner = db.query(models.User).filter(models.User.id == result["owner_id"]).first()
         print(f"\n[INGEST DEBUG] /ingest scan processed for {result['owner_id']}")
-        # Automated emails for gateway scans are disabled to avoid alert fatigue.
-        # if owner and owner.notification_emails_enabled and owner.email:
-        #     background_tasks.add_task(...)
+
+        # Save metadata-only training sample (gateway sends no image)
+        try:
+            ts = models.TrainingSample(
+                device_id=result["device_id"],
+                disease_type=result["disease_type"],
+                confidence_score=result["confidence_score"],
+                source="gateway",
+                image_path=None,
+            )
+            db.add(ts)
+            db.commit()
+        except Exception as _ts_err:
+            print(f"[training_sample] failed to save (non-fatal): {_ts_err}")
+            db.rollback()
 
         return {
             "status": result["status"],
@@ -2416,3 +2445,342 @@ def delete_device(
     db.delete(device)
     db.commit()
     return {"status": "ok"}
+
+
+# ------------------------------------------------------------------
+# Admin helpers
+# ------------------------------------------------------------------
+
+import io
+import zipfile
+import pathlib
+
+TRAINING_SAMPLES_DIR = pathlib.Path(__file__).parent.parent / "training_samples"
+
+def require_admin(user: models.User = Depends(get_current_user)):
+    """FastAPI dependency — 403 for any non-admin caller."""
+    if user.username != DEFAULT_USERNAME:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+def _save_training_image(image_bytes: bytes, label: str, sample_id: int) -> str:
+    """Write image to disk, return relative path string."""
+    folder = TRAINING_SAMPLES_DIR / label.replace(" ", "_")
+    folder.mkdir(parents=True, exist_ok=True)
+    rel_path = f"{label.replace(' ', '_')}/{sample_id}.jpg"
+    (TRAINING_SAMPLES_DIR / rel_path).write_bytes(image_bytes)
+    return rel_path
+
+
+# ------------------------------------------------------------------
+# Admin — Users
+# ------------------------------------------------------------------
+
+@app.get("/admin/users")
+def admin_list_users(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """List every registered user with scan counts."""
+    users = db.query(models.User).order_by(models.User.created_at.desc()).all()
+    result = []
+    for u in users:
+        device_ids = get_user_scoped_device_ids(db, u.id)
+        scan_count = db.query(models.InferenceResult).filter(
+            models.InferenceResult.device_id.in_(device_ids)
+        ).count() if device_ids else 0
+        latest_scan = db.query(models.InferenceResult).filter(
+            models.InferenceResult.device_id.in_(device_ids)
+        ).order_by(models.InferenceResult.timestamp.desc()).first() if device_ids else None
+        result.append({
+            "id": u.id,
+            "username": u.username,
+            "email": u.email,
+            "display_name": u.display_name,
+            "created_at": ensure_aware_datetime(u.created_at).isoformat() if u.created_at else None,
+            "scan_count": scan_count,
+            "last_scan_at": latest_scan.timestamp.isoformat() if latest_scan and latest_scan.timestamp else None,
+        })
+    return {"data": result}
+
+
+@app.delete("/admin/users/{user_id}")
+def admin_delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_admin),
+):
+    """Delete a user and cascade-remove all their data."""
+    if user_id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account")
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    device_ids_internal = get_user_scoped_device_ids(db, user_id)
+
+    # Cascade: remove data scoped to this user's devices
+    if device_ids_internal:
+        db.query(models.SensorData).filter(
+            models.SensorData.device_id.in_(device_ids_internal)
+        ).delete(synchronize_session=False)
+        db.query(models.InferenceResult).filter(
+            models.InferenceResult.device_id.in_(device_ids_internal)
+        ).delete(synchronize_session=False)
+        db.query(models.Recommendation).filter(
+            models.Recommendation.device_id.in_(device_ids_internal)
+        ).delete(synchronize_session=False)
+        ctx_ids = [
+            c.id for c in db.query(models.ForecastContext).filter(
+                models.ForecastContext.device_id.in_(device_ids_internal)
+            ).all()
+        ]
+        if ctx_ids:
+            db.query(models.ForecastData).filter(
+                models.ForecastData.context_id.in_(ctx_ids)
+            ).delete(synchronize_session=False)
+        db.query(models.ForecastContext).filter(
+            models.ForecastContext.device_id.in_(device_ids_internal)
+        ).delete(synchronize_session=False)
+        db.query(models.TrainingSample).filter(
+            models.TrainingSample.device_id.in_(device_ids_internal)
+        ).delete(synchronize_session=False)
+
+    db.query(models.Notification).filter(models.Notification.user_id == user_id).delete(synchronize_session=False)
+    db.query(models.ScanRequest).filter(models.ScanRequest.user_id == user_id).delete(synchronize_session=False)
+    db.query(models.Device).filter(models.Device.user_id == user_id).delete(synchronize_session=False)
+    db.delete(target)
+    db.commit()
+    return {"status": "ok", "deleted_user_id": user_id}
+
+
+# ------------------------------------------------------------------
+# Admin — Devices
+# ------------------------------------------------------------------
+
+@app.get("/admin/devices")
+def admin_list_devices(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """List every device across all users."""
+    devices = db.query(models.Device).order_by(models.Device.created_at.desc()).all()
+    users_map = {u.id: u.username for u in db.query(models.User).all()}
+    return {
+        "data": [
+            {
+                "id": d.id,
+                "device_name": d.device_name,
+                "api_key": d.api_key,
+                "user_id": d.user_id,
+                "owner_username": users_map.get(d.user_id, "unknown"),
+                "last_seen": ensure_aware_datetime(d.last_seen).isoformat() if d.last_seen else None,
+                "created_at": ensure_aware_datetime(d.created_at).isoformat() if d.created_at else None,
+            }
+            for d in devices
+        ]
+    }
+
+
+@app.delete("/admin/devices/{device_id}")
+def admin_delete_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    db.delete(device)
+    db.commit()
+    return {"status": "ok"}
+
+
+@app.post("/admin/devices/{device_id}/regenerate-key")
+def admin_regenerate_device_key(
+    device_id: int,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    device.api_key = f"mg_{secrets.token_hex(24)}"
+    db.commit()
+    db.refresh(device)
+    return {"id": device.id, "api_key": device.api_key}
+
+
+# ------------------------------------------------------------------
+# Admin — Scan History (all users)
+# ------------------------------------------------------------------
+
+@app.get("/admin/scans")
+def admin_list_scans(
+    page: int = 1,
+    limit: int = 20,
+    disease_type: Optional[str] = None,
+    user_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Paginated scan history across all users."""
+    skip = (page - 1) * limit
+
+    # Build user-id → username map
+    users_map = {u.id: u.username for u in db.query(models.User).all()}
+
+    # Build device_id → user_id map from Device table
+    device_owner_map: dict[str, int] = {}
+    for d in db.query(models.Device).all():
+        device_owner_map[scoped_device_id(d)] = d.user_id
+    # Also map web-app virtual ids
+    for u in db.query(models.User).all():
+        device_owner_map[web_app_device_id(u.id)] = u.id
+
+    query = db.query(models.InferenceResult)
+    if user_id is not None:
+        target_ids = get_user_scoped_device_ids(db, user_id)
+        query = query.filter(models.InferenceResult.device_id.in_(target_ids))
+    if disease_type:
+        query = query.filter(models.InferenceResult.disease_type == disease_type)
+
+    total = query.count()
+    detections = query.order_by(models.InferenceResult.timestamp.desc()).offset(skip).limit(limit).all()
+
+    result = []
+    for det in detections:
+        sensor = db.query(models.SensorData).filter(
+            models.SensorData.device_id == det.device_id,
+            models.SensorData.timestamp <= det.timestamp,
+        ).order_by(models.SensorData.timestamp.desc()).first()
+        owner_id = device_owner_map.get(det.device_id)
+        result.append({
+            "id": det.id,
+            "disease_type": normalize_disease_type(det.disease_type),
+            "confidence_score": det.confidence_score,
+            "source": normalize_detection_source(getattr(det, "source", None)),
+            "timestamp": det.timestamp.isoformat() if det.timestamp else None,
+            "temperature": sensor.temperature if sensor else None,
+            "humidity": sensor.humidity if sensor else None,
+            "owner_id": owner_id,
+            "owner_username": users_map.get(owner_id, "unknown") if owner_id else "unknown",
+        })
+    return {
+        "page": page, "limit": limit,
+        "total": total,
+        "total_pages": (total + limit - 1) // limit,
+        "data": result,
+    }
+
+
+# ------------------------------------------------------------------
+# Admin — Training Data
+# ------------------------------------------------------------------
+
+class _LabelUpdate(schemas.BaseModel):
+    confirmed_label: str
+
+
+@app.get("/admin/training/samples")
+def admin_list_training_samples(
+    page: int = 1,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    skip = (page - 1) * limit
+    total = db.query(models.TrainingSample).count()
+    samples = (
+        db.query(models.TrainingSample)
+        .order_by(models.TrainingSample.created_at.desc())
+        .offset(skip).limit(limit).all()
+    )
+    return {
+        "page": page, "limit": limit,
+        "total": total,
+        "total_pages": (total + limit - 1) // limit,
+        "stats": {
+            "total": total,
+            "with_image": db.query(models.TrainingSample).filter(models.TrainingSample.image_path.isnot(None)).count(),
+            "reviewed": db.query(models.TrainingSample).filter(models.TrainingSample.reviewed == True).count(),
+            "confirmed": db.query(models.TrainingSample).filter(models.TrainingSample.confirmed_label.isnot(None)).count(),
+        },
+        "data": [
+            {
+                "id": s.id,
+                "disease_type": s.disease_type,
+                "confirmed_label": s.confirmed_label,
+                "confidence_score": s.confidence_score,
+                "source": s.source,
+                "has_image": s.image_path is not None,
+                "reviewed": s.reviewed,
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+            }
+            for s in samples
+        ],
+    }
+
+
+@app.patch("/admin/training/samples/{sample_id}")
+def admin_update_training_sample(
+    sample_id: int,
+    payload: _LabelUpdate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    sample = db.query(models.TrainingSample).filter(models.TrainingSample.id == sample_id).first()
+    if not sample:
+        raise HTTPException(status_code=404, detail="Sample not found")
+    sample.confirmed_label = payload.confirmed_label
+    sample.reviewed = True
+    db.commit()
+    return {"status": "ok", "id": sample_id, "confirmed_label": payload.confirmed_label}
+
+
+@app.delete("/admin/training/samples/{sample_id}")
+def admin_delete_training_sample(
+    sample_id: int,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    sample = db.query(models.TrainingSample).filter(models.TrainingSample.id == sample_id).first()
+    if not sample:
+        raise HTTPException(status_code=404, detail="Sample not found")
+    if sample.image_path:
+        img_file = TRAINING_SAMPLES_DIR / sample.image_path
+        if img_file.exists():
+            img_file.unlink()
+    db.delete(sample)
+    db.commit()
+    return {"status": "ok"}
+
+
+from fastapi.responses import StreamingResponse
+
+@app.get("/admin/training/export")
+def admin_export_training_zip(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Stream a ZIP of confirmed training images structured by label folder."""
+    confirmed = db.query(models.TrainingSample).filter(
+        models.TrainingSample.reviewed == True,
+        models.TrainingSample.confirmed_label.isnot(None),
+        models.TrainingSample.image_path.isnot(None),
+    ).all()
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for s in confirmed:
+            img_path = TRAINING_SAMPLES_DIR / s.image_path
+            if img_path.exists():
+                folder = s.confirmed_label.replace(" ", "_")
+                zf.write(img_path, f"{folder}/{s.id}.jpg")
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=training_data.zip"},
+    )

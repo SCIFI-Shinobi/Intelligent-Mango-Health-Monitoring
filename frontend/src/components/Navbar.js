@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import { NavLink } from 'react-router-dom';
 import MangoLeafLogo from './MangoLeafLogo';
 import ProfileDropdown from './ProfileDropdown';
 import ScanUploadModal from './ScanUploadModal';
 import { formatTimeAgo } from '../utils/formatTime';
 import { useLanguage } from '../context/LanguageContext';
+import { AuthContext } from '../context/AuthContext';
 import { getApiBaseUrl } from '../utils/apiBase';
 
 const API_BASE_URL = getApiBaseUrl();
@@ -28,6 +29,7 @@ const NOTIF_COLORS = {
 
 export default function Navbar({ activeTab }) {
   const { lang, switchLang, t } = useLanguage();
+  const { user } = useContext(AuthContext);
   const [showQuickScan, setShowQuickScan] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -242,6 +244,9 @@ export default function Navbar({ activeTab }) {
     { id: 'analysis', path: '/analysis', labelKey: 'analysis', icon: 'fa-chart-line' },
     { id: 'logs', path: '/logs', labelKey: 'logs', icon: 'fa-clipboard-list' },
     { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders' },
+    ...(user?.username === 'admin'
+      ? [{ id: 'admin', path: '/admin', labelKey: 'admin', icon: 'fa-shield-halved' }]
+      : []),
   ];
 
   const visibleNotifications = filterMode === 'unread'

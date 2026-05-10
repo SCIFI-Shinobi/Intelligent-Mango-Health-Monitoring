@@ -8,6 +8,8 @@ import AnalysisPage from "./pages/AnalysisPage";
 import LogsPage from "./pages/LogsPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfilePage";
+import AdminPage from "./pages/AdminPage";
+import { AdminRoute } from "./components/AdminRoute";
 import "./App.css";
 
 function App() {
@@ -28,6 +30,7 @@ function App() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/user" element={<ProfilePage />} />
         <Route path="/profile" element={<Navigate to="/user" />} />
+        <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
       </Route>
 
       {/* Fallback */}

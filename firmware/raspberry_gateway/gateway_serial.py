@@ -239,21 +239,27 @@ def run_gateway() -> None:
                             handle_line(line)
                     except Exception as e:
                         logging.error(f"Read error: {e}")
-                        lcd.print_line("Read Error!", 1)
-                        lcd.print_line("Reconnecting...", 2)
+                        global current_scroll_text
+                        current_scroll_text = "Reconnecting..."
+                        with lcd_lock:
+                            lcd.print_line("Read Error!", 1)
                         break
 
         except serial.SerialException as e:
             logging.error(f"Cannot open {port}: {e}")
-            lcd.print_line("Connect Edge AI", 1)
-            lcd.print_line("Device...", 2)
+            global current_scroll_text
+            current_scroll_text = "Device..."
+            with lcd_lock:
+                lcd.print_line("Connect Edge AI", 1)
             logging.info("Retrying in 5 seconds...")
             time.sleep(5)
 
         except Exception as e:
             logging.error(f"Unexpected error: {e}")
-            lcd.print_line("Gateway Error!", 1)
-            lcd.print_line("Restarting...", 2)
+            global current_scroll_text
+            current_scroll_text = "Restarting..."
+            with lcd_lock:
+                lcd.print_line("Gateway Error!", 1)
             time.sleep(5)
 
 
