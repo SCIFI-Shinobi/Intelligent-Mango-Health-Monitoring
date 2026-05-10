@@ -1331,16 +1331,16 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
             models.SensorData.device_id == internal_device_id
         ).count()
 
-    # Only generate a forecast every 5 scans
-    if new_scans_count < 5:
+    # Only generate a forecast every 3 scans
+    if new_scans_count < 3:
         return
 
-    # Fetch up to the last 5 sensor readings
+    # Fetch up to the last 3 sensor readings
     sensor_rows = (
         db.query(models.SensorData)
         .filter(models.SensorData.device_id == internal_device_id)
         .order_by(models.SensorData.timestamp.desc())
-        .limit(5)
+        .limit(3)
         .all()
     )
 
