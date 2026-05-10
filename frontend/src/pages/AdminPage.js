@@ -336,6 +336,15 @@ function TrainingTab() {
     reload();
   };
 
+  const undo_ = async (id) => {
+    await fetch(`${API}/admin/training/samples/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmed_label: null }),
+    });
+    reload();
+  };
+
   const deleteSample = async (id) => {
     await fetch(`${API}/admin/training/samples/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     setConfirm(null); reload();
@@ -398,7 +407,13 @@ function TrainingTab() {
                 {s.has_image && (
                   <div style={{ display: 'flex', gap: '8px', width: '100%', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <select className="admin-label-select" style={{ width: '100%' }} value={currentEdit} onChange={e => setEditing(prev => ({ ...prev, [s.id]: e.target.value }))}>
+                      <select 
+                        className="admin-label-select" 
+                        style={{ width: '100%' }} 
+                        value={currentEdit} 
+                        disabled={s.reviewed}
+                        onChange={e => setEditing(prev => ({ ...prev, [s.id]: e.target.value }))}
+                      >
                         {labelOptsWithCustom.map(l => <option key={l} value={l}>{l}</option>)}
                       </select>
                       {isCustom && (
@@ -407,13 +422,20 @@ function TrainingTab() {
                           placeholder="Enter custom label" 
                           style={{ padding: '6px 10px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 12, width: '100%', boxSizing: 'border-box' }}
                           value={customLabels[s.id] || ''} 
+                          disabled={s.reviewed}
                           onChange={e => setCustomLabels(prev => ({ ...prev, [s.id]: e.target.value }))}
                         />
                       )}
                     </div>
-                    <button className="admin-confirm-btn" style={{ height: 'fit-content' }} onClick={() => confirm_(s.id, currentEdit)}>
-                      <i className="fa-solid fa-check" /> Confirm
-                    </button>
+                    {s.reviewed ? (
+                      <button className="admin-icon-btn" style={{ height: 'fit-content', background: '#21262d', border: '1px solid #30363d', color: '#8b949e', padding: '6px 12px', fontSize: 12, borderRadius: 7 }} onClick={() => undo_(s.id)}>
+                        <i className="fa-solid fa-rotate-left" /> Undo
+                      </button>
+                    ) : (
+                      <button className="admin-confirm-btn" style={{ height: 'fit-content' }} onClick={() => confirm_(s.id, currentEdit)}>
+                        <i className="fa-solid fa-check" /> Confirm
+                      </button>
+                    )}
                     <button className="admin-danger-btn" style={{ height: 'fit-content' }} onClick={() => setConfirm(s.id)}><i className="fa-solid fa-trash" /></button>
                   </div>
                 )}

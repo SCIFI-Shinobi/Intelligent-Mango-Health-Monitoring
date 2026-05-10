@@ -264,9 +264,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(30, 30, 40, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: #000000;
   padding: 16px 20px;
   border-radius: 12px;
   margin-bottom: 24px;
