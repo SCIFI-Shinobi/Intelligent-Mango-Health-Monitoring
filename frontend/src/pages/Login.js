@@ -50,7 +50,11 @@ function Login() {
 
       const data = await response.json();
       login(data.access_token);
-      navigate("/dashboard");
+      if (username === 'admin') {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err) {
       setError(t('auth', 'serverError'));
     } finally {

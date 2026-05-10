@@ -551,20 +551,7 @@ export default function AdminPage() {
 
   return (
     <div className="admin-page">
-      <div className="admin-page-header">
-        <div>
-          <p className="settings-page-eyebrow"><i className="fa-solid fa-shield-halved" style={{ marginRight: 6 }} />Admin Panel</p>
-          <h2 className="settings-page-title">System Management</h2>
-        </div>
-      </div>
-      <div className="admin-tab-bar">
-        {TABS.map(t => (
-          <button key={t.id} className={`admin-tab-btn ${activeTab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
-            <i className={`fa-solid ${t.icon}`} /> {t.label}
-          </button>
-        ))}
-      </div>
-      <div className="admin-tab-content">
+      <div className="admin-tab-content" style={{ marginTop: 10 }}>
         {activeTab === 'users'    && <UsersTab />}
         {activeTab === 'scans'    && <ScansTab />}
         {activeTab === 'training' && <TrainingTab />}

@@ -247,7 +247,6 @@ export default function Navbar({ activeTab }) {
             { id: 'scans',    path: '/admin?tab=scans',    labelKey: 'scans',    icon: 'fa-clipboard-list' },
             { id: 'training', path: '/admin?tab=training', labelKey: 'training', icon: 'fa-flask' },
             { id: 'settings', path: '/admin?tab=settings', labelKey: 'settings', icon: 'fa-gears' },
-            { id: 'back',     path: '/dashboard',          labelKey: 'exitAdmin', icon: 'fa-right-from-bracket' },
           ]
         : [
             { id: 'admin', path: '/admin', labelKey: 'admin', icon: 'fa-shield-halved' },
