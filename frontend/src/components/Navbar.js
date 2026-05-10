@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback, useContext } from 'rea
 import { NavLink } from 'react-router-dom';
 import MangoLeafLogo from './MangoLeafLogo';
 import ProfileDropdown from './ProfileDropdown';
-import ScanUploadModal from './ScanUploadModal';
 import { formatTimeAgo } from '../utils/formatTime';
 import { useLanguage } from '../context/LanguageContext';
 import { AuthContext } from '../context/AuthContext';
@@ -30,7 +29,6 @@ const NOTIF_COLORS = {
 export default function Navbar({ activeTab }) {
   const { lang, switchLang, t } = useLanguage();
   const { user } = useContext(AuthContext);
-  const [showQuickScan, setShowQuickScan] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);

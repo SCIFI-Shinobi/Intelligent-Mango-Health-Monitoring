@@ -20,7 +20,6 @@ export default function ScanUploadModal({ onClose, currentSensorData }) {
   const [usingCamera, setUsingCamera] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [capturedFromCamera, setCapturedFromCamera] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
     if (!selectedFile) {

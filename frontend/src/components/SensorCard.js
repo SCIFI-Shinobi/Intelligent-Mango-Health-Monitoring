@@ -1,5 +1,5 @@
 import React from 'react';
-import { calculateTrend, formatDateEAT } from '../utils/formatTime';
+import { calculateTrend } from '../utils/formatTime';
 import { MdOutlineThermostat, MdOpacity, MdWaterDrop } from 'react-icons/md';
 
 export default function SensorCard({ name, value, unit, previousValue, icon, loading, subtitle, updatedAt, statusLabel, statusClass = 'live', lastScanTimestamp, lang = 'en' }) {
