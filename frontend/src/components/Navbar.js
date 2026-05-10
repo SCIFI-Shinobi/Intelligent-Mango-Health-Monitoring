@@ -243,12 +243,14 @@ export default function Navbar({ activeTab }) {
   const navLinks = user?.username === 'admin'
     ? (isAdminPath 
         ? [
+            { id: 'dashboard', path: '/dashboard',          labelKey: 'dashboard', icon: 'fa-house' },
             { id: 'users',    path: '/admin?tab=users',    labelKey: 'users',    icon: 'fa-users' },
             { id: 'scans',    path: '/admin?tab=scans',    labelKey: 'scans',    icon: 'fa-clipboard-list' },
             { id: 'training', path: '/admin?tab=training', labelKey: 'training', icon: 'fa-flask' },
             { id: 'settings', path: '/admin?tab=settings', labelKey: 'settings', icon: 'fa-gears' },
           ]
         : [
+            { id: 'home', path: '/dashboard', labelKey: 'dashboard', icon: 'fa-house' },
             { id: 'admin', path: '/admin', labelKey: 'admin', icon: 'fa-shield-halved' },
             { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders' },
           ])
