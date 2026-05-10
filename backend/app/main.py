@@ -356,6 +356,27 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 DEFAULT_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 DEFAULT_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 
+@app.on_event("startup")
+def ensure_admin_user_exists():
+    db = database.SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.username == DEFAULT_USERNAME).first()
+        if not user:
+            print(f"[setup] Creating default admin user: {DEFAULT_USERNAME}")
+            user = models.User(
+                username=DEFAULT_USERNAME,
+                password=pwd_context.hash(DEFAULT_PASSWORD),
+                email="",
+                notification_emails_enabled=False,
+                disease_confidence_threshold=70
+            )
+            db.add(user)
+            db.commit()
+    except Exception as e:
+        print(f"[setup] Failed to ensure admin user: {e}")
+    finally:
+        db.close()
+
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
