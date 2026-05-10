@@ -31,17 +31,29 @@ SERIAL_BAUD    = 115200
 
 lcd_lock = threading.Lock()
 current_scroll_text = ""
+_offline_notice_until = 0.0   # epoch time until which we show the offline notice
+_last_recommendation   = ""   # recommendation to restore after offline notice expires
 
 
 def scroll_lcd_task():
     """Continuously scrolls long text on LCD line 2."""
-    global current_scroll_text
+    global current_scroll_text, _offline_notice_until, _last_recommendation
     while True:
-        text = current_scroll_text
+        # If an offline notice is active, show it; restore recommendation when it expires
+        now = time.time()
+        if _offline_notice_until > now:
+            text = "Offline - No Net"
+        else:
+            if current_scroll_text == "Offline - No Net":
+                # Notice just expired — restore the last recommendation
+                current_scroll_text = _last_recommendation
+            text = current_scroll_text
+
         if len(text) > 16:
             padded_text = text + " *** "
             for i in range(len(padded_text)):
-                if current_scroll_text != text:
+                # Abort scroll early if state changed
+                if current_scroll_text != text and _offline_notice_until <= time.time():
                     break
                 display_text = (padded_text[i:] + padded_text[:i])[:16]
                 with lcd_lock:
@@ -109,16 +121,18 @@ def upload_scan(disease_type: str, confidence: float, temp: float, hum: float,
 
     success = _post(payload)
 
-    global current_scroll_text
+    global current_scroll_text, _offline_notice_until, _last_recommendation
     if success:
         logging.info("Upload successful")
-        # Keep the Nano's recommendation on screen after upload
+        # Clear any lingering offline notice immediately on reconnect
+        _offline_notice_until = 0.0
+        # Keep the Nano's recommendation on screen
     else:
-        # Show offline hint briefly — Nano still displayed locally
-        current_scroll_text = "Offline - No Net"
+        # Show offline hint for 3 s — non-blocking, scroll_lcd_task handles timing
         logging.warning("Running in offline mode - scan displayed locally only.")
-        time.sleep(3)
-        current_scroll_text = recommendation_en
+        _last_recommendation  = recommendation_en
+        _offline_notice_until = time.time() + 3.0
+        current_scroll_text   = "Offline - No Net"
 
 
 def handle_line(line: str) -> None:

@@ -194,19 +194,34 @@ public:
         out.disease        = disease;
         out.risk_level     = env.risk_level;
 
-        if (disease == DiseaseType::ANTHRACNOSE || disease == DiseaseType::POWDERY_MILDEW) {
+        if (disease == DiseaseType::ANTHRACNOSE) {
             switch (env.risk_level) {
             case RiskLevel::LOW:
-                out.category_en = "Watch and Keep Your Farm Clean";
-                out.category_am = "ተቆጣጠር እና እርሻህን ንጹህ አድርግ";
+                out.category_en = "Monitor & clear fallen leaves";
+                out.category_am = "ተቆጣጠር እና የረገፉ ቅጠሎችን አጽዳ";
                 break;
             case RiskLevel::MEDIUM:
-                out.category_en = "Spray Now to Prevent Spread";
-                out.category_am = "እንዳይዛመት አሁኑኑ ርጭት አድርግ";
+                out.category_en = "Apply copper-based fungicide";
+                out.category_am = "በመዳብ የተሰራ ጸረ-ፈንገስ ርጭት አድርግ";
                 break;
             case RiskLevel::HIGH:
-                out.category_en = "URGENT - Treat Your Trees Today";
-                out.category_am = "አስቸኳይ - ዛፎችህን ዛሬውኑ አክም";
+                out.category_en = "URGENT: Prune & apply systemic fungicide";
+                out.category_am = "አስቸኳይ: ቅርንጫፎችን ቁረጥ እና ጸረ-ፈንገስ ርጭት አድርግ";
+                break;
+            }
+        } else if (disease == DiseaseType::POWDERY_MILDEW) {
+            switch (env.risk_level) {
+            case RiskLevel::LOW:
+                out.category_en = "Ensure good airflow & reduce shade";
+                out.category_am = "ጥሩ አየር እንዲገባ አድርግ እና ጥላን ቀንስ";
+                break;
+            case RiskLevel::MEDIUM:
+                out.category_en = "Apply sulfur or neem oil spray";
+                out.category_am = "የዲን ወይም የኒም ዘይት ርጭት አድርግ";
+                break;
+            case RiskLevel::HIGH:
+                out.category_en = "URGENT: Use potassium bicarbonate & prune";
+                out.category_am = "አስቸኳይ: ፖታሲየም ባይካርቦኔት ተጠቀም እና ቁረጥ";
                 break;
             }
         } else {
@@ -463,15 +478,22 @@ void run_automated_scan(void) {
     // Send result over Serial USB to Raspberry Pi
     serial_send_scan(best_label, best_confidence, temp, hum, out.category_en.c_str(), out.category_am.c_str());
 
+    // Always reset LED first, then set final state based on this scan's result
+    digitalWrite(LED_RED_PIN, LOW);
+
     if (dType != DiseaseType::HEALTHY && best_confidence >= 0.70f) {
-        digitalWrite(LED_RED_PIN, HIGH); // Turn ON LED and leave it ON
+        digitalWrite(LED_RED_PIN, HIGH); // Diseased & high confidence — LED ON
         for (int i = 0; i < 3; i++) {
-            digitalWrite(BUZZER_PIN, HIGH); delay(500); // Longer beep so it's easier to hear
+            digitalWrite(BUZZER_PIN, HIGH); delay(500);
             digitalWrite(BUZZER_PIN, LOW);  delay(300);
         }
-    } else {
-        digitalWrite(LED_RED_PIN, LOW); // Turn OFF LED if healthy
+        digitalWrite(BUZZER_PIN, LOW); // Ensure buzzer is off after sequence
+    } else if (dType == DiseaseType::HEALTHY) {
+        // Single short confirmation beep for healthy scan
+        digitalWrite(BUZZER_PIN, HIGH); delay(150);
+        digitalWrite(BUZZER_PIN, LOW);
     }
+    // Low-confidence disease: LED stays off, no beep (ambiguous result)
 }
 
 /* =========================================================================
