@@ -1315,27 +1315,24 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
     TFLite forecast model.  Persists the result into ForecastContext / ForecastData
     using the same shape the frontend already reads from /forecast/latest.
     """
+    # Fetch up to the last 5 sensor readings
     sensor_rows = (
         db.query(models.SensorData)
         .filter(models.SensorData.device_id == internal_device_id)
         .order_by(models.SensorData.timestamp.desc())
-        .limit(FORECAST_MIN_READINGS)
+        .limit(5)
         .all()
     )
 
     if not sensor_rows:
         return
 
-    # oldest first so the model sees the time series in order
-    readings = [
-        {"temperature": row.temperature, "humidity": row.humidity}
-        for row in reversed(sensor_rows)
-    ]
+    # Calculate average temperature and humidity of the last up to 5 scans
+    avg_temp = sum(row.temperature for row in sensor_rows) / len(sensor_rows)
+    avg_humidity = sum(row.humidity for row in sensor_rows) / len(sensor_rows)
 
-    # Pad readings to 24 for immediate forecasting during demos
-    if len(readings) < FORECAST_MIN_READINGS:
-        pad_count = FORECAST_MIN_READINGS - len(readings)
-        readings = [readings[0]] * pad_count + readings
+    # Pad to 24 readings using the average values
+    readings = [{"temperature": avg_temp, "humidity": avg_humidity}] * FORECAST_MIN_READINGS
 
     result = forecast_service.run_forecast(readings)
     label = result["label"]
@@ -1344,7 +1341,7 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
 
     print(
         f"[forecast_auto] {internal_device_id}: {label} ({confidence*100:.1f}%) "
-        f"model_loaded={model_loaded}"
+        f"model_loaded={model_loaded} (using avg temp {avg_temp:.1f}, hum {avg_humidity:.1f})"
     )
 
     context = db.query(models.ForecastContext).filter(
@@ -1361,11 +1358,12 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
     else:
         context.timestamp = server_now
 
+    # Use the actual timestamp for the log instead of a fake future day
     new_forecast = models.ForecastData(
         device_id=internal_device_id,
         day_index=0,
         risk_level=label,
-        forecast_date=server_now + timedelta(days=1),
+        forecast_date=server_now,
         context_id=context.id,
     )
     db.add(new_forecast)
@@ -1387,10 +1385,9 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
             ~models.ForecastData.id.in_(keep_ids)
         ).delete(synchronize_session=False)
 
-    # Rewrite dates so they appear as consecutive future days (Day 1 to Day N) for the demo
+    # Maintain day_index for UI mapping (0 to N), but DO NOT rewrite the forecast_date
     records_to_keep.reverse() # Oldest first
     for idx, rec in enumerate(records_to_keep):
-        rec.forecast_date = server_now + timedelta(days=idx + 1)
         rec.day_index = idx
 
     db.flush()
