@@ -4,6 +4,8 @@ import secrets
 import smtplib
 import traceback
 import time
+import io
+import zipfile
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from passlib.context import CryptContext
@@ -24,6 +26,11 @@ from .disease_labels import normalize_disease_type as normalize_disease_label
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
+
+# Ensure training samples directory exists
+import pathlib
+TRAINING_SAMPLES_DIR = pathlib.Path(__file__).parent.parent / "training_samples"
+TRAINING_SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def ensure_user_settings_columns():
@@ -374,6 +381,27 @@ def ensure_admin_user_exists():
             db.commit()
     except Exception as e:
         print(f"[setup] Failed to ensure admin user: {e}")
+    finally:
+        db.close()
+
+@app.on_event("startup")
+def ensure_default_settings_exist():
+    db = database.SessionLocal()
+    try:
+        defaults = [
+            {"key": "maintenance_mode", "value": "false", "description": "Put the system in a read-only state for users."},
+            {"key": "global_alerts_enabled", "value": "true", "description": "Enable or disable all outgoing email alerts."},
+            {"key": "registration_enabled", "value": "true", "description": "Allow new users to create accounts."},
+        ]
+        for d in defaults:
+            exists = db.query(models.SystemSetting).filter(models.SystemSetting.key == d["key"]).first()
+            if not exists:
+                print(f"[setup] Creating default setting: {d['key']}")
+                setting = models.SystemSetting(**d)
+                db.add(setting)
+        db.commit()
+    except Exception as e:
+        print(f"[setup] Failed to ensure default settings: {e}")
     finally:
         db.close()
 
@@ -2478,11 +2506,6 @@ def delete_device(
 # Admin helpers
 # ------------------------------------------------------------------
 
-import io
-import zipfile
-import pathlib
-
-TRAINING_SAMPLES_DIR = pathlib.Path(__file__).parent.parent / "training_samples"
 
 def require_admin(user: models.User = Depends(get_current_user)):
     """FastAPI dependency — 403 for any non-admin caller."""
@@ -2506,11 +2529,21 @@ def _save_training_image(image_bytes: bytes, label: str, sample_id: int) -> str:
 
 @app.get("/admin/users")
 def admin_list_users(
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     _: models.User = Depends(require_admin),
 ):
-    """List every registered user with scan counts."""
-    users = db.query(models.User).order_by(models.User.created_at.desc()).all()
+    """List every registered user with scan counts and search."""
+    query = db.query(models.User)
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (models.User.username.ilike(search_term)) | 
+            (models.User.email.ilike(search_term)) | 
+            (models.User.display_name.ilike(search_term))
+        )
+    
+    users = query.order_by(models.User.created_at.desc()).all()
     result = []
     for u in users:
         device_ids = get_user_scoped_device_ids(db, u.id)
@@ -2580,6 +2613,32 @@ def admin_delete_user(
     db.delete(target)
     db.commit()
     return {"status": "ok", "deleted_user_id": user_id}
+
+
+@app.put("/admin/users/{user_id}")
+def admin_update_user(
+    user_id: int,
+    payload: schemas.UserProfileUpdate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Admin-only: Update any user's profile details."""
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if payload.display_name is not None:
+        target.display_name = payload.display_name
+    if payload.email is not None:
+        target.email = payload.email
+    if payload.notification_emails_enabled is not None:
+        target.notification_emails_enabled = payload.notification_emails_enabled
+    if payload.disease_confidence_threshold is not None:
+        target.disease_confidence_threshold = payload.disease_confidence_threshold
+    
+    db.commit()
+    db.refresh(target)
+    return target
 
 
 # ------------------------------------------------------------------
@@ -2793,6 +2852,60 @@ def admin_update_training_sample(
     sample.reviewed = True
     db.commit()
     return {"status": "ok", "id": sample_id, "confirmed_label": payload.confirmed_label}
+
+
+# ------------------------------------------------------------------
+# Admin — Global Settings
+# ------------------------------------------------------------------
+
+@app.get("/admin/settings")
+def admin_list_settings(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """List all global system settings."""
+    settings = db.query(models.SystemSetting).all()
+    return {"data": settings}
+
+
+@app.patch("/admin/settings/{key}")
+def admin_update_setting(
+    key: str,
+    payload: schemas.SystemSettingUpdate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Update a specific global system setting."""
+    setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting not found")
+    
+    setting.value = payload.value
+    db.commit()
+    return {"status": "ok", "key": key, "value": setting.value}
+
+
+@app.get("/admin/stats")
+def admin_get_stats(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Get system-wide statistics for the admin dashboard."""
+    user_count = db.query(models.User).count()
+    device_count = db.query(models.Device).count()
+    scan_count = db.query(models.InferenceResult).count()
+    training_samples = db.query(models.TrainingSample).count()
+    
+    # Simple uptime calculation
+    uptime_seconds = int(time.time() - APP_STARTED_AT)
+    
+    return {
+        "users": user_count,
+        "devices": device_count,
+        "scans": scan_count,
+        "samples": training_samples,
+        "uptime": uptime_seconds,
+    }
 
 
 from fastapi.responses import FileResponse

@@ -115,3 +115,14 @@ class TrainingSample(Base):
     reviewed         = Column(Boolean, default=False)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
+
+class SystemSetting(Base):
+    """Global system-wide settings for administrators."""
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True)
+    value = Column(String)  # Store as string or JSON string
+    description = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+

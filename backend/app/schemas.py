@@ -214,3 +214,15 @@ class UserProfileUpdate(BaseModel):
 class PasswordChangeRequest(BaseModel):
     current_password: str
     new_password: str
+
+class SystemSettingOut(BaseModel):
+    key: str
+    value: str
+    description: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class SystemSettingUpdate(BaseModel):
+    value: str

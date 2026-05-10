@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import MangoLeafLogo from './MangoLeafLogo';
 import ProfileDropdown from './ProfileDropdown';
 import { formatTimeAgo } from '../utils/formatTime';
@@ -237,11 +237,22 @@ export default function Navbar({ activeTab }) {
     }
   };
 
+  const location = useLocation();
+  const isAdminPath = location.pathname.startsWith('/admin');
+
   const navLinks = user?.username === 'admin'
-    ? [
-        { id: 'admin', path: '/admin', labelKey: 'admin', icon: 'fa-shield-halved' },
-        { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders' },
-      ]
+    ? (isAdminPath 
+        ? [
+            { id: 'users',    path: '/admin?tab=users',    labelKey: 'users',    icon: 'fa-users' },
+            { id: 'scans',    path: '/admin?tab=scans',    labelKey: 'scans',    icon: 'fa-clipboard-list' },
+            { id: 'training', path: '/admin?tab=training', labelKey: 'training', icon: 'fa-flask' },
+            { id: 'settings', path: '/admin?tab=settings', labelKey: 'settings', icon: 'fa-gears' },
+            { id: 'back',     path: '/dashboard',          labelKey: 'exitAdmin', icon: 'fa-right-from-bracket' },
+          ]
+        : [
+            { id: 'admin', path: '/admin', labelKey: 'admin', icon: 'fa-shield-halved' },
+            { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders' },
+          ])
     : [
         { id: 'home', path: '/dashboard', labelKey: 'dashboard', icon: 'fa-house' },
         { id: 'analysis', path: '/analysis', labelKey: 'analysis', icon: 'fa-chart-line' },
@@ -257,7 +268,10 @@ export default function Navbar({ activeTab }) {
     <div className="navbar">
       <div className="navbar-left">
         <MangoLeafLogo size={36} />
-        <span className="app-title">MangoGuard</span>
+        <div className="logo-text-group">
+          <span className="app-title">MangoGuard</span>
+          {isAdminPath && <span className="admin-panel-badge">Admin Panel</span>}
+        </div>
       </div>
 
       <div className="navbar-center">
@@ -265,10 +279,10 @@ export default function Navbar({ activeTab }) {
           <NavLink
             key={link.id}
             to={link.path}
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            className={({ isActive }) => `nav-link ${isActive || (isAdminPath && new URLSearchParams(location.search).get('tab') === link.id) ? 'active' : ''}`}
           >
             <i className={`fa-solid ${link.icon}`}></i>
-            <span>{t('nav', link.labelKey)}</span>
+            <span>{t('nav', link.labelKey) || link.labelKey.charAt(0).toUpperCase() + link.labelKey.slice(1)}</span>
           </NavLink>
         ))}
       </div>
