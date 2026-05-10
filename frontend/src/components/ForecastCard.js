@@ -76,6 +76,15 @@ export default function ForecastCard({ forecast, loading }) {
     if (day?.date) {
       const parsed = new Date(day.date);
       if (!Number.isNaN(parsed.getTime())) {
+        const now = new Date();
+        const isToday = parsed.getDate() === now.getDate() && parsed.getMonth() === now.getMonth() && parsed.getFullYear() === now.getFullYear();
+
+        if (isToday) {
+          const timeStr = parsed.toLocaleTimeString(forecastLocale, { hour: 'numeric', minute: '2-digit' });
+          const parts = timeStr.split(' ');
+          return { dayName: parts[0], dayNum: parts[1] || '' };
+        }
+
         const dayName = parsed.toLocaleDateString(forecastLocale, { weekday: 'short' });
         const dayNum = parsed.getDate();
         return { dayName, dayNum };
