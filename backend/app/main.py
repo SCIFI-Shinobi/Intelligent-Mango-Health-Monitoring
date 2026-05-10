@@ -1323,11 +1323,7 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
         .all()
     )
 
-    if len(sensor_rows) < FORECAST_MIN_READINGS:
-        print(
-            f"[forecast_auto] {internal_device_id}: only {len(sensor_rows)}/{FORECAST_MIN_READINGS} "
-            "readings — skipping forecast."
-        )
+    if not sensor_rows:
         return
 
     # oldest first so the model sees the time series in order
@@ -1335,6 +1331,11 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
         {"temperature": row.temperature, "humidity": row.humidity}
         for row in reversed(sensor_rows)
     ]
+
+    # Pad readings to 24 for immediate forecasting during demos
+    if len(readings) < FORECAST_MIN_READINGS:
+        pad_count = FORECAST_MIN_READINGS - len(readings)
+        readings = [readings[0]] * pad_count + readings
 
     result = forecast_service.run_forecast(readings)
     label = result["label"]
