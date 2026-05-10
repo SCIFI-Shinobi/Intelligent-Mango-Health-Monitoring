@@ -117,6 +117,8 @@ def upload_scan(disease_type: str, confidence: float, temp: float, hum: float,
         # Show offline hint briefly — Nano still displayed locally
         current_scroll_text = "Offline - No Net"
         logging.warning("Running in offline mode - scan displayed locally only.")
+        time.sleep(3)
+        current_scroll_text = recommendation_en
 
 
 def handle_line(line: str) -> None:

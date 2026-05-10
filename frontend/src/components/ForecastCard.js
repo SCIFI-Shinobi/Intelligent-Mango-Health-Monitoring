@@ -141,7 +141,6 @@ export default function ForecastCard({ forecast, loading }) {
           <span className="legend-item"><span className="legend-dot" style={{ background: '#f85149' }}></span> {t('forecast', 'anthracnoseRisk')}</span>
           <span className="legend-item"><span className="legend-dot" style={{ background: '#d29922' }}></span> {t('forecast', 'mildewRisk')}</span>
         </div>
-        <span className="forecast-source">{t('forecast', 'source')}</span>
       </div>
 
       {forecastDateText && (

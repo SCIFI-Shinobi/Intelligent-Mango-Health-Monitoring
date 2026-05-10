@@ -245,7 +245,7 @@ static std::string riskToStr(RiskLevel r) {
 
 /* Auto-Scan Configuration ------------------------------------------------- */
 static unsigned long lastScanTime = 0;
-const unsigned long scanIntervalMs = 10000; // 10 seconds
+const unsigned long scanIntervalMs = 20000; // 20 seconds
 
 /* Peripheral objects ------------------------------------------------------ */
 DHT               dht(DHTPIN, DHTTYPE);

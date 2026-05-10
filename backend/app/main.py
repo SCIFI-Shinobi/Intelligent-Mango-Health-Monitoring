@@ -1998,11 +1998,11 @@ def get_recommendations_latest(
     user: models.User = Depends(get_current_user)
 ):
     """
-    Get the latest recommendations from manual quick scans.
+    Get the latest recommendations from all user devices (hardware + manual quick scans).
     """
-    virtual_device_id = web_app_device_id(user.id)
+    user_device_ids = get_user_scoped_device_ids(db, user.id)
     recommendations = db.query(models.Recommendation).filter(
-        models.Recommendation.device_id == virtual_device_id
+        models.Recommendation.device_id.in_(user_device_ids)
     ).order_by(models.Recommendation.timestamp.desc()).limit(limit).all()
 
     return {
