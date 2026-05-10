@@ -29,16 +29,34 @@ SERIAL_PORT    = "/dev/ttyACM0"
 SERIAL_BAUD    = 115200
 # =================================================
 
+lcd_lock = threading.Lock()
+current_scroll_text = ""
 
-def is_high_risk_conditions(disease_type: str, temp: float, hum: float) -> bool:
-    if disease_type == "Anthracnose":
-        return 24.0 <= temp <= 30.0 and hum >= 80.0
-    elif disease_type == "Powdery Mildew":
-        return 18.0 <= temp <= 26.0 and hum >= 60.0
-    return False
+
+def scroll_lcd_task():
+    """Continuously scrolls long text on LCD line 2."""
+    global current_scroll_text
+    while True:
+        text = current_scroll_text
+        if len(text) > 16:
+            padded_text = text + " *** "
+            for i in range(len(padded_text)):
+                if current_scroll_text != text:
+                    break
+                display_text = (padded_text[i:] + padded_text[:i])[:16]
+                with lcd_lock:
+                    lcd.print_line(display_text, 2)
+                time.sleep(0.35)
+        elif len(text) > 0:
+            with lcd_lock:
+                lcd.print_line(text.ljust(16), 2)
+            time.sleep(0.5)
+        else:
+            time.sleep(0.5)
 
 
 def _post(payload: dict) -> bool:
+    """Send payload to backend. Returns True on success, False if offline/error."""
     headers = {
         "Content-Type": "application/json",
         "X-Device-Key": DEVICE_API_KEY,
@@ -47,12 +65,21 @@ def _post(payload: dict) -> bool:
         response = requests.post(INGEST_URL, json=payload, headers=headers, timeout=10)
         logging.info(f"Upload response: {response.status_code}")
         return response.status_code == 200
+    except requests.exceptions.ConnectionError:
+        logging.warning("Backend unreachable - operating offline, data not uploaded.")
+        return False
     except Exception as e:
         logging.error(f"Upload error: {e}")
         return False
 
 
-def upload_scan(disease_type: str, confidence: float, temp: float, hum: float, recommendation_en: str, recommendation_am: str) -> None:
+def upload_scan(disease_type: str, confidence: float, temp: float, hum: float,
+                recommendation_en: str, recommendation_am: str) -> None:
+    """
+    Forward the Nano's scan result directly to the backend.
+    The Nano already computed the recommendation — the gateway just passes it through.
+    Offline is handled gracefully: log a warning, show on LCD, no crash.
+    """
     payload = {
         "device_id":        "rpi_gateway_001",
         "temperature":      temp,
@@ -61,12 +88,15 @@ def upload_scan(disease_type: str, confidence: float, temp: float, hum: float, r
         "confidence_score": confidence,
     }
 
-    if disease_type != "Healthy":
-        title_am = "ማስጠንቀቂያ"
+    # Only attach recommendation block for diseased plants.
+    # The text itself came directly from the Nano — no logic here.
+    if disease_type.lower() != "healthy":
         if disease_type == "Anthracnose":
             title_am = "አንትራክኖዝ ማስጠንቀቂያ"
         elif disease_type == "Powdery Mildew":
             title_am = "የዱቄት ሻጋታ ማስጠንቀቂያ"
+        else:
+            title_am = "ማስጠንቀቂያ"
 
         payload["recommendations"] = [{
             "title":          f"{disease_type} Alert",
@@ -77,17 +107,16 @@ def upload_scan(disease_type: str, confidence: float, temp: float, hum: float, r
 
     logging.info(f"Uploading payload: {payload}")
 
-    # Show uploading on LCD while request is in flight
-    lcd.print_line("Uploading...", 2)
-
     success = _post(payload)
 
+    global current_scroll_text
     if success:
-        lcd.print_line("Uploaded OK!", 2)
         logging.info("Upload successful")
+        # Keep the Nano's recommendation on screen after upload
     else:
-        lcd.print_line("Upload Failed!", 2)
-        logging.error("Upload failed")
+        # Show offline hint briefly — Nano still displayed locally
+        current_scroll_text = "Offline - No Net"
+        logging.warning("Running in offline mode - scan displayed locally only.")
 
 
 def handle_line(line: str) -> None:
@@ -120,7 +149,7 @@ def handle_line(line: str) -> None:
                 temp              = float(parts[2])
                 hum               = float(parts[3])
                 recommendation_en = parts[4]
-                recommendation_am = parts[4]
+                recommendation_am = parts[4]  # fallback: same text for both languages
             except ValueError:
                 logging.warning(f"Could not parse SCAN values: {parts}")
                 return
@@ -141,21 +170,21 @@ def handle_line(line: str) -> None:
             logging.warning(f"Malformed SCAN payload: {line}")
             return
 
-        logging.info(f"Scan → {disease_type} ({confidence*100:.1f}%)  T:{temp}°C  H:{hum}%  Rec:{recommendation_en}")
+        logging.info(
+            f"Scan -> {disease_type} ({confidence*100:.1f}%)  "
+            f"T:{temp}C  H:{hum}%  Rec:{recommendation_en}"
+        )
 
         # --- LCD Line 1: disease + temp ---
         short_disease = disease_type[:8] if disease_type != "Powdery Mildew" else "Powdery"
-        lcd.print_line(f"D:{short_disease} T:{int(temp)}C", 1)
+        with lcd_lock:
+            lcd.print_line(f"D:{short_disease} T:{int(temp)}C", 1)
 
-        # --- LCD Line 2: risk level (will be overwritten by upload status shortly after) ---
-        if "URGENT" in recommendation_en:
-            lcd.print_line("!! HIGH RISK !!", 2)
-        elif "Spray Now" in recommendation_en:
-            lcd.print_line("MEDIUM RISK!", 2)
-        else:
-            lcd.print_line("LOW RISK :)", 2)
+        # --- LCD Line 2: scroll the Nano's recommendation ---
+        global current_scroll_text
+        current_scroll_text = recommendation_en
 
-        # Upload in background so serial reading isn't blocked
+        # Upload in background so serial reading is never blocked
         t = threading.Thread(
             target=upload_scan,
             args=(disease_type, confidence, temp, hum, recommendation_en, recommendation_am)
@@ -181,8 +210,10 @@ def run_gateway() -> None:
         try:
             with serial.Serial(port, SERIAL_BAUD, timeout=2) as ser:
                 logging.info(f"Connected to Nano on {port}. Listening...")
-                lcd.print_line("Edge AI Ready", 1)
-                lcd.print_line("Press Button...", 2)
+                with lcd_lock:
+                    lcd.print_line("Edge AI Ready", 1)
+                global current_scroll_text
+                current_scroll_text = "Auto-scan (10s)"
 
                 while True:
                     try:
@@ -211,7 +242,12 @@ def run_gateway() -> None:
 
 
 if __name__ == "__main__":
-    lcd.print_line("Gateway Ready", 1)
-    lcd.print_line("Starting up...", 2)
+    t_scroll = threading.Thread(target=scroll_lcd_task)
+    t_scroll.daemon = True
+    t_scroll.start()
+
+    with lcd_lock:
+        lcd.print_line("Gateway Ready", 1)
+        lcd.print_line("Starting up...", 2)
     time.sleep(1)
     run_gateway()

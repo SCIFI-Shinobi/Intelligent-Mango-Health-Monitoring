@@ -10,7 +10,7 @@ const DISEASE_NAMES = {
   'Die Back': 'dieBack',
 };
 
-export default function DiseaseStatusCard({ detection, loading, freshness }) {
+export default function DiseaseStatusCard({ detection, loading, freshness, scanRecommendation }) {
   const { lang, t } = useLanguage();
 
   if (loading) {
@@ -46,6 +46,15 @@ export default function DiseaseStatusCard({ detection, loading, freshness }) {
   }
 
   const isHealthy = detection.disease_type === 'Healthy';
+
+  // Only show the Nano's scan recommendation when there is an active disease detection
+  const activeRec = !isHealthy && scanRecommendation ? scanRecommendation : null;
+  const recTitle = activeRec
+    ? (lang === 'am' && activeRec.title_am ? activeRec.title_am : activeRec.title)
+    : null;
+  const recDesc = activeRec
+    ? (lang === 'am' && activeRec.description_am ? activeRec.description_am : activeRec.description)
+    : null;
   
   let statusClass = 'optimal';
   if (detection.disease_type === 'Powdery Mildew' || (detection.disease_type && detection.disease_type.toLowerCase().includes('powdery'))) {
@@ -82,6 +91,12 @@ export default function DiseaseStatusCard({ detection, loading, freshness }) {
           {lastUpdatedText && (
             <div className="card-updated-label">
               {t('common', 'lastUpdated')}: {lastUpdatedText}
+            </div>
+          )}
+          {activeRec && (
+            <div className="scan-rec-banner">
+              {recTitle && <span className="scan-rec-title">{recTitle}</span>}
+              {recDesc && <span className="scan-rec-desc">{recDesc}</span>}
             </div>
           )}
         </div>

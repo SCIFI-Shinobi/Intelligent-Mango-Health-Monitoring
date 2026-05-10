@@ -23,6 +23,7 @@ export default function Home() {
   const [detection, setDetection] = useState(null);
   const [sensorLatest, setSensorLatest] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
+  const [scanRecommendation, setScanRecommendation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [forecast, setForecast] = useState(null);
@@ -104,11 +105,18 @@ export default function Home() {
           timestamp: incoming.timestamp || new Date().toISOString()
         });
       }
-      // NOTE: Do NOT update dashboard recommendations from live scan events.
-      // Per-scan recommendations belong only in the scan result modal/card.
-      // General recommendations are refreshed via fetchDashboardData() on scan complete.
+      // Capture the Nano's computed recommendation verbatim from the WS push.
+      // The backend passes it through without modification — no logic here.
+      if (incoming.scan_recommendation) {
+        setScanRecommendation(incoming.scan_recommendation);
+      }
       if (incoming.forecast) {
         setForecast(incoming.forecast);
+      }
+      // Refresh the recommendations panel from DB after each Nano scan
+      // so it stays in sync with what was stored.
+      if (incoming.disease_type) {
+        fetchDashboardData();
       }
     };
 
@@ -165,7 +173,7 @@ export default function Home() {
       )}
       
       <div className={isDesktop ? "top-cards-grid" : "mobile-top-section"}>
-        <DiseaseStatusCard detection={detection} loading={loading} freshness={freshness} />
+        <DiseaseStatusCard detection={detection} loading={loading} freshness={freshness} scanRecommendation={scanRecommendation} />
         <SensorCard
           name={t('sensor', 'temperature')}
           value={formatTemp(sensorLatest?.temperature)}

@@ -969,6 +969,42 @@ body {
   max-width: 28ch;
 }
 
+/* Nano-computed scan recommendation shown inside the disease card */
+.scan-rec-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.22);
+  border-left: 3px solid rgba(255, 255, 255, 0.55);
+  border-radius: 0 8px 8px 0;
+  backdrop-filter: blur(4px);
+  max-width: 30ch;
+  animation: fadeInBanner 0.4s ease;
+}
+
+@keyframes fadeInBanner {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.scan-rec-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.scan-rec-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.4;
+}
+
+
+
 .status-pill,
 .mini-status-pill {
   display: inline-flex;

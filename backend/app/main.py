@@ -1006,7 +1006,12 @@ async def ingest_device_payload(
 
     db.commit()
 
-    dashboard_payload = build_dashboard_payload(persisted["sensor"], persisted["detection"], db)
+    dashboard_payload = build_dashboard_payload(
+        persisted["sensor"],
+        persisted["detection"],
+        db,
+        scan_recommendation_ids=persisted["recommendation_ids"],
+    )
     await broadcast_to_clients(dashboard_payload, owner_id=owner_id)
 
     return {
@@ -1037,8 +1042,20 @@ async def ingest_device_payload(
     }
 
 
-def build_dashboard_payload(sensor, inference, db: Session) -> dict:
-    """Build the JSON payload the frontend Dashboard expects."""
+def build_dashboard_payload(
+    sensor,
+    inference,
+    db: Session,
+    *,
+    scan_recommendation_ids: Optional[list[int]] = None,
+) -> dict:
+    """
+    Build the JSON payload the frontend Dashboard expects.
+
+    scan_recommendation_ids — IDs of Recommendation rows just persisted from the
+    Nano's serial payload. When provided, the Nano's text is used verbatim as
+    scan_recommendation. The backend never regenerates recommendation text.
+    """
     normalized_disease_type = normalize_disease_type(inference.disease_type)
     risk = logic.evaluate_risk(normalized_disease_type, sensor.temperature, sensor.humidity)
     forecast_alert = logic.get_forecast_alert(sensor.temperature, sensor.humidity)
@@ -1054,29 +1071,39 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
     health_map = {"LOW RISK": "OPTIMAL", "MEDIUM RISK": "WARNING", "HIGH RISK": "CRITICAL"}
     health = health_map.get(risk["risk_level"], "OPTIMAL")
 
-    recommendations = []
-    if normalized_disease_type != "Healthy":
-        bilingual_recommendation = logic.get_recommendation_bilingual(
-            normalized_disease_type,
-            risk["risk_level"],
-        )
-        recommendations.append({
-            "title": bilingual_recommendation["title_en"],
-            "description": bilingual_recommendation["description_en"],
-            "desc": bilingual_recommendation["description_en"],
-            "title_am": bilingual_recommendation["title_am"],
-            "description_am": bilingual_recommendation["description_am"],
-            "timestamp": inference.timestamp.isoformat() if inference.timestamp else None,
-        })
-    if forecast_alert and "High Risk" in forecast_alert:
-        recommendations.append({
-            "title": "Forecast Alert",
-            "description": forecast_alert,
-            "desc": forecast_alert,
-            "timestamp": inference.timestamp.isoformat() if inference.timestamp else None,
-        })
+    # ── Scan-specific recommendation ─────────────────────────────────────────
+    # Use the recommendation the Nano already computed and stored in the DB.
+    # The backend does NOT regenerate or override this text.
+    scan_recommendation = None
+    if scan_recommendation_ids:
+        rec_record = db.query(models.Recommendation).filter(
+            models.Recommendation.id == scan_recommendation_ids[0]
+        ).first()
+        if rec_record:
+            scan_recommendation = {
+                "title":          rec_record.title,
+                "description":    rec_record.description,
+                "desc":           rec_record.description,
+                "title_am":       rec_record.title_am,
+                "description_am": rec_record.description_am,
+                "timestamp":      rec_record.timestamp.isoformat() if rec_record.timestamp else None,
+            }
+    elif normalized_disease_type != "Healthy":
+        # Fallback only when no Nano recommendation was stored (legacy / web-scan path)
+        latest_stored = db.query(models.Recommendation).filter(
+            models.Recommendation.device_id == inference.device_id
+        ).order_by(models.Recommendation.timestamp.desc()).first()
+        if latest_stored:
+            scan_recommendation = {
+                "title":          latest_stored.title,
+                "description":    latest_stored.description,
+                "desc":           latest_stored.description,
+                "title_am":       latest_stored.title_am,
+                "description_am": latest_stored.description_am,
+                "timestamp":      latest_stored.timestamp.isoformat() if latest_stored.timestamp else None,
+            }
 
-    # Dashboard Recommendations section should only show general tips
+    # ── General tips for the dashboard Recommendations panel ─────────────────
     now_str = (inference.timestamp if inference.timestamp else datetime.now(timezone.utc)).isoformat()
     latest_recommendations = [
         {
@@ -1093,17 +1120,19 @@ def build_dashboard_payload(sensor, inference, db: Session) -> dict:
     latest_forecast = get_latest_forecast_for_device(db, inference.device_id)
 
     return {
-        "temperature": sensor.temperature,
-        "humidity": sensor.humidity,
-        "moisture": round(sensor.humidity * 0.85, 1),  # derived estimate
-        "health": health,
-        "stability": stability,
-        "disease_type": normalized_disease_type,
-        "confidence_score": inference.confidence_score,
-        "risk_level": risk["risk_level"],
-        "recommendations": latest_recommendations,
-        "forecast": latest_forecast,
-        "timestamp": inference.timestamp.isoformat() if inference.timestamp else None,
+        "temperature":       sensor.temperature,
+        "humidity":          sensor.humidity,
+        "moisture":          round(sensor.humidity * 0.85, 1),  # derived estimate
+        "health":            health,
+        "stability":         stability,
+        "disease_type":      normalized_disease_type,
+        "confidence_score":  inference.confidence_score,
+        "risk_level":        risk["risk_level"],
+        "scan_recommendation": scan_recommendation,   # Nano-computed, verbatim
+        "recommendations":   latest_recommendations,  # general tips panel
+        "forecast_alert":    forecast_alert if (forecast_alert and "High Risk" in forecast_alert) else None,
+        "forecast":          latest_forecast,
+        "timestamp":         inference.timestamp.isoformat() if inference.timestamp else None,
     }
 
 

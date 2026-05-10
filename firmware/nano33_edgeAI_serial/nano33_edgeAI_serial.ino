@@ -240,13 +240,12 @@ static std::string riskToStr(RiskLevel r) {
 
 #define DHTPIN        12
 #define DHTTYPE       DHT22
-#define BUZZER_PIN    A6
-#define LED_RED_PIN   11
+#define BUZZER_PIN    11
+#define LED_RED_PIN   A6
 
-/* Button (TinyML Shield D13) --------------------------------------------- */
-#define BUTTON_PIN    13
-static bool          btnLastState  = HIGH;  // INPUT_PULLUP idles HIGH
-static unsigned long btnDebounceMs = 0;
+/* Auto-Scan Configuration ------------------------------------------------- */
+static unsigned long lastScanTime = 0;
+const unsigned long scanIntervalMs = 10000; // 10 seconds
 
 /* Peripheral objects ------------------------------------------------------ */
 DHT               dht(DHTPIN, DHTTYPE);
@@ -341,7 +340,6 @@ void setup()
     digitalWrite(BUZZER_PIN, LOW);
     pinMode(LED_RED_PIN, OUTPUT);
     digitalWrite(LED_RED_PIN, LOW);
-    pinMode(BUTTON_PIN, INPUT_PULLUP);  // TinyML shield button
 
     dht.begin();
     Wire.begin();
@@ -357,7 +355,7 @@ void setup()
         Serial.println("Offline Mode");
     }
 
-    Serial.println("Serial USB ready. Press D13 button or send 'scan' command.");
+    Serial.println("Serial USB ready. Auto-scanning every 10 seconds or send 'scan' command.");
 }
 
 /**
@@ -375,21 +373,11 @@ void loop()
         }
     }
 
-    // ── Physical button on D13 (HIGH → LOW edge, 50 ms debounce) ─────────────
-    bool btnNow = (bool)digitalRead(BUTTON_PIN);
-    if (btnLastState == HIGH && btnNow == LOW) {
-        // Falling edge detected – start debounce window
-        btnDebounceMs = millis();
-    }
-    if (btnNow == LOW && btnLastState == LOW &&
-        (millis() - btnDebounceMs) >= 50UL) {
-        // Confirmed press – run scan
+    // ── Periodic Auto-Scan (every 10 seconds) ────────────────────────────────
+    if (millis() - lastScanTime >= scanIntervalMs) {
+        lastScanTime = millis();
         run_automated_scan();
-        // Wait for button release so the press is not repeated
-        while (digitalRead(BUTTON_PIN) == LOW) { delay(10); }
-        btnNow = HIGH;
     }
-    btnLastState = btnNow;
 
     delay(10);
 }
@@ -476,12 +464,13 @@ void run_automated_scan(void) {
     serial_send_scan(best_label, best_confidence, temp, hum, out.category_en.c_str(), out.category_am.c_str());
 
     if (dType != DiseaseType::HEALTHY && best_confidence >= 0.70f) {
-        digitalWrite(LED_RED_PIN, HIGH);
+        digitalWrite(LED_RED_PIN, HIGH); // Turn ON LED and leave it ON
         for (int i = 0; i < 3; i++) {
-            digitalWrite(BUZZER_PIN, HIGH); delay(200);
-            digitalWrite(BUZZER_PIN, LOW);  delay(200);
+            digitalWrite(BUZZER_PIN, HIGH); delay(500); // Longer beep so it's easier to hear
+            digitalWrite(BUZZER_PIN, LOW);  delay(300);
         }
-        digitalWrite(LED_RED_PIN, LOW);
+    } else {
+        digitalWrite(LED_RED_PIN, LOW); // Turn OFF LED if healthy
     }
 }
 
