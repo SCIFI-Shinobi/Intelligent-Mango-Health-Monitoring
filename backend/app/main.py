@@ -1324,7 +1324,7 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
     if last_forecast:
         new_scans_count = db.query(models.SensorData).filter(
             models.SensorData.device_id == internal_device_id,
-            models.SensorData.timestamp > last_forecast.forecast_date
+            models.SensorData.timestamp > last_forecast.created_at
         ).count()
     else:
         new_scans_count = db.query(models.SensorData).filter(
