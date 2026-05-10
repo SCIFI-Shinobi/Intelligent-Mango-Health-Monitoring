@@ -5,6 +5,7 @@ import { AuthContext } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
 const API = getApiBaseUrl();
+const DISEASE_OPTS = ['All', 'Healthy', 'Anthracnose', 'Powdery Mildew'];
 const LABEL_OPTS = ['Healthy', 'Anthracnose', 'Powdery Mildew'];
 const DEVICE_ONLINE_MS = 5 * 60 * 1000;
 
@@ -35,12 +36,12 @@ function Badge({ label }) {
 function ConfirmModal({ message, onConfirm, onCancel }) {
   const { t } = useLanguage();
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 12, padding: 28, maxWidth: 380, width: '90%' }}>
         <p style={{ color: '#e6edf3', marginBottom: 20, fontSize: 15 }}>{message}</p>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} className="admin-cancel-btn">{t('common', 'cancel')}</button>
-          <button onClick={onConfirm} className="admin-primary-btn" style={{ background: '#f85149' }}>{t('settings', 'remove')}</button>
+          <button onClick={onCancel} style={{ padding: '8px 16px', background: '#21262d', border: '1px solid #30363d', borderRadius: 8, color: '#e6edf3', cursor: 'pointer' }}>{t('common', 'cancel')}</button>
+          <button onClick={onConfirm} style={{ padding: '8px 16px', background: '#f85149', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>{t('settings', 'remove')}</button>
         </div>
       </div>
     </div>
@@ -51,7 +52,7 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
 function UserManagementModal({ user, onClose, onUpdate }) {
   const { t } = useLanguage();
   const { token } = useContext(AuthContext);
-  const { data: devicesData, reload: reloadDevices } = useAdminFetch(`/admin/devices`); 
+  const { data: devicesData, reload: reloadDevices } = useAdminFetch(`/admin/devices`); // We'll filter locally
   const [formData, setFormData] = useState({
     display_name: user.display_name || '',
     email: user.email || '',
@@ -82,7 +83,9 @@ function UserManagementModal({ user, onClose, onUpdate }) {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: user.id, device_name: newDeviceName || undefined })
     });
-    setNewDeviceName(''); setShowAddDevice(false); reloadDevices();
+    setNewDeviceName('');
+    setShowAddDevice(false);
+    reloadDevices();
   };
 
   const deleteDevice = async (id) => {
@@ -222,8 +225,8 @@ function UsersTab() {
           <thead><tr><th>{t('auth', 'username')}</th><th>{t('auth', 'email')}</th><th>{t('logs', 'timestamp')}</th><th>{t('logs', 'title')}</th><th>{t('disease', 'lastScan')}</th><th></th></tr></thead>
           <tbody>
             {users.map(u => (
-              <tr key={u.id}>
-                <td onClick={() => setSelectedUser(u)} style={{ cursor: 'pointer' }}>
+              <tr key={u.id} onClick={() => setSelectedUser(u)} style={{ cursor: 'pointer' }}>
+                <td>
                   <div className="admin-user-cell">
                     <div className="admin-avatar-small">{u.display_name?.charAt(0) || u.username.charAt(0)}</div>
                     <span className="admin-username">{u.username}{u.username === 'admin' && <span className="admin-badge">{t('nav', 'admin')}</span>}</span>
@@ -233,18 +236,7 @@ function UsersTab() {
                 <td style={{ color: '#8b949e', fontSize: 12 }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
                 <td><strong>{u.scan_count}</strong></td>
                 <td style={{ color: '#8b949e', fontSize: 12 }}>{u.last_scan_at ? new Date(u.last_scan_at).toLocaleString() : '—'}</td>
-                <td>
-                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    <button className="admin-icon-btn" onClick={() => setSelectedUser(u)} title={t('admin', 'manageUser')}>
-                      <i className="fa-solid fa-user-gear" /> {t('common', 'manage')}
-                    </button>
-                    {u.username !== 'admin' && (
-                      <button className="admin-danger-btn" onClick={() => setConfirm(u)}>
-                        <i className="fa-solid fa-trash" />
-                      </button>
-                    )}
-                  </div>
-                </td>
+                <td>{u.username !== 'admin' && <button className="admin-danger-btn" onClick={(e) => { e.stopPropagation(); setConfirm(u); }}><i className="fa-solid fa-trash" /></button>}</td>
               </tr>
             ))}
           </tbody>
@@ -255,44 +247,71 @@ function UsersTab() {
   );
 }
 
+// ── Scans Tab ─────────────────────────────────────────────────────────────────
 function ScansTab() {
   const { t } = useLanguage();
   const { data: usersData } = useAdminFetch('/admin/users');
   const [filterUser, setFilterUser] = useState('');
   const { data, loading } = useAdminFetch(`/admin/scans${filterUser ? `?user_id=${filterUser}` : ''}`, [filterUser]);
 
-  if (loading && !data) return <div className="admin-loading"><i className="fa-solid fa-spinner fa-spin" /> {t('common', 'loading')}</div>;
+  if (loading && !data) return <div className="admin-loading"><i className="fa-solid fa-spinner fa-spin" /> Loading scans…</div>;
   const scans = data?.data || [];
+  const users = usersData?.data || [];
 
   return (
     <div>
       <div className="admin-action-bar">
         <div className="admin-filter-wrap">
-          <label><i className="fa-solid fa-filter" /> {t('nav', 'unreadOnly').replace('Unread', 'Filter')}</label>
-          <select className="admin-select" value={filterUser} onChange={e => setFilterUser(e.target.value)}>
-            <option value="">{t('nav', 'allItems')}</option>
-            {(usersData?.data || []).map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+          <label>Filter by User:</label>
+          <select value={filterUser} onChange={e => setFilterUser(e.target.value)} className="admin-select">
+            <option value="">All Users</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
           </select>
+        </div>
+        <div className="admin-stat-summary">
+          <span><strong>{scans.length}</strong> Scans Found</span>
         </div>
       </div>
 
       <div className="admin-table-wrap">
         <table className="admin-table">
-          <thead><tr><th>{t('logs', 'diseaseClass')}</th><th>{t('auth', 'username')}</th><th>{t('logs', 'timestamp')}</th><th>{t('logs', 'confidence')}</th><th>{t('logs', 'source')}</th><th>{t('sensor', 'temperature')}</th></tr></thead>
+          <thead><tr><th>{t('logs', 'timestamp')}</th><th>{t('nav', 'users')}</th><th>{t('logs', 'diseaseClass')}</th><th>{t('logs', 'confidence')}</th><th>{t('common', 'deviceName')}</th><th>{t('logs', 'source')}</th></tr></thead>
           <tbody>
             {scans.map(s => (
               <tr key={s.id}>
+                <td style={{ fontSize: 12 }}>{new Date(s.timestamp).toLocaleString()}</td>
+                <td><span className="admin-username">{s.owner_username || `User ${s.user_id}`}</span></td>
                 <td><Badge label={s.disease_type} /></td>
-                <td>{s.owner_username}</td>
-                <td style={{ color: '#8b949e', fontSize: 12 }}>{new Date(s.timestamp).toLocaleString()}</td>
-                <td>{(s.confidence_score * 100).toFixed(0)}%</td>
-                <td><span className="admin-source-tag">{s.source}</span></td>
-                <td style={{ color: '#8b949e' }}>{s.temperature ? `${s.temperature}°C` : '—'}</td>
+                <td><strong>{Math.round(s.confidence_score * 100)}%</strong></td>
+                <td style={{ color: '#8b949e' }}>{s.device_name || 'N/A'}</td>
+                <td>
+                  <span style={{ 
+                    fontSize: 11, 
+                    color: s.source === 'web_app' ? '#2f81f7' : '#3fb950', 
+                    background: s.source === 'web_app' ? '#2f81f722' : '#3fb95022', 
+                    padding: '2px 8px', 
+                    borderRadius: 20 
+                  }}>
+                    {s.source === 'web_app' ? t('logs', 'sourceWebApp') : t('logs', 'sourceGateway')}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {scans.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: '#8b949e' }}>{t('logs', 'empty')}</div>}
+        {scans.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: '#8b949e' }}>No scans found for this selection.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Training Tab ──────────────────────────────────────────────────────────────
+function ImageViewerModal({ src, onClose }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 20 }} onClick={onClose}>
+      <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%' }}>
+        <button onClick={onClose} style={{ position: 'absolute', top: -40, right: 0, background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer' }}><i className="fa-solid fa-xmark" /></button>
+        <img src={src} alt="Scan preview" style={{ maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} />
       </div>
     </div>
   );
@@ -302,13 +321,23 @@ function TrainingTab() {
   const { t } = useLanguage();
   const { token } = useContext(AuthContext);
   const [page, setPage] = useState(1);
-  const { data, loading, reload } = useAdminFetch(`/admin/training/samples?page=${page}`, [page]);
+  const { data, loading, reload } = useAdminFetch(`/admin/training/samples?page=${page}&limit=20`, [page]);
+  const [editing, setEditing] = useState({});
+  const [customLabels, setCustomLabels] = useState({});
+  const [confirm, setConfirm] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [viewerImg, setViewerImg] = useState(null);
 
   const confirm_ = async (id, label) => {
+    let chosen = label || editing[id] || null;
+    if (chosen === 'Custom...') {
+      chosen = customLabels[id] || '';
+    }
+    if (!chosen) return;
     await fetch(`${API}/admin/training/samples/${id}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmed_label: label }),
+      body: JSON.stringify({ confirmed_label: chosen }),
     });
     reload();
   };
@@ -322,193 +351,241 @@ function TrainingTab() {
     reload();
   };
 
-  if (loading && !data) return <div className="admin-loading"><i className="fa-solid fa-spinner fa-spin" /> {t('common', 'loading')}</div>;
-  const samples = data?.data || [];
+  const deleteSample = async (id) => {
+    await fetch(`${API}/admin/training/samples/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    setConfirm(null); reload();
+  };
+
+  const exportZip = async () => {
+    setExporting(true);
+    const r = await fetch(`${API}/admin/training/export`, { headers: { Authorization: `Bearer ${token}` } });
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'training_data.zip'; a.click();
+    URL.revokeObjectURL(url); setExporting(false);
+  };
+
   const stats = data?.stats || {};
+  const samples = data?.data || [];
+  const totalPages = data?.total_pages || 1;
+
+  const labelOptsWithCustom = [...LABEL_OPTS, 'Custom...'];
 
   return (
     <div>
-      <div className="admin-action-bar">
-        <div className="admin-stat-summary">
-          <span><strong>{stats.total || 0}</strong> {t('admin', 'total')}</span>
-          <span><strong>{stats.confirmed || 0}</strong> {t('admin', 'confirmed')}</span>
+      {viewerImg && <ImageViewerModal src={viewerImg} onClose={() => setViewerImg(null)} />}
+      {confirm && <ConfirmModal message="Delete this training sample?" onConfirm={() => deleteSample(confirm)} onCancel={() => setConfirm(null)} />}
+      <div className="admin-training-header">
+        <div className="admin-stat-strip">
+          <div className="admin-stat"><span className="admin-stat-val">{stats.total ?? '—'}</span><span className="admin-stat-label">{t('admin', 'total')}</span></div>
+          <div className="admin-stat"><span className="admin-stat-val">{stats.with_image ?? '—'}</span><span className="admin-stat-label">{t('admin', 'withImage')}</span></div>
+          <div className="admin-stat"><span className="admin-stat-val">{stats.reviewed ?? '—'}</span><span className="admin-stat-label">{t('admin', 'reviewed')}</span></div>
+          <div className="admin-stat"><span className="admin-stat-val">{stats.confirmed ?? '—'}</span><span className="admin-stat-label">{t('admin', 'confirmed')}</span></div>
         </div>
-        <button onClick={() => window.location.href=`${API}/admin/training/export`} className="admin-add-btn">
-          <i className="fa-solid fa-download" /> {t('admin', 'exportZip')}
+        <button className="admin-export-btn" onClick={exportZip} disabled={exporting}>
+          {exporting ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-file-zipper" />} {t('logs', 'exportCSV')}
         </button>
       </div>
+      {loading ? <div className="admin-loading"><i className="fa-solid fa-spinner fa-spin" /> {t('common', 'loading')}</div> : (
+        <div className="admin-training-grid">
+          {samples.length === 0 && <p style={{ color: '#8b949e', gridColumn: '1/-1' }}>No training samples yet. Do a web-app scan to start collecting data.</p>}
+          {samples.map(s => {
+            const currentEdit = editing[s.id] || s.disease_type;
+            const isCustom = currentEdit === 'Custom...';
+            const imageSrc = s.has_image ? `${API}/admin/training/samples/${s.id}/image` : null;
 
-      <div className="admin-training-grid">
-        {samples.map(s => (
-          <div key={s.id} className="admin-sample-card">
-            <div className="admin-sample-img">
-              {s.has_image ? <img src={`${API}/admin/training/samples/${s.id}/image`} alt="Sample" /> : <div className="admin-no-img"><i className="fa-solid fa-image" /></div>}
-              {s.reviewed && <div className="admin-reviewed-badge"><i className="fa-solid fa-check" /> {t('admin', 'confirmed')}</div>}
-            </div>
-            <div className="admin-sample-info">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <span className="admin-sample-id">#{s.id}</span>
-                  <Badge label={s.disease_type} />
-                </div>
-                <span className="admin-sample-source">{s.source}</span>
+            return (
+            <div key={s.id} className={`admin-sample-card ${!s.has_image ? 'no-image' : ''}`}>
+              <div className="admin-sample-img-wrap" onClick={() => s.has_image && setViewerImg(`${imageSrc}?token=${token}`)} style={{ cursor: s.has_image ? 'pointer' : 'default' }}>
+                {s.has_image ? <img src={`${imageSrc}?token=${token}`} alt="Leaf sample" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <div className="admin-sample-img-placeholder no-img"><i className="fa-solid fa-ban" /><span>{t('disease', 'noData')}</span><span style={{ fontSize: 10, color: '#484f58' }}>{t('logs', 'sourceGateway')}</span></div>}
               </div>
-              
-              {s.reviewed ? (
-                <div className="admin-confirmed-row">
-                  <div className="admin-confirmed-label">
-                    <span className="admin-label-dot" /> {s.confirmed_label}
+              <div className="admin-sample-meta">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Badge label={s.disease_type} />
+                  {s.reviewed && <span style={{ fontSize: 10, color: '#3fb950', background: '#3fb95022', padding: '2px 6px', borderRadius: 20 }}>✓ Confirmed</span>}
+                </div>
+                <p style={{ fontSize: 12, color: '#8b949e', margin: '4px 0' }}>{(s.confidence_score * 100).toFixed(1)}% · {s.source === 'web_app' ? t('logs', 'sourceWebApp') : t('logs', 'sourceGateway')}</p>
+                {s.confirmed_label && <p style={{ fontSize: 12, color: '#2f81f7', margin: '2px 0' }}>{t('common', 'confirm')}: {s.confirmed_label}</p>}
+                <p style={{ fontSize: 11, color: '#484f58', margin: '2px 0' }}>{s.created_at ? new Date(s.created_at).toLocaleString() : ''}</p>
+              </div>
+              <div className="admin-sample-actions" style={{ flexDirection: 'column', gap: '8px' }}>
+                {s.has_image && (
+                  <div style={{ display: 'flex', gap: '8px', width: '100%', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <select 
+                        className="admin-label-select" 
+                        style={{ width: '100%' }} 
+                        value={currentEdit} 
+                        disabled={s.reviewed}
+                        onChange={e => setEditing(prev => ({ ...prev, [s.id]: e.target.value }))}
+                      >
+                        {labelOptsWithCustom.map(l => <option key={l} value={l}>{l}</option>)}
+                      </select>
+                      {isCustom && (
+                        <input 
+                          type="text" 
+                          placeholder={t('common', 'enterCustomLabel')} 
+                          style={{ padding: '6px 10px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 12, width: '100%', boxSizing: 'border-box' }}
+                          value={customLabels[s.id] || ''} 
+                          disabled={s.reviewed}
+                          onChange={e => setCustomLabels(prev => ({ ...prev, [s.id]: e.target.value }))}
+                        />
+                      )}
+                    </div>
+                    {s.reviewed ? (
+                      <button className="admin-icon-btn" style={{ height: 'fit-content', background: '#21262d', border: '1px solid #30363d', color: '#8b949e', padding: '6px 12px', fontSize: 12, borderRadius: 7 }} onClick={() => undo_(s.id)}>
+                        <i className="fa-solid fa-rotate-left" /> {t('admin', 'undo')}
+                      </button>
+                    ) : (
+                      <button className="admin-confirm-btn" style={{ height: 'fit-content' }} onClick={() => confirm_(s.id, currentEdit)}>
+                        <i className="fa-solid fa-check" /> {t('common', 'confirm')}
+                      </button>
+                    )}
+                    <button className="admin-danger-btn" style={{ height: 'fit-content' }} onClick={() => setConfirm(s.id)}><i className="fa-solid fa-trash" /></button>
                   </div>
-                  <button onClick={() => undo_(s.id)} className="admin-undo-btn">{t('admin', 'undo')}</button>
-                </div>
-              ) : (
-                <div className="admin-label-actions">
-                  {LABEL_OPTS.map(opt => (
-                    <button key={opt} onClick={() => confirm_(s.id, opt)} className="admin-confirm-opt">{opt}</button>
-                  ))}
-                </div>
-              )}
+                )}
+                {!s.has_image && (
+                  <button className="admin-danger-btn" style={{ marginLeft: 'auto' }} onClick={() => setConfirm(s.id)}><i className="fa-solid fa-trash" /></button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+            );
+          })}
+        </div>
+      )}
+      <div className="admin-pagination">
+        <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="admin-page-btn"><i className="fa-solid fa-chevron-left" /></button>
+        <span style={{ color: '#8b949e', fontSize: 13 }}>Page {page} of {totalPages}</span>
+        <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="admin-page-btn"><i className="fa-solid fa-chevron-right" /></button>
       </div>
-      {samples.length === 0 && <div className="admin-empty-state">{t('admin', 'noSamples')}</div>}
     </div>
   );
 }
 
+// ── Settings Tab ────────────────────────────────────────────────────────────
 function SystemSettingsTab() {
   const { t } = useLanguage();
   const { token } = useContext(AuthContext);
-  const { data, loading, reload } = useAdminFetch('/admin/stats');
-  const { data: settingsData, reload: reloadSettings } = useAdminFetch('/admin/settings');
+  const { data: settingsData, loading, reload } = useAdminFetch('/admin/settings');
+  const { data: statsData, loading: loadingStats } = useAdminFetch('/admin/stats');
+  const [saving, setSaving] = useState(null);
 
-  const updateSetting = async (key, val) => {
-    await fetch(`${API}/admin/settings/${key}`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: val }),
-    });
-    reloadSettings();
+  const updateSetting = async (key, value) => {
+    setSaving(key);
+    try {
+      await fetch(`${API}/admin/settings/${key}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: String(value) }),
+      });
+      reload();
+    } finally {
+      setSaving(null);
+    }
   };
 
-  if (loading && !data) return <div className="admin-loading"><i className="fa-solid fa-spinner fa-spin" /> {t('common', 'loading')}</div>;
-  const stats = data || {};
+  if (loading) return <div className="admin-loading"><i className="fa-solid fa-spinner fa-spin" /> Loading settings…</div>;
   const settings = settingsData?.data || [];
+  const stats = statsData || {};
 
   return (
-    <div>
+    <div className="admin-settings-container">
       <div className="admin-stats-grid">
         <div className="admin-stat-card">
           <i className="fa-solid fa-users" />
           <div className="admin-stat-info">
-            <span className="admin-stat-label">{t('admin', 'users')}</span>
-            <span className="admin-stat-value">{stats.users}</span>
+            <span className="admin-stat-label">{t('admin', 'total')} {t('nav', 'users')}</span>
+            <span className="admin-stat-value">{stats.users ?? '—'}</span>
           </div>
         </div>
         <div className="admin-stat-card">
           <i className="fa-solid fa-server" />
           <div className="admin-stat-info">
-            <span className="admin-stat-label">{t('admin', 'gateways')}</span>
-            <span className="admin-stat-value">{stats.devices}</span>
+            <span className="admin-stat-label">{t('common', 'live')} {t('admin', 'gateways')}</span>
+            <span className="admin-stat-value">{stats.devices ?? '—'}</span>
           </div>
         </div>
         <div className="admin-stat-card">
-          <i className="fa-solid fa-microchip" />
+          <i className="fa-solid fa-clipboard-list" />
           <div className="admin-stat-info">
-            <span className="admin-stat-label">{t('logs', 'title')}</span>
-            <span className="admin-stat-value">{stats.scans}</span>
+            <span className="admin-stat-label">{t('admin', 'total')} {t('logs', 'title')}</span>
+            <span className="admin-stat-value">{stats.scans ?? '—'}</span>
           </div>
         </div>
         <div className="admin-stat-card">
-          <i className="fa-solid fa-flask" />
+          <i className="fa-solid fa-clock" />
           <div className="admin-stat-info">
-            <span className="admin-stat-label">{t('admin', 'training')}</span>
-            <span className="admin-stat-value">{stats.samples}</span>
+            <span className="admin-stat-label">{t('admin', 'uptime')}</span>
+            <span className="admin-stat-value">{stats.uptime ? `${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m` : '—'}</span>
           </div>
         </div>
       </div>
 
       <div className="admin-settings-list">
-        <h3><i className="fa-solid fa-screwdriver-wrench" /> {t('admin', 'settings')}</h3>
-        {settings.map(s => (
-          <div key={s.key} className="admin-setting-item">
-            <div>
-              <p className="admin-setting-name">{s.key.replace(/_/g, ' ')}</p>
-              <p className="admin-setting-desc">System default configuration for this parameter.</p>
+        <h3 style={{ color: '#e6edf3', marginBottom: 20 }}>{t('admin', 'systemControls')}</h3>
+        {settings.map(s => {
+          const isBool = s.value === 'true' || s.value === 'false';
+          return (
+            <div key={s.key} className="admin-setting-item">
+              <div className="admin-setting-info">
+                <p className="admin-setting-name">{s.key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</p>
+                <p className="admin-setting-desc">{s.description}</p>
+              </div>
+              <div className="admin-setting-action">
+                {isBool ? (
+                  <button 
+                    disabled={saving === s.key}
+                    onClick={() => updateSetting(s.key, s.value === 'true' ? 'false' : 'true')}
+                    className={`admin-toggle ${s.value === 'true' ? 'enabled' : ''}`}
+                  >
+                    <span></span>
+                  </button>
+                ) : (
+                  <input 
+                    type="text" 
+                    value={s.value} 
+                    onBlur={(e) => e.target.value !== s.value && updateSetting(s.key, e.target.value)}
+                    className="admin-setting-input" 
+                  />
+                )}
+                {saving === s.key && <i className="fa-solid fa-spinner fa-spin" style={{ color: '#2f81f7', marginLeft: 10 }} />}
+              </div>
             </div>
-            <input 
-              type="text" 
-              className="admin-setting-input" 
-              defaultValue={s.value} 
-              onBlur={e => updateSetting(s.key, e.target.value)} 
-            />
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
+// ── Main AdminPage ─────────────────────────────────────────────────────────────
+const TABS = [
+  { id: 'users',    label: 'Users',         icon: 'fa-users' },
+  { id: 'scans',    label: 'Scan History',   icon: 'fa-clipboard-list' },
+  { id: 'training', label: 'Training Data',  icon: 'fa-flask' },
+  { id: 'settings', label: 'System Settings', icon: 'fa-gears' },
+];
+
 export default function AdminPage() {
-  const { t } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useContext(AuthContext);
-
   const queryParams = new URLSearchParams(location.search);
   const activeTab = queryParams.get('tab') || 'users';
 
-  if (!user || user.username !== 'admin') {
-    return <div className="admin-access-denied">Access Denied</div>;
-  }
-
-  const tabs = [
-    { id: 'users', label: t('admin', 'users'), icon: 'fa-users' },
-    { id: 'scans', label: t('admin', 'scans'), icon: 'fa-clipboard-list' },
-    { id: 'training', label: t('admin', 'training'), icon: 'fa-flask' },
-    { id: 'settings', label: t('admin', 'settings'), icon: 'fa-screwdriver-wrench' },
-  ];
+  const setTab = (newTab) => {
+    queryParams.set('tab', newTab);
+    navigate({ search: queryParams.toString() });
+  };
 
   return (
-    <div className="admin-panel-container">
-      <div className="admin-sidebar">
-        <div className="admin-sidebar-header">
-          <div className="admin-logo">
-            <i className="fa-solid fa-shield-halved" />
-            <span>{t('nav', 'admin')} Panel</span>
-          </div>
-        </div>
-        <nav className="admin-nav">
-          {tabs.map(tab => (
-            <button 
-              key={tab.id}
-              onClick={() => navigate(`/admin?tab=${tab.id}`)}
-              className={`admin-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-            >
-              <i className={`fa-solid ${tab.icon}`} />
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </nav>
+    <div className="admin-page">
+      <div className="admin-tab-content" style={{ marginTop: 10 }}>
+        {activeTab === 'users'    && <UsersTab />}
+        {activeTab === 'scans'    && <ScansTab />}
+        {activeTab === 'training' && <TrainingTab />}
+        {activeTab === 'settings' && <SystemSettingsTab />}
       </div>
-
-      <main className="admin-content">
-        <header className="admin-content-header">
-          <h2>{tabs.find(t => t.id === activeTab)?.label}</h2>
-          <div className="admin-user-profile">
-            <span>{user.username}</span>
-            <div className="admin-avatar">{user.username.charAt(0).toUpperCase()}</div>
-          </div>
-        </header>
-
-        <div className="admin-tab-content">
-          {activeTab === 'users' && <UsersTab />}
-          {activeTab === 'scans' && <ScansTab />}
-          {activeTab === 'training' && <TrainingTab />}
-          {activeTab === 'settings' && <SystemSettingsTab />}
-        </div>
-      </main>
     </div>
   );
 }

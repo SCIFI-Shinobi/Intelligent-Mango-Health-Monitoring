@@ -20,7 +20,20 @@ const translations = {
     notificationsSyncing: { en: 'Background sync pauses when this tab is hidden.', am: 'ይህ ትር ሲደበቅ የጀርባ ማመሳሰል ይቆማል።' },
     admin: { en: 'Admin', am: 'አስተዳዳሪ' },
     users: { en: 'Users', am: 'ተጠቃሚዎች' },
+    scans: { en: 'Scans', am: 'ምርመራዎች' },
     training: { en: 'Training', am: 'ልምምድ' },
+  },
+  admin: {
+    manageUser: { en: 'Manage User', am: 'ተጠቃሚን ያስተዳድሩ' },
+    gateways: { en: 'Gateways', am: 'ጌትዌዎች' },
+    total: { en: 'Total', am: 'ጠቅላላ' },
+    withImage: { en: 'With Image', am: 'ምስል ያላቸው' },
+    reviewed: { en: 'Reviewed', am: 'የተገመገሙ' },
+    confirmed: { en: 'Confirmed', am: 'የተረጋገጡ' },
+    undo: { en: 'Undo', am: 'ወደ ኋላ መልስ' },
+    systemControls: { en: 'System Controls', am: 'የስርዓት መቆጣጠሪያዎች' },
+    uptime: { en: 'System Uptime', am: 'የስርዓት ስራ ጊዜ' },
+    deleteUserConfirm: { en: 'Delete user "{username}" and all data? This cannot be undone.', am: 'ተጠቃሚ "{username}" እና ሁሉንም መረጃ ይጥፋ? ይህ ሊመለስ አይችልም።' },
   },
 
   // ---- Login / Auth ----
@@ -244,9 +257,10 @@ const translations = {
     neverConnected: { en: 'Never connected', am: 'በጭራሽ አልተገናኘም' },
     lastSeen: { en: 'Last seen', am: 'ለመጨረሻ ጊዜ የታየ' },
     esp32Config: { en: 'ESP32 Config.h', am: 'ESP32 Config.h' },
-    regenerateKey: { en: 'Regenerate', am: 'ቁልፍ ቀይር' },
-    removeDevice: { en: 'Remove', am: 'አስወግድ' },
-    addAnother: { en: 'Add Another Device', am: 'ሌላ መሳሪያ ጨምር' },
+    noDevicesConnectedYet: { en: 'No devices connected yet', am: 'እስካሁን ምንም መሳሪያ አልተገናኘም' },
+    copy: { en: 'Copy', am: 'ቅዳ' },
+    regenerate: { en: 'Regenerate', am: 'እንደገና ፍጠር' },
+    remove: { en: 'Remove', am: 'አስወግድ' },
   },
 
   // ---- Analysis Page ----
@@ -387,24 +401,7 @@ const translations = {
     cancel: { en: 'Cancel', am: 'ሰርዝ' },
     close: { en: 'Close', am: 'ዝጋ' },
     manage: { en: 'Manage', am: 'ያስተዳድሩ' },
-  },
-
-  // ---- Admin Panel ----
-  admin: {
-    users: { en: 'Users', am: 'ተጠቃሚዎች' },
-    scans: { en: 'Scan History', am: 'የምርመራ ታሪክ' },
-    training: { en: 'Training Data', am: 'የልምምድ መረጃ' },
-    settings: { en: 'System Settings', am: 'የስርዓት ቅንብሮች' },
-    manageUser: { en: 'Manage User', am: 'ተጠቃሚን ያስተዳድሩ' },
-    stats: { en: 'Stats', am: 'ስታቲስቲክስ' },
-    gateways: { en: 'Registered Gateways', am: 'የተመዘገቡ ጌትዌዎች' },
-    undo: { en: 'Undo', am: 'ወደ ኋላ ይመለሱ' },
-    confirmed: { en: 'Confirmed', am: 'ተረጋግጧል' },
-    exportZip: { en: 'Export ZIP', am: 'ZIP አውርድ' },
-    total: { en: 'Total', am: 'ጠቅላላ' },
-    reviewed: { en: 'Reviewed', am: 'የተገመገመ' },
-    noSamples: { en: 'No training samples yet. Do a web-app scan to start collecting data.', am: 'እስካሁን ምንም የልምምድ ናሙናዎች የሉም። መረጃ መሰብሰብ ለመጀመር በድር መተግበሪያው ምርመራ ያካሂዱ።' },
-    deleteUserConfirm: { en: 'Delete user "{username}" and all their data? This cannot be undone.', am: 'ተጠቃሚ "{username}" እና ሁሉንም መረጃቸውን ይጥፉ? ይህ እርምጃ ሊመለስ አይችልም።' },
+    confirm: { en: 'Confirm', am: 'አረጋግጥ' },
   },
 };
 
