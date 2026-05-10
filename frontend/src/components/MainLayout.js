@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, Navigate, useLocation } from 'react-router-dom';
+import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
 import Navbar from './Navbar';
 import MobileNav from './MobileNav';
 import { useLanguage } from '../context/LanguageContext';
@@ -7,10 +9,20 @@ import { useLanguage } from '../context/LanguageContext';
 export default function MainLayout() {
   const { t } = useLanguage();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const token = localStorage.getItem('token');
 
   // Responsive state
   const [isDesktop, setIsDesktop] = useState(window.innerWidth > 1024);
+
+  useEffect(() => {
+    if (user?.username === 'admin' && 
+        !location.pathname.startsWith('/admin') && 
+        !location.pathname.startsWith('/settings')) {
+      navigate('/admin');
+    }
+  }, [user, location.pathname, navigate]);
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth > 1024);

@@ -19,6 +19,8 @@ const translations = {
     allItems: { en: 'All', am: 'ሁሉም' },
     notificationsSyncing: { en: 'Background sync pauses when this tab is hidden.', am: 'ይህ ትር ሲደበቅ የጀርባ ማመሳሰል ይቆማል።' },
     admin: { en: 'Admin', am: 'አስተዳዳሪ' },
+    users: { en: 'Users', am: 'ተጠቃሚዎች' },
+    training: { en: 'Training', am: 'ልምምድ' },
   },
 
   // ---- Login / Auth ----
@@ -384,6 +386,25 @@ const translations = {
     createDevice: { en: 'Create Device', am: 'መሳሪያ ፍጠር' },
     cancel: { en: 'Cancel', am: 'ሰርዝ' },
     close: { en: 'Close', am: 'ዝጋ' },
+    manage: { en: 'Manage', am: 'ያስተዳድሩ' },
+  },
+
+  // ---- Admin Panel ----
+  admin: {
+    users: { en: 'Users', am: 'ተጠቃሚዎች' },
+    scans: { en: 'Scan History', am: 'የምርመራ ታሪክ' },
+    training: { en: 'Training Data', am: 'የልምምድ መረጃ' },
+    settings: { en: 'System Settings', am: 'የስርዓት ቅንብሮች' },
+    manageUser: { en: 'Manage User', am: 'ተጠቃሚን ያስተዳድሩ' },
+    stats: { en: 'Stats', am: 'ስታቲስቲክስ' },
+    gateways: { en: 'Registered Gateways', am: 'የተመዘገቡ ጌትዌዎች' },
+    undo: { en: 'Undo', am: 'ወደ ኋላ ይመለሱ' },
+    confirmed: { en: 'Confirmed', am: 'ተረጋግጧል' },
+    exportZip: { en: 'Export ZIP', am: 'ZIP አውርድ' },
+    total: { en: 'Total', am: 'ጠቅላላ' },
+    reviewed: { en: 'Reviewed', am: 'የተገመገመ' },
+    noSamples: { en: 'No training samples yet. Do a web-app scan to start collecting data.', am: 'እስካሁን ምንም የልምምድ ናሙናዎች የሉም። መረጃ መሰብሰብ ለመጀመር በድር መተግበሪያው ምርመራ ያካሂዱ።' },
+    deleteUserConfirm: { en: 'Delete user "{username}" and all their data? This cannot be undone.', am: 'ተጠቃሚ "{username}" እና ሁሉንም መረጃቸውን ይጥፉ? ይህ እርምጃ ሊመለስ አይችልም።' },
   },
 };
 

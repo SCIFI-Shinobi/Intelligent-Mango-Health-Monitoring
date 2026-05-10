@@ -2795,7 +2795,7 @@ def admin_list_scans(
 # ------------------------------------------------------------------
 
 class _LabelUpdate(schemas.BaseModel):
-    confirmed_label: str
+    confirmed_label: Optional[str] = None
 
 
 @app.get("/admin/training/samples")
@@ -2849,7 +2849,7 @@ def admin_update_training_sample(
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
     sample.confirmed_label = payload.confirmed_label
-    sample.reviewed = True
+    sample.reviewed = payload.confirmed_label is not None
     db.commit()
     return {"status": "ok", "id": sample_id, "confirmed_label": payload.confirmed_label}
 

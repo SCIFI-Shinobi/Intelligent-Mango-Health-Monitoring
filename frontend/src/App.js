@@ -13,7 +13,18 @@ import { AdminRoute } from "./components/AdminRoute";
 import "./App.css";
 
 function App() {
-  const { token, user } = useContext(AuthContext);
+  const { token, user, userLoading } = useContext(AuthContext);
+
+  if (token && userLoading) {
+    return (
+      <div style={{ background: '#000', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+        <div style={{ textAlign: 'center' }}>
+          <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: 30, marginBottom: 15, color: '#2f81f7' }} />
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: '#8b949e' }}>Initializing session...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Routes>
