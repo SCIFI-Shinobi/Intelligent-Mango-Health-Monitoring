@@ -117,27 +117,28 @@ function UserManagementModal({ user, onClose, onUpdate }) {
             <div className="admin-form-row">
               <div className="admin-form-group">
                 <label>{t('profile', 'displayName')}</label>
-                <input type="text" value={formData.display_name} onChange={e => setFormData({...formData, display_name: e.target.value})} />
+                <input type="text" value={formData.display_name} onChange={e => setFormData({...formData, display_name: e.target.value})} disabled={user.username === 'admin'} />
               </div>
               <div className="admin-form-group">
                 <label>{t('auth', 'email')}</label>
-                <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} disabled={user.username === 'admin'} />
               </div>
             </div>
             <div className="admin-form-row">
               <div className="admin-form-group">
                 <label>{t('settings', 'confidenceThreshold')} ({formData.disease_confidence_threshold}%)</label>
-                <input type="range" min="50" max="95" value={formData.disease_confidence_threshold} onChange={e => setFormData({...formData, disease_confidence_threshold: parseInt(e.target.value)})} />
+                <input type="range" min="50" max="95" value={formData.disease_confidence_threshold} onChange={e => setFormData({...formData, disease_confidence_threshold: parseInt(e.target.value)})} disabled={user.username === 'admin'} />
               </div>
               <div className="admin-form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 25 }}>
                 <label style={{ marginBottom: 0 }}>{t('settings', 'pushNotifications')}</label>
                 <button 
+                  disabled={user.username === 'admin'}
                   onClick={() => setFormData({...formData, notification_emails_enabled: !formData.notification_emails_enabled})}
                   className={`admin-toggle ${formData.notification_emails_enabled ? 'enabled' : ''}`}
                 ><span></span></button>
               </div>
             </div>
-            <button onClick={handleSave} disabled={saving} className="admin-primary-btn" style={{ marginTop: 10 }}>
+            <button onClick={handleSave} disabled={saving || user.username === 'admin'} className="admin-primary-btn" style={{ marginTop: 10 }}>
               {saving ? <i className="fa-solid fa-spinner fa-spin" /> : t('settings', 'saveChanges')}
             </button>
           </div>
@@ -145,7 +146,9 @@ function UserManagementModal({ user, onClose, onUpdate }) {
           <div className="admin-modal-section">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
               <h4 style={{ margin: 0 }}><i className="fa-solid fa-server" /> {t('admin', 'gateways')}</h4>
-              <button onClick={() => setShowAddDevice(true)} className="admin-add-btn"><i className="fa-solid fa-plus" /> {t('common', 'addDevice')}</button>
+              {user.username !== 'admin' && (
+                <button onClick={() => setShowAddDevice(true)} className="admin-add-btn"><i className="fa-solid fa-plus" /> {t('common', 'addDevice')}</button>
+              )}
             </div>
             
             {showAddDevice && (

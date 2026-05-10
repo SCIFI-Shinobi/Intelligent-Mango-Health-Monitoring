@@ -54,14 +54,16 @@ export default function MobileNav({ activeTab }) {
         </NavLink>
       ))}
 
-      <button
-        className="mobile-nav-scan-btn"
-        onClick={() => setShowQuickScan(true)}
-        title={t('nav', 'scanForDisease') || 'Scan for Disease'}
-        aria-label={t('nav', 'scanForDisease') || 'Scan for Disease'}
-      >
-        <i className="fa-solid fa-plus"></i>
-      </button>
+      {user?.username !== 'admin' && (
+        <button
+          className="mobile-nav-scan-btn"
+          onClick={() => setShowQuickScan(true)}
+          title={t('nav', 'scanForDisease') || 'Scan for Disease'}
+          aria-label={t('nav', 'scanForDisease') || 'Scan for Disease'}
+        >
+          <i className="fa-solid fa-plus"></i>
+        </button>
+      )}
 
       {rightTabs.map((tab) => (
         <NavLink
