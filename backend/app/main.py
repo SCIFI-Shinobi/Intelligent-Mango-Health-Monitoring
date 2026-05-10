@@ -1352,7 +1352,7 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
             models.SensorData.device_id == internal_device_id
         ).count()
 
-    # Only generate a forecast every 3 scans
+    # For Defense Day Demo: Only generate a forecast every 3 scans
     if new_scans_count < 3:
         return
 
@@ -1368,11 +1368,11 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
     if not sensor_rows:
         return
 
-    # Calculate average temperature and humidity of the last up to 5 scans
+    # Calculate average temperature and humidity of the last scans
     avg_temp = sum(row.temperature for row in sensor_rows) / len(sensor_rows)
     avg_humidity = sum(row.humidity for row in sensor_rows) / len(sensor_rows)
 
-    # Pad to 24 readings using the average values
+    # Pad to 24 readings using the average values for the demo
     readings = [{"temperature": avg_temp, "humidity": avg_humidity}] * FORECAST_MIN_READINGS
 
     result = forecast_service.run_forecast(readings)
@@ -1477,16 +1477,22 @@ def verify_password(plain_password, hashed_password):
 def get_password_hash(password):
     return pwd_context.hash(password)
 
-def get_current_user(authorization: str = Header(...), db: Session = Depends(get_db)):
+def get_current_user(authorization: Optional[str] = Header(None), token: Optional[str] = None, db: Session = Depends(get_db)):
     """Extract user from JWT Bearer token."""
+    raw_token = token
+    if authorization:
+        raw_token = authorization.replace("Bearer ", "")
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Missing token")
+        
     try:
-        token = authorization.replace("Bearer ", "")
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(raw_token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
         if not username:
             raise HTTPException(status_code=401, detail="Invalid token")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+        
     user = db.query(models.User).filter(models.User.username == username).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -2617,6 +2623,35 @@ def admin_delete_device(
     db.commit()
     return {"status": "ok"}
 
+@app.post("/admin/devices")
+def admin_create_device(
+    payload: schemas.AdminDeviceCreate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Create a device and generate an API key for a specific user."""
+    target_user = db.query(models.User).filter(models.User.id == payload.user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    api_key = f"mg_{secrets.token_hex(24)}"
+    new_device = models.Device(
+        user_id=payload.user_id,
+        device_name=payload.device_name or "ESP32 Gateway",
+        api_key=api_key
+    )
+    db.add(new_device)
+    db.commit()
+    db.refresh(new_device)
+    return {
+        "id": new_device.id,
+        "device_name": new_device.device_name,
+        "api_key": new_device.api_key,
+        "user_id": new_device.user_id,
+        "last_seen": new_device.last_seen,
+        "created_at": new_device.created_at
+    }
+
 
 @app.post("/admin/devices/{device_id}/regenerate-key")
 def admin_regenerate_device_key(
@@ -2758,6 +2793,23 @@ def admin_update_training_sample(
     sample.reviewed = True
     db.commit()
     return {"status": "ok", "id": sample_id, "confirmed_label": payload.confirmed_label}
+
+
+from fastapi.responses import FileResponse
+
+@app.get("/admin/training/samples/{sample_id}/image")
+def admin_get_training_sample_image(
+    sample_id: int,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    sample = db.query(models.TrainingSample).filter(models.TrainingSample.id == sample_id).first()
+    if not sample or not sample.image_path:
+        raise HTTPException(status_code=404, detail="Image not found")
+    img_path = TRAINING_SAMPLES_DIR / sample.image_path
+    if not img_path.exists():
+        raise HTTPException(status_code=404, detail="Image file missing")
+    return FileResponse(img_path, media_type="image/jpeg")
 
 
 @app.delete("/admin/training/samples/{sample_id}")

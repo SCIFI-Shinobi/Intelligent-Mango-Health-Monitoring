@@ -88,11 +88,56 @@ function UsersTab() {
 }
 
 // ── Devices Tab ───────────────────────────────────────────────────────────────
+function AddDeviceModal({ onConfirm, onCancel }) {
+  const { token } = useContext(AuthContext);
+  const { data: usersData, loading } = useAdminFetch('/admin/users');
+  const [userId, setUserId] = useState('');
+  const [deviceName, setDeviceName] = useState('');
+
+  const users = usersData?.data || [];
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 12, padding: 28, maxWidth: 380, width: '90%' }}>
+        <h3 style={{ color: '#e6edf3', marginTop: 0, marginBottom: 20 }}>Add Device</h3>
+        {loading ? <div style={{ color: '#8b949e' }}><i className="fa-solid fa-spinner fa-spin" /> Loading users...</div> : (
+          <>
+            <div style={{ marginBottom: 15 }}>
+              <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>Select User</label>
+              <select 
+                style={{ width: '100%', padding: '8px 12px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3' }}
+                value={userId} onChange={e => setUserId(e.target.value)}
+              >
+                <option value="">-- Select a User --</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.username} {u.email ? `(${u.email})` : ''}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 25 }}>
+              <label style={{ display: 'block', color: '#8b949e', fontSize: 13, marginBottom: 6 }}>Device Name</label>
+              <input 
+                type="text" 
+                placeholder="ESP32 Gateway"
+                style={{ width: '100%', padding: '8px 12px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3' }}
+                value={deviceName} onChange={e => setDeviceName(e.target.value)}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={onCancel} style={{ padding: '8px 16px', background: '#21262d', border: '1px solid #30363d', borderRadius: 8, color: '#e6edf3', cursor: 'pointer' }}>Cancel</button>
+              <button disabled={!userId} onClick={() => onConfirm(userId, deviceName)} style={{ padding: '8px 16px', background: '#2f81f7', border: 'none', borderRadius: 8, color: '#fff', cursor: userId ? 'pointer' : 'not-allowed', opacity: userId ? 1 : 0.5, fontWeight: 600 }}>Create Device</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DevicesTab() {
   const { token } = useContext(AuthContext);
   const { data, loading, reload } = useAdminFetch('/admin/devices');
   const [copied, setCopied] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const copyKey = async (key, id) => {
     await navigator.clipboard.writeText(key);
@@ -106,6 +151,15 @@ function DevicesTab() {
     await fetch(`${API}/admin/devices/${id}/regenerate-key`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
     reload();
   };
+  const handleAddDevice = async (userId, deviceName) => {
+    await fetch(`${API}/admin/devices`, { 
+      method: 'POST', 
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: parseInt(userId), device_name: deviceName || undefined })
+    });
+    setShowAddModal(false);
+    reload();
+  };
 
   if (loading) return <div className="admin-loading"><i className="fa-solid fa-spinner fa-spin" /> Loading devices…</div>;
   const devices = data?.data || [];
@@ -113,6 +167,14 @@ function DevicesTab() {
   return (
     <div>
       {confirm && <ConfirmModal message={`Delete device "${confirm.device_name}"? This cannot be undone.`} onConfirm={() => deleteDevice(confirm.id)} onCancel={() => setConfirm(null)} />}
+      {showAddModal && <AddDeviceModal onConfirm={handleAddDevice} onCancel={() => setShowAddModal(false)} />}
+      
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
+        <button className="gateway-add-btn" onClick={() => setShowAddModal(true)}>
+          <i className="fa-solid fa-plus" style={{ marginRight: 8 }}></i> Add Device
+        </button>
+      </div>
+
       <div className="admin-devices-grid">
         {devices.length === 0 && <p style={{ color: '#8b949e' }}>No devices registered.</p>}
         {devices.map(d => {
@@ -193,16 +255,32 @@ function ScansTab() {
 }
 
 // ── Training Tab ──────────────────────────────────────────────────────────────
+function ImageViewerModal({ src, onClose }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 20 }} onClick={onClose}>
+      <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%' }}>
+        <button onClick={onClose} style={{ position: 'absolute', top: -40, right: 0, background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer' }}><i className="fa-solid fa-xmark" /></button>
+        <img src={src} alt="Scan preview" style={{ maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} />
+      </div>
+    </div>
+  );
+}
+
 function TrainingTab() {
   const { token } = useContext(AuthContext);
   const [page, setPage] = useState(1);
   const { data, loading, reload } = useAdminFetch(`/admin/training/samples?page=${page}&limit=20`, [page]);
   const [editing, setEditing] = useState({});
+  const [customLabels, setCustomLabels] = useState({});
   const [confirm, setConfirm] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [viewerImg, setViewerImg] = useState(null);
 
   const confirm_ = async (id, label) => {
-    const chosen = label || editing[id] || null;
+    let chosen = label || editing[id] || null;
+    if (chosen === 'Custom...') {
+      chosen = customLabels[id] || '';
+    }
     if (!chosen) return;
     await fetch(`${API}/admin/training/samples/${id}`, {
       method: 'PATCH',
@@ -230,8 +308,11 @@ function TrainingTab() {
   const samples = data?.data || [];
   const totalPages = data?.total_pages || 1;
 
+  const labelOptsWithCustom = [...LABEL_OPTS, 'Custom...'];
+
   return (
     <div>
+      {viewerImg && <ImageViewerModal src={viewerImg} onClose={() => setViewerImg(null)} />}
       {confirm && <ConfirmModal message="Delete this training sample?" onConfirm={() => deleteSample(confirm)} onCancel={() => setConfirm(null)} />}
       <div className="admin-training-header">
         <div className="admin-stat-strip">
@@ -247,10 +328,15 @@ function TrainingTab() {
       {loading ? <div className="admin-loading"><i className="fa-solid fa-spinner fa-spin" /> Loading samples…</div> : (
         <div className="admin-training-grid">
           {samples.length === 0 && <p style={{ color: '#8b949e', gridColumn: '1/-1' }}>No training samples yet. Do a web-app scan to start collecting data.</p>}
-          {samples.map(s => (
+          {samples.map(s => {
+            const currentEdit = editing[s.id] || s.disease_type;
+            const isCustom = currentEdit === 'Custom...';
+            const imageSrc = s.has_image ? `${API}/admin/training/samples/${s.id}/image` : null;
+
+            return (
             <div key={s.id} className={`admin-sample-card ${!s.has_image ? 'no-image' : ''}`}>
-              <div className="admin-sample-img-wrap">
-                {s.has_image ? <div className="admin-sample-img-placeholder"><i className="fa-solid fa-image" /></div>
+              <div className="admin-sample-img-wrap" onClick={() => s.has_image && setViewerImg(`${imageSrc}?token=${token}`)} style={{ cursor: s.has_image ? 'pointer' : 'default' }}>
+                {s.has_image ? <img src={`${imageSrc}?token=${token}`} alt="Leaf sample" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : <div className="admin-sample-img-placeholder no-img"><i className="fa-solid fa-ban" /><span>No image</span><span style={{ fontSize: 10, color: '#484f58' }}>Gateway scan</span></div>}
               </div>
               <div className="admin-sample-meta">
@@ -262,21 +348,36 @@ function TrainingTab() {
                 {s.confirmed_label && <p style={{ fontSize: 12, color: '#2f81f7', margin: '2px 0' }}>Label: {s.confirmed_label}</p>}
                 <p style={{ fontSize: 11, color: '#484f58', margin: '2px 0' }}>{s.created_at ? new Date(s.created_at).toLocaleString() : ''}</p>
               </div>
-              <div className="admin-sample-actions">
+              <div className="admin-sample-actions" style={{ flexDirection: 'column', gap: '8px' }}>
                 {s.has_image && (
-                  <>
-                    <select className="admin-label-select" value={editing[s.id] || s.disease_type} onChange={e => setEditing(prev => ({ ...prev, [s.id]: e.target.value }))}>
-                      {LABEL_OPTS.map(l => <option key={l}>{l}</option>)}
-                    </select>
-                    <button className="admin-confirm-btn" onClick={() => confirm_(s.id, editing[s.id] || s.disease_type)}>
+                  <div style={{ display: 'flex', gap: '8px', width: '100%', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <select className="admin-label-select" style={{ width: '100%' }} value={currentEdit} onChange={e => setEditing(prev => ({ ...prev, [s.id]: e.target.value }))}>
+                        {labelOptsWithCustom.map(l => <option key={l} value={l}>{l}</option>)}
+                      </select>
+                      {isCustom && (
+                        <input 
+                          type="text" 
+                          placeholder="Enter custom label" 
+                          style={{ padding: '6px 10px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 12, width: '100%', boxSizing: 'border-box' }}
+                          value={customLabels[s.id] || ''} 
+                          onChange={e => setCustomLabels(prev => ({ ...prev, [s.id]: e.target.value }))}
+                        />
+                      )}
+                    </div>
+                    <button className="admin-confirm-btn" style={{ height: 'fit-content' }} onClick={() => confirm_(s.id, currentEdit)}>
                       <i className="fa-solid fa-check" /> Confirm
                     </button>
-                  </>
+                    <button className="admin-danger-btn" style={{ height: 'fit-content' }} onClick={() => setConfirm(s.id)}><i className="fa-solid fa-trash" /></button>
+                  </div>
                 )}
-                <button className="admin-danger-btn" onClick={() => setConfirm(s.id)}><i className="fa-solid fa-trash" /></button>
+                {!s.has_image && (
+                  <button className="admin-danger-btn" style={{ marginLeft: 'auto' }} onClick={() => setConfirm(s.id)}><i className="fa-solid fa-trash" /></button>
+                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       <div className="admin-pagination">

@@ -376,6 +376,14 @@ const translations = {
     unavailable: { en: 'Unavailable', am: 'አይገኝም' },
     browserOnly: { en: 'Browser only', am: 'በአሳሽ ብቻ' },
     backendDriven: { en: 'Backend driven', am: 'በጀርባ ስርዓት የሚተዳደር' },
+    custom: { en: 'Custom...', am: 'ብጁ...' },
+    enterCustomLabel: { en: 'Enter custom label', am: 'ብጁ ስያሜ ያስገቡ' },
+    addDevice: { en: 'Add Device', am: 'መሳሪያ ጨምር' },
+    selectUser: { en: 'Select User', am: 'ተጠቃሚ ይምረጡ' },
+    deviceName: { en: 'Device Name', am: 'የመሳሪያ ስም' },
+    createDevice: { en: 'Create Device', am: 'መሳሪያ ፍጠር' },
+    cancel: { en: 'Cancel', am: 'ሰርዝ' },
+    close: { en: 'Close', am: 'ዝጋ' },
   },
 };
 

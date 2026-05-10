@@ -142,6 +142,10 @@ class DeviceOut(BaseModel):
 class DeviceRegister(BaseModel):
     device_name: Optional[str] = "ESP32 Gateway"
 
+class AdminDeviceCreate(BaseModel):
+    user_id: int
+    device_name: Optional[str] = "ESP32 Gateway"
+
 class ScanRequestCreate(BaseModel):
     device_id: Optional[int] = None
     source: Optional[str] = "edge_impulse"

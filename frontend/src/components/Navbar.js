@@ -237,15 +237,17 @@ export default function Navbar({ activeTab }) {
     }
   };
 
-  const navLinks = [
-    { id: 'home', path: '/dashboard', labelKey: 'dashboard', icon: 'fa-house' },
-    { id: 'analysis', path: '/analysis', labelKey: 'analysis', icon: 'fa-chart-line' },
-    { id: 'logs', path: '/logs', labelKey: 'logs', icon: 'fa-clipboard-list' },
-    { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders' },
-    ...(user?.username === 'admin'
-      ? [{ id: 'admin', path: '/admin', labelKey: 'admin', icon: 'fa-shield-halved' }]
-      : []),
-  ];
+  const navLinks = user?.username === 'admin'
+    ? [
+        { id: 'admin', path: '/admin', labelKey: 'admin', icon: 'fa-shield-halved' },
+        { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders' },
+      ]
+    : [
+        { id: 'home', path: '/dashboard', labelKey: 'dashboard', icon: 'fa-house' },
+        { id: 'analysis', path: '/analysis', labelKey: 'analysis', icon: 'fa-chart-line' },
+        { id: 'logs', path: '/logs', labelKey: 'logs', icon: 'fa-clipboard-list' },
+        { id: 'settings', path: '/settings', labelKey: 'settings', icon: 'fa-sliders' },
+      ];
 
   const visibleNotifications = filterMode === 'unread'
     ? notifications.filter((notification) => !notification.read)
