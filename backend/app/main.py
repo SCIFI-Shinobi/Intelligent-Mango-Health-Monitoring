@@ -1315,6 +1315,26 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
     TFLite forecast model.  Persists the result into ForecastContext / ForecastData
     using the same shape the frontend already reads from /forecast/latest.
     """
+    # Find the timestamp of the last generated forecast
+    last_forecast = db.query(models.ForecastData).filter(
+        models.ForecastData.device_id == internal_device_id
+    ).order_by(models.ForecastData.id.desc()).first()
+
+    # Count how many sensor readings have come in since the last forecast
+    if last_forecast:
+        new_scans_count = db.query(models.SensorData).filter(
+            models.SensorData.device_id == internal_device_id,
+            models.SensorData.timestamp > last_forecast.forecast_date
+        ).count()
+    else:
+        new_scans_count = db.query(models.SensorData).filter(
+            models.SensorData.device_id == internal_device_id
+        ).count()
+
+    # Only generate a forecast every 5 scans
+    if new_scans_count < 5:
+        return
+
     # Fetch up to the last 5 sensor readings
     sensor_rows = (
         db.query(models.SensorData)
