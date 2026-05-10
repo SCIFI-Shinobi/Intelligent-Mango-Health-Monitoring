@@ -50,7 +50,7 @@ function Login() {
 
       const data = await response.json();
       login(data.access_token);
-      if (username === 'admin') {
+      if (username.toLowerCase() === 'admin') {
         navigate("/admin");
       } else {
         navigate("/dashboard");

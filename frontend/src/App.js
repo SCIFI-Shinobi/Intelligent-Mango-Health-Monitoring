@@ -13,13 +13,13 @@ import { AdminRoute } from "./components/AdminRoute";
 import "./App.css";
 
 function App() {
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
 
   return (
     <Routes>
       <Route
         path="/"
-        element={token ? <Navigate to="/dashboard" /> : <Login />}
+        element={token ? <Navigate to={user?.username === 'admin' ? "/admin" : "/dashboard"} /> : <Login />}
       />
       
       {/* Protected Routes */}
