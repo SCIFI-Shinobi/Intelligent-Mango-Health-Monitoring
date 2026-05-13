@@ -386,7 +386,7 @@ function TrainingTab() {
           <div className="admin-stat"><span className="admin-stat-val">{stats.confirmed ?? '—'}</span><span className="admin-stat-label">{t('admin', 'confirmed')}</span></div>
         </div>
         <button className="admin-export-btn" onClick={exportZip} disabled={exporting}>
-          {exporting ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-file-zipper" />} {t('logs', 'exportCSV')}
+          {exporting ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-file-zipper" />} {t('logs', 'exportZip')}
         </button>
       </div>
       {loading ? <div className="admin-loading"><i className="fa-solid fa-spinner fa-spin" /> {t('common', 'loading')}</div> : (
@@ -401,7 +401,13 @@ function TrainingTab() {
             <div key={s.id} className={`admin-sample-card ${!s.has_image ? 'no-image' : ''}`}>
               <div className="admin-sample-img-wrap" onClick={() => s.has_image && setViewerImg(`${imageSrc}?token=${token}`)} style={{ cursor: s.has_image ? 'pointer' : 'default' }}>
                 {s.has_image ? <img src={`${imageSrc}?token=${token}`} alt="Leaf sample" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : <div className="admin-sample-img-placeholder no-img"><i className="fa-solid fa-ban" /><span>{t('disease', 'noData')}</span><span style={{ fontSize: 10, color: '#484f58' }}>{t('logs', 'sourceGateway')}</span></div>}
+                  : <div className="admin-sample-img-placeholder no-img">
+                      <i className={s.source === 'web_app' ? 'fa-solid fa-image' : 'fa-solid fa-microchip'} />
+                      <span>{t('disease', 'noData')}</span>
+                      <span style={{ fontSize: 10, color: '#484f58' }}>
+                        {s.source === 'web_app' ? 'Image Missing (Web Scan)' : t('logs', 'sourceGateway')}
+                      </span>
+                    </div>}
               </div>
               <div className="admin-sample-meta">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>

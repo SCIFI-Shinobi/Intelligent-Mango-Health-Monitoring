@@ -30,55 +30,101 @@ SERIAL_BAUD    = 115200
 # =================================================
 
 lcd_lock = threading.Lock()
-current_scroll_text = ""
-_offline_notice_until = 0.0   # epoch time until which we show the offline notice
-_last_recommendation   = ""   # recommendation to restore after offline notice expires
+
+# --- Shared LCD state (always access under lcd_lock) ---
+_lcd_line1 = ""          # what is currently shown on line 1
+_lcd_line2_text = ""     # the text the scroller should display on line 2
+_lcd_line2_override = "" # temporary override (e.g. "Offline") — clears itself after _override_until
+_override_until = 0.0    # epoch time when the override expires
 
 
-def scroll_lcd_task():
-    """Continuously scrolls long text on LCD line 2."""
-    global current_scroll_text, _offline_notice_until, _last_recommendation
+def _set_line1(text: str) -> None:
+    """Set line 1 immediately. Must be called with lcd_lock held."""
+    global _lcd_line1
+    _lcd_line1 = text
+    lcd.print_line(text, 1)
+
+
+def set_line2(text: str) -> None:
+    """Set the persistent scroll text for line 2. Thread-safe."""
+    global _lcd_line2_text
+    with lcd_lock:
+        _lcd_line2_text = text
+
+
+def set_line2_override(text: str, duration: float) -> None:
+    """Show a temporary override on line 2 for `duration` seconds. Thread-safe."""
+    global _lcd_line2_override, _override_until
+    with lcd_lock:
+        _lcd_line2_override = text
+        _override_until = time.time() + duration
+
+
+def scroll_lcd_task() -> None:
+    """
+    Continuously drives LCD line 2.
+    - While an override is active, shows the override text.
+    - Otherwise scrolls _lcd_line2_text.
+    - Clears the display on the first frame after a text change to prevent ghost chars.
+    """
+    global _lcd_line2_text, _lcd_line2_override, _override_until
+
+    last_displayed = None   # track what we last put on screen so we can detect changes
+
     while True:
-        # If an offline notice is active, show it; restore recommendation when it expires
-        now = time.time()
-        if _offline_notice_until > now:
-            text = "Offline - No Net"
-        else:
-            if current_scroll_text == "Offline - No Net":
-                # Notice just expired — restore the last recommendation
-                current_scroll_text = _last_recommendation
-            text = current_scroll_text
+        with lcd_lock:
+            now = time.time()
+            if _lcd_line2_override and now < _override_until:
+                text = _lcd_line2_override
+            else:
+                # Override expired — clear it
+                _lcd_line2_override = ""
+                text = _lcd_line2_text
 
-        if len(text) > 16:
-            padded_text = text + " *** "
-            for i in range(len(padded_text)):
-                # Abort scroll early if state changed
-                if current_scroll_text != text and _offline_notice_until <= time.time():
-                    break
-                display_text = (padded_text[i:] + padded_text[:i])[:16]
-                with lcd_lock:
-                    lcd.print_line(display_text, 2)
-                time.sleep(0.35)
-        elif len(text) > 0:
+        # If the text changed, clear line 2 first to wipe ghost characters
+        if text != last_displayed:
+            with lcd_lock:
+                lcd.print_line(" " * 16, 2)
+            last_displayed = text
+
+        if not text:
+            time.sleep(0.3)
+            continue
+
+        if len(text) <= 16:
             with lcd_lock:
                 lcd.print_line(text.ljust(16), 2)
             time.sleep(0.5)
         else:
-            time.sleep(0.5)
+            # Scroll: one full rotation then re-check for text change
+            padded = text + "   "
+            for i in range(len(padded)):
+                # Check if something changed mid-scroll
+                with lcd_lock:
+                    now = time.time()
+                    current = _lcd_line2_override if (_lcd_line2_override and now < _override_until) else _lcd_line2_text
+                if current != text:
+                    break
+                window = (padded[i:] + padded)[:16]
+                with lcd_lock:
+                    lcd.print_line(window, 2)
+                time.sleep(0.35)
 
+
+# ---------------------------------------------------------------------------
 
 def _post(payload: dict) -> bool:
-    """Send payload to backend. Returns True on success, False if offline/error."""
+    """POST payload to backend. Returns True on HTTP 200, False otherwise."""
     headers = {
         "Content-Type": "application/json",
         "X-Device-Key": DEVICE_API_KEY,
     }
     try:
-        response = requests.post(INGEST_URL, json=payload, headers=headers, timeout=10)
-        logging.info(f"Upload response: {response.status_code}")
-        return response.status_code == 200
+        r = requests.post(INGEST_URL, json=payload, headers=headers, timeout=10)
+        logging.info(f"Upload response: {r.status_code}")
+        return r.status_code == 200
     except requests.exceptions.ConnectionError:
-        logging.warning("Backend unreachable - operating offline, data not uploaded.")
+        logging.warning("Backend unreachable — operating offline.")
         return False
     except Exception as e:
         logging.error(f"Upload error: {e}")
@@ -87,11 +133,7 @@ def _post(payload: dict) -> bool:
 
 def upload_scan(disease_type: str, confidence: float, temp: float, hum: float,
                 recommendation_en: str, recommendation_am: str) -> None:
-    """
-    Forward the Nano's scan result directly to the backend.
-    The Nano already computed the recommendation — the gateway just passes it through.
-    Offline is handled gracefully: log a warning, show on LCD, no crash.
-    """
+    """Send scan result to backend. Shows a 4-second offline notice on failure."""
     payload = {
         "device_id":        "rpi_gateway_001",
         "temperature":      temp,
@@ -100,118 +142,101 @@ def upload_scan(disease_type: str, confidence: float, temp: float, hum: float,
         "confidence_score": confidence,
     }
 
-    # Only attach recommendation block for diseased plants.
-    # The text itself came directly from the Nano — no logic here.
     if disease_type.lower() != "healthy":
-        if disease_type == "Anthracnose":
-            title_am = "አንትራክኖዝ ማስጠንቀቂያ"
-        elif disease_type == "Powdery Mildew":
-            title_am = "የዱቄት ሻጋታ ማስጠንቀቂያ"
-        else:
-            title_am = "ማስጠንቀቂያ"
-
+        title_am_map = {
+            "Anthracnose":   "አንትራክኖዝ ማስጠንቀቂያ",
+            "Powdery Mildew":"የዱቄት ሻጋታ ማስጠንቀቂያ",
+        }
         payload["recommendations"] = [{
             "title":          f"{disease_type} Alert",
             "description":    recommendation_en,
-            "title_am":       title_am,
+            "title_am":       title_am_map.get(disease_type, "ማስጠንቀቂያ"),
             "description_am": recommendation_am,
         }]
 
-    logging.info(f"Uploading payload: {payload}")
+    logging.info(f"Uploading: {payload}")
 
-    success = _post(payload)
-
-    global current_scroll_text, _offline_notice_until, _last_recommendation
-    if success:
-        logging.info("Upload successful")
-        # Clear any lingering offline notice immediately on reconnect
-        _offline_notice_until = 0.0
-        # Keep the Nano's recommendation on screen
+    if _post(payload):
+        logging.info("Upload successful.")
+        # Nothing extra to do — recommendation already showing on line 2
     else:
-        # Show offline hint for 3 s — non-blocking, scroll_lcd_task handles timing
-        logging.warning("Running in offline mode - scan displayed locally only.")
-        _last_recommendation  = recommendation_en
-        _offline_notice_until = time.time() + 3.0
-        current_scroll_text   = "Offline - No Net"
+        logging.warning("Offline — data not uploaded.")
+        # Show "Offline" for 4 s, then scroll falls back to recommendation automatically
+        set_line2_override("Offline-No Net ", 4.0)
 
 
 def handle_line(line: str) -> None:
-    """Process one line received from the Nano over Serial."""
+    """Parse one UART line from the Nano and update LCD + trigger upload."""
     line = line.strip()
     if not line:
         return
 
+    # Skip lines that are clearly garbled (non-ASCII heavy, no colon prefix)
+    if not line.startswith("SCAN:") and not line.isascii():
+        logging.debug(f"Skipping garbled line: {repr(line)}")
+        return
+
     logging.info(f"Nano: {line}")
 
-    if line.startswith("SCAN:"):
-        parts = line[5:].split(",")
+    if not line.startswith("SCAN:"):
+        return
 
-        if len(parts) >= 6:
-            disease_type = parts[0]
-            try:
-                confidence        = float(parts[1])
-                temp              = float(parts[2])
-                hum               = float(parts[3])
-                recommendation_en = parts[4]
-                recommendation_am = parts[5]
-            except ValueError:
-                logging.warning(f"Could not parse SCAN values: {parts}")
-                return
+    parts = line[5:].split(",")
 
-        elif len(parts) >= 5:
-            disease_type = parts[0]
-            try:
-                confidence        = float(parts[1])
-                temp              = float(parts[2])
-                hum               = float(parts[3])
-                recommendation_en = parts[4]
-                recommendation_am = parts[4]  # fallback: same text for both languages
-            except ValueError:
-                logging.warning(f"Could not parse SCAN values: {parts}")
-                return
+    # --- Parse fields ---
+    recommendation_en = ""
+    recommendation_am = ""
 
-        elif len(parts) == 4:
-            disease_type = parts[0]
-            try:
-                confidence        = float(parts[1])
-                temp              = float(parts[2])
-                hum               = float(parts[3])
-                recommendation_en = "Your Trees Look Healthy"
-                recommendation_am = "ዛፎችዎ ጤናማ ናቸው"
-            except ValueError:
-                logging.warning(f"Could not parse SCAN values: {parts}")
-                return
+    if len(parts) >= 6:
+        disease_type      = parts[0]
+        raw_nums          = parts[1:4]
+        recommendation_en = parts[4]
+        recommendation_am = parts[5]
+    elif len(parts) == 5:
+        disease_type      = parts[0]
+        raw_nums          = parts[1:4]
+        recommendation_en = parts[4]
+        recommendation_am = parts[4]
+    elif len(parts) == 4:
+        disease_type      = parts[0]
+        raw_nums          = parts[1:4]
+        recommendation_en = "Trees Look Healthy"
+        recommendation_am = "ዛፎችዎ ጤናማ ናቸው"
+    else:
+        logging.warning(f"Malformed SCAN: {line}")
+        return
 
-        else:
-            logging.warning(f"Malformed SCAN payload: {line}")
-            return
+    try:
+        confidence = float(raw_nums[0])
+        temp       = float(raw_nums[1])
+        hum        = float(raw_nums[2])
+    except (ValueError, IndexError):
+        logging.warning(f"Could not parse numbers in SCAN: {parts}")
+        return
 
-        logging.info(
-            f"Scan -> {disease_type} ({confidence*100:.1f}%)  "
-            f"T:{temp}C  H:{hum}%  Rec:{recommendation_en}"
-        )
+    logging.info(
+        f"Scan → {disease_type} ({confidence*100:.1f}%)  "
+        f"T:{temp}°C  H:{hum}%  Rec: {recommendation_en}"
+    )
 
-        # --- LCD Line 1: disease + temp ---
-        short_disease = disease_type[:8] if disease_type != "Powdery Mildew" else "Powdery"
-        with lcd_lock:
-            lcd.print_line(f"D:{short_disease} T:{int(temp)}C", 1)
+    # --- Update LCD ---
+    short_disease = "Powdery" if disease_type == "Powdery Mildew" else disease_type[:8]
+    with lcd_lock:
+        _set_line1(f"D:{short_disease} T:{int(temp)}C")
 
-        # --- LCD Line 2: scroll the Nano's recommendation ---
-        global current_scroll_text
-        current_scroll_text = recommendation_en
+    set_line2(recommendation_en)
 
-        # Upload in background so serial reading is never blocked
-        t = threading.Thread(
-            target=upload_scan,
-            args=(disease_type, confidence, temp, hum, recommendation_en, recommendation_am)
-        )
-        t.daemon = True
-        t.start()
+    # Upload in background — never block serial reading
+    t = threading.Thread(
+        target=upload_scan,
+        args=(disease_type, confidence, temp, hum, recommendation_en, recommendation_am),
+        daemon=True,
+    )
+    t.start()
 
 
 def find_nano_port() -> str:
-    ports = serial.tools.list_ports.comports()
-    for p in ports:
+    for p in serial.tools.list_ports.comports():
         if "ACM" in p.device or "Arduino" in (p.description or ""):
             logging.info(f"Auto-detected Nano at {p.device}")
             return p.device
@@ -220,16 +245,20 @@ def find_nano_port() -> str:
 
 def run_gateway() -> None:
     port = find_nano_port()
-    logging.info(f"MangoGuard Serial Gateway starting on {port} @ {SERIAL_BAUD} baud...")
+    logging.info(f"MangoGuard gateway starting on {port} @ {SERIAL_BAUD} baud...")
 
     while True:
         try:
             with serial.Serial(port, SERIAL_BAUD, timeout=2) as ser:
-                logging.info(f"Connected to Nano on {port}. Listening...")
+                # Flush garbage bytes that accumulate while the device was disconnected
+                ser.reset_input_buffer()
+                time.sleep(0.1)
+                ser.reset_input_buffer()
+
+                logging.info(f"Connected to Nano on {port}.")
                 with lcd_lock:
-                    lcd.print_line("Edge AI Ready", 1)
-                global current_scroll_text
-                current_scroll_text = "Auto-scan (10s)"
+                    _set_line1("Edge AI Ready ")
+                set_line2("Auto-scan 10s  ")
 
                 while True:
                     try:
@@ -239,37 +268,34 @@ def run_gateway() -> None:
                             handle_line(line)
                     except Exception as e:
                         logging.error(f"Read error: {e}")
-                        global current_scroll_text
-                        current_scroll_text = "Reconnecting..."
                         with lcd_lock:
-                            lcd.print_line("Read Error!", 1)
+                            _set_line1("Read Error!     ")
+                        set_line2("Reconnecting...  ")
                         break
 
         except serial.SerialException as e:
             logging.error(f"Cannot open {port}: {e}")
-            global current_scroll_text
-            current_scroll_text = "Device..."
             with lcd_lock:
-                lcd.print_line("Connect Edge AI", 1)
-            logging.info("Retrying in 5 seconds...")
+                _set_line1("Connect Edge AI ")
+            set_line2("Waiting 4 Nano  ")
+            logging.info("Retrying in 5 s...")
             time.sleep(5)
 
         except Exception as e:
             logging.error(f"Unexpected error: {e}")
-            global current_scroll_text
-            current_scroll_text = "Restarting..."
             with lcd_lock:
-                lcd.print_line("Gateway Error!", 1)
+                _set_line1("Gateway Error!  ")
+            set_line2("Restarting...   ")
             time.sleep(5)
 
 
 if __name__ == "__main__":
-    t_scroll = threading.Thread(target=scroll_lcd_task)
-    t_scroll.daemon = True
+    t_scroll = threading.Thread(target=scroll_lcd_task, daemon=True)
     t_scroll.start()
 
     with lcd_lock:
-        lcd.print_line("Gateway Ready", 1)
-        lcd.print_line("Starting up...", 2)
+        _set_line1("MangoGuard v1.0")
+    set_line2("Starting up...  ")
     time.sleep(1)
+
     run_gateway()

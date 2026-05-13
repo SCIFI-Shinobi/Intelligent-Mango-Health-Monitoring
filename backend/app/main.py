@@ -29,8 +29,9 @@ models.Base.metadata.create_all(bind=engine)
 
 # Ensure training samples directory exists
 import pathlib
-TRAINING_SAMPLES_DIR = pathlib.Path(__file__).parent.parent / "training_samples"
+TRAINING_SAMPLES_DIR = pathlib.Path(__file__).resolve().parent.parent / "training_samples"
 TRAINING_SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
+print(f"[setup] Training samples directory: {TRAINING_SAMPLES_DIR}")
 
 
 def ensure_user_settings_columns():
@@ -2273,6 +2274,7 @@ async def run_cloud_scan(
         db.add(ts)
         db.flush()
         rel = _save_training_image(image_bytes, disease_type, ts.id)
+        print(f"[training_sample] Image saved to relative path: {rel}")
         ts.image_path = rel
         db.commit()
     except Exception as _ts_err:
@@ -2519,7 +2521,9 @@ def _save_training_image(image_bytes: bytes, label: str, sample_id: int) -> str:
     folder = TRAINING_SAMPLES_DIR / label.replace(" ", "_")
     folder.mkdir(parents=True, exist_ok=True)
     rel_path = f"{label.replace(' ', '_')}/{sample_id}.jpg"
-    (TRAINING_SAMPLES_DIR / rel_path).write_bytes(image_bytes)
+    save_path = TRAINING_SAMPLES_DIR / rel_path
+    save_path.write_bytes(image_bytes)
+    print(f"[_save_training_image] Wrote {len(image_bytes)} bytes to {save_path}")
     return rel_path
 
 
@@ -2920,8 +2924,9 @@ def admin_get_training_sample_image(
     if not sample or not sample.image_path:
         raise HTTPException(status_code=404, detail="Image not found")
     img_path = TRAINING_SAMPLES_DIR / sample.image_path
+    print(f"[admin_image] Serving: {img_path} (exists={img_path.exists()})")
     if not img_path.exists():
-        raise HTTPException(status_code=404, detail="Image file missing")
+        raise HTTPException(status_code=404, detail=f"Image file missing on server: {sample.image_path}")
     return FileResponse(img_path, media_type="image/jpeg")
 
 

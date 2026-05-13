@@ -165,7 +165,7 @@ const translations = {
     pageOf: { en: 'Page', am: 'ገጽ' },
     of: { en: 'of', am: 'ከ' },
     total: { en: 'total', am: 'ጠቅላላ' },
-    exportCSV: { en: 'Export CSV', am: 'CSV አውርድ' },
+    exportZip: { en: 'Export Zip', am: 'Zip አውርድ' },
     emptyHint: { en: 'Logs will start filling in after the next successful disease scan upload.', am: 'ቀጣዩ የተሳካ የበሽታ ስካን ማስገባት በኋላ ሎጎች ይሞላሉ።' },
   },
 
