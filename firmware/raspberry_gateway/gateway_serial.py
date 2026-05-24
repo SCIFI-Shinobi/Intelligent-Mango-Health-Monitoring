@@ -23,7 +23,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # ================= CONFIGURATION =================
 API_BASE_URL   = "https://mango-guard-backend.onrender.com"
 INGEST_URL     = f"{API_BASE_URL}/data/ingest"
-DEVICE_API_KEY = "mg_c2a2bc944471a63f0ea2b5c9f4f432fc361172d5a76acd74"
+
+# Paste your Device API Key here (found in the MangoGuard
+# web dashboard under Settings → Gateways → Copy Key)
+DEVICE_API_KEY = "PASTE_YOUR_DEVICE_API_KEY_HERE"
 
 SERIAL_PORT    = "/dev/ttyACM0"
 SERIAL_BAUD    = 115200
