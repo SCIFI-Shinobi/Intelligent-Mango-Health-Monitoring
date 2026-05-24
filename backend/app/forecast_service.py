@@ -1,13 +1,13 @@
 """
-forecast_service.py — MangoGuard forecasting model loader and inference runner.
+forecast_service.py — MangoGuard forecasting using the Edge Impulse Linux runner.
 
-Uses ONNX Runtime instead of TFLite so that Edge Impulse tree-ensemble models
-(TreeEnsembleClassifier) are supported on the server without custom TFLite builds.
+Uses the official edge-impulse-linux SDK to run the .eim model exported from
+Edge Impulse, which natively supports tree-ensemble custom ops.
 
-Export your Edge Impulse forecast model as ONNX and place it at:
-    backend/app/ml_models/forecast_model.onnx
+Place your .eim model at:
+    backend/app/ml_models/forecast_model.eim
 
-If the file is absent, the placeholder model is used (always returns Stable).
+If the file is absent or the SDK is unavailable, a placeholder is used.
 
 Input:  list of 24 dicts — [{"temperature": float, "humidity": float}, ...]
 Output: {
@@ -24,63 +24,42 @@ Output: {
 
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 from typing import Optional
 
-# ── Optional heavy deps ───────────────────────────────────────────────────────
+# ── Optional deps ─────────────────────────────────────────────────────────────
 try:
     import numpy as np
-    IMPORT_ERROR: Optional[Exception] = None
-except Exception as exc:
+    NUMPY_AVAILABLE = True
+except Exception:
     np = None  # type: ignore[assignment]
-    IMPORT_ERROR = exc
+    NUMPY_AVAILABLE = False
 
 try:
-    import onnxruntime as ort
-    ONNX_AVAILABLE = True
+    from edge_impulse_linux.runner import ImpulseRunner
+    EI_AVAILABLE = True
 except Exception:
-    ort = None  # type: ignore[assignment]
-    ONNX_AVAILABLE = False
+    ImpulseRunner = None  # type: ignore[assignment]
+    EI_AVAILABLE = False
 
-# ── Model paths ───────────────────────────────────────────────────────────────
+# ── Model path ────────────────────────────────────────────────────────────────
 _ML_MODELS_DIR = Path(__file__).resolve().parent / "ml_models"
-MODEL_PATH_ONNX  = _ML_MODELS_DIR / "forecast_model.onnx"
-MODEL_PATH_TFLITE = _ML_MODELS_DIR / "forecast_model.tflite"  # kept for reference
+MODEL_PATH_EIM   = _ML_MODELS_DIR / "forecast_model.eim"
+MODEL_PATH_TFLITE = _ML_MODELS_DIR / "forecast_model.tflite"  # kept for reference only
 
-# Output class labels — must match the order the model was trained with
+# Output class labels — must match the order Edge Impulse trained with
 FORECAST_LABELS = ["High_Anthracnose_Risk", "High_Mildew_Risk", "Stable"]
 
-# Standard-scaler normalization parameters from the Edge Impulse training export
-# If your ONNX model already includes the scaler internally, set APPLY_SCALER = False
-APPLY_SCALER = True
-# Shape: (48,) — mean for each of the 48 input features (24 × [temp, hum])
-SCALER_MEAN = [
-    25.0, 68.0, 25.0, 68.0, 25.0, 68.0, 25.0, 68.0,
-    25.0, 68.0, 25.0, 68.0, 25.0, 68.0, 25.0, 68.0,
-    25.0, 68.0, 25.0, 68.0, 25.0, 68.0, 25.0, 68.0,
-    25.0, 68.0, 25.0, 68.0, 25.0, 68.0, 25.0, 68.0,
-    25.0, 68.0, 25.0, 68.0, 25.0, 68.0, 25.0, 68.0,
-    25.0, 68.0, 25.0, 68.0, 25.0, 68.0, 25.0, 68.0,
-]
-# Shape: (48,) — scale (1/std) for each feature
-SCALER_SCALE = [
-    0.2, 0.02, 0.2, 0.02, 0.2, 0.02, 0.2, 0.02,
-    0.2, 0.02, 0.2, 0.02, 0.2, 0.02, 0.2, 0.02,
-    0.2, 0.02, 0.2, 0.02, 0.2, 0.02, 0.2, 0.02,
-    0.2, 0.02, 0.2, 0.02, 0.2, 0.02, 0.2, 0.02,
-    0.2, 0.02, 0.2, 0.02, 0.2, 0.02, 0.2, 0.02,
-    0.2, 0.02, 0.2, 0.02, 0.2, 0.02, 0.2, 0.02,
-]
-
 # ── Module-level state ────────────────────────────────────────────────────────
-_forecast_session = None   # onnxruntime.InferenceSession
+_runner: Optional[object] = None   # ImpulseRunner instance
 _model_loaded = False
 _model_error: Optional[str] = None
-_input_name: Optional[str] = None
-_output_name: Optional[str] = None
+_ei_labels: list[str] = []         # labels as reported by the model itself
 
 
-# ── Placeholder (used when model is absent or fails to load) ──────────────────
+# ── Placeholder ───────────────────────────────────────────────────────────────
 
 def _placeholder_result() -> dict:
     return {
@@ -95,67 +74,59 @@ def _placeholder_result() -> dict:
     }
 
 
-# ── Softmax helper (for raw logit outputs) ────────────────────────────────────
-
-def _softmax(x):
-    e = np.exp(x - np.max(x))
-    return e / e.sum()
-
-
 # ── Load ──────────────────────────────────────────────────────────────────────
 
 def load_forecast_model():
-    """Load the ONNX forecasting model. Called once on startup."""
-    global _forecast_session, _model_loaded, _model_error, _input_name, _output_name
+    """Load the Edge Impulse .eim forecasting model. Called once on startup."""
+    global _runner, _model_loaded, _model_error, _ei_labels
 
-    if IMPORT_ERROR is not None:
-        _model_error = f"numpy unavailable: {IMPORT_ERROR}"
-        print(f"[forecast_service] WARNING — {_model_error}. Using placeholder.")
-        return
-
-    if not ONNX_AVAILABLE:
+    if not EI_AVAILABLE:
         _model_error = (
-            "onnxruntime is not installed. "
-            "Add 'onnxruntime' to requirements.txt and redeploy."
+            "edge-impulse-linux SDK not installed. "
+            "Add 'edge_impulse_linux' to requirements.txt."
         )
         print(f"[forecast_service] WARNING — {_model_error}. Using placeholder.")
         return
 
-    if not MODEL_PATH_ONNX.exists():
+    if not MODEL_PATH_EIM.exists():
         if MODEL_PATH_TFLITE.exists():
             _model_error = (
-                f"forecast_model.onnx not found at {MODEL_PATH_ONNX}. "
-                "A .tflite file exists but cannot be used on the server because it "
-                "contains the TreeEnsembleClassifier custom op which is not supported "
-                "by tflite-runtime. Export your Edge Impulse model as ONNX and place "
-                "it at backend/app/ml_models/forecast_model.onnx."
+                "forecast_model.eim not found. "
+                "A .tflite file exists but cannot run TreeEnsembleClassifier ops "
+                "with standard tflite-runtime. Export as Linux (x86_64) from Edge "
+                "Impulse and place at backend/app/ml_models/forecast_model.eim."
             )
         else:
-            _model_error = f"Model file not found: {MODEL_PATH_ONNX}"
+            _model_error = f"Model file not found: {MODEL_PATH_EIM}"
         print(f"[forecast_service] WARNING — {_model_error}. Using placeholder.")
         return
 
     try:
-        session = ort.InferenceSession(
-            str(MODEL_PATH_ONNX),
-            providers=["CPUExecutionProvider"],
-        )
-        _input_name  = session.get_inputs()[0].name
-        _output_name = session.get_outputs()[0].name
-        _forecast_session = session
+        # Ensure the .eim file is executable (required by the runner)
+        eim_path = str(MODEL_PATH_EIM)
+        current_mode = os.stat(eim_path).st_mode
+        os.chmod(eim_path, current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+        runner = ImpulseRunner(eim_path)
+        model_info = runner.init()
+
+        # Grab the label list reported by the model itself
+        _ei_labels = model_info.get("model_parameters", {}).get("labels", FORECAST_LABELS)
+
+        _runner = runner
         _model_loaded = True
-        _model_error  = None
-        print(f"[forecast_service] Loaded ONNX forecast model from {MODEL_PATH_ONNX}")
-        print(f"[forecast_service]   input='{_input_name}'  output='{_output_name}'")
+        _model_error = None
+        print(f"[forecast_service] Loaded Edge Impulse .eim model from {MODEL_PATH_EIM}")
+        print(f"[forecast_service]   labels={_ei_labels}")
     except Exception as exc:
-        _model_error = f"Failed to load ONNX forecast model: {exc}"
+        _model_error = f"Failed to load .eim forecast model: {exc}"
         print(f"[forecast_service] ERROR — {_model_error}. Using placeholder.")
 
 
 def get_forecast_model_status() -> dict:
     return {
         "loaded": _model_loaded,
-        "path": str(MODEL_PATH_ONNX),
+        "path": str(MODEL_PATH_EIM),
         "error": _model_error,
     }
 
@@ -172,60 +143,72 @@ def run_forecast(readings: list[dict]) -> dict:
     Returns:
         dict with keys: label, confidence, scores, model_loaded.
     """
-    if not _model_loaded or _forecast_session is None or np is None:
+    if not _model_loaded or _runner is None:
         return _placeholder_result()
 
-    # Build flat feature vector: [t0, h0, t1, h1, ..., t23, h23]
+    # Build flat feature list: [t0, h0, t1, h1, ..., t23, h23]
     features = []
     for r in readings:
         features.append(float(r.get("temperature", 25.0)))
         features.append(float(r.get("humidity",    68.0)))
 
-    # Pad or trim to exactly 48 features
+    # Pad or trim to exactly 48 features (24 readings × 2)
     while len(features) < 48:
         features.extend([25.0, 68.0])
     features = features[:48]
 
-    features_array = np.array(features, dtype=np.float32)
-
-    # Apply standard scaler normalization if required
-    if APPLY_SCALER and len(SCALER_MEAN) == len(features_array):
-        mean  = np.array(SCALER_MEAN,  dtype=np.float32)
-        scale = np.array(SCALER_SCALE, dtype=np.float32)
-        features_array = (features_array - mean) * scale
-
-    # Reshape to (1, 48)
-    input_data = features_array.reshape(1, -1)
-
     try:
-        raw_output = _forecast_session.run(
-            [_output_name],
-            {_input_name: input_data},
-        )[0][0]
+        result = _runner.classify(features)
     except Exception as exc:
         print(f"[forecast_service] Inference error: {exc}. Returning placeholder.")
         return _placeholder_result()
 
-    # Convert to probabilities (handle both raw logits and pre-softmaxed outputs)
-    raw = np.array(raw_output, dtype=np.float32)
-    if raw.sum() < 0.99 or raw.sum() > 1.01:
-        # Looks like raw logits — apply softmax
-        probabilities = _softmax(raw)
-    else:
-        probabilities = raw
+    # result["result"]["classification"] → {"High_Anthracnose_Risk": 0.x, ...}
+    classification = result.get("result", {}).get("classification", {})
 
-    best_idx   = int(np.argmax(probabilities))
-    label      = FORECAST_LABELS[best_idx] if best_idx < len(FORECAST_LABELS) else "Stable"
-    confidence = float(probabilities[best_idx])
+    if not classification:
+        print("[forecast_service] Empty classification result. Returning placeholder.")
+        return _placeholder_result()
 
-    scores = {
-        FORECAST_LABELS[i]: float(probabilities[i])
-        for i in range(min(len(FORECAST_LABELS), len(probabilities)))
-    }
+    # Find the winning label
+    best_label = max(classification, key=classification.get)
+    confidence = float(classification[best_label])
+
+    # Normalise label names to our standard set
+    scores = {}
+    for label in FORECAST_LABELS:
+        # Try exact match first, then case-insensitive
+        if label in classification:
+            scores[label] = float(classification[label])
+        else:
+            matched = next(
+                (v for k, v in classification.items() if k.lower() == label.lower()),
+                0.0,
+            )
+            scores[label] = float(matched)
+
+    # Map best_label to our standard label if needed
+    standard_label = best_label
+    for std in FORECAST_LABELS:
+        if std.lower() == best_label.lower():
+            standard_label = std
+            break
 
     return {
-        "label":        label,
+        "label":        standard_label,
         "confidence":   confidence,
         "scores":       scores,
         "model_loaded": True,
     }
+
+
+def close_forecast_model():
+    """Release the runner process. Call on app shutdown if needed."""
+    global _runner, _model_loaded
+    if _runner is not None:
+        try:
+            _runner.stop()
+        except Exception:
+            pass
+        _runner = None
+        _model_loaded = False

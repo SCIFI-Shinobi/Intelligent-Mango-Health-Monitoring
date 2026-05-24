@@ -14,4 +14,4 @@ numpy<2
 Pillow
 tflite-runtime
 supabase
-onnxruntime
+edge_impulse_linux
