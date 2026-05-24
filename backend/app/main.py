@@ -32,6 +32,20 @@ import pathlib
 TRAINING_SAMPLES_DIR = pathlib.Path(__file__).resolve().parent.parent / "training_samples"
 TRAINING_SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 print(f"[setup] Training samples directory: {TRAINING_SAMPLES_DIR}")
+try:
+    from supabase import create_client, Client
+except ImportError:
+    pass
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase_client = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print(f"[setup] Supabase Client Initialized for Storage")
+    except Exception as e:
+        print(f"[setup] Failed to initialize Supabase client: {e}")
 
 
 def ensure_user_settings_columns():
@@ -2517,10 +2531,28 @@ def require_admin(user: models.User = Depends(get_current_user)):
 
 
 def _save_training_image(image_bytes: bytes, label: str, sample_id: int) -> str:
-    """Write image to disk, return relative path string."""
+    """Write image to Supabase if configured, otherwise disk, return path or URL."""
+    rel_path = f"{label.replace(' ', '_')}/{sample_id}.jpg"
+    
+    if supabase_client:
+        try:
+            # Upload to Supabase Storage
+            response = supabase_client.storage.from_("training-samples").upload(
+                path=rel_path,
+                file=image_bytes,
+                file_options={"content-type": "image/jpeg"}
+            )
+            # Get public URL
+            public_url = supabase_client.storage.from_("training-samples").get_public_url(rel_path)
+            print(f"[_save_training_image] Uploaded to Supabase: {public_url}")
+            return public_url
+        except Exception as e:
+            print(f"[_save_training_image] Supabase upload failed, falling back to local: {e}")
+            # Fallback to local disk if upload fails
+    
+    # Local fallback
     folder = TRAINING_SAMPLES_DIR / label.replace(" ", "_")
     folder.mkdir(parents=True, exist_ok=True)
-    rel_path = f"{label.replace(' ', '_')}/{sample_id}.jpg"
     save_path = TRAINING_SAMPLES_DIR / rel_path
     save_path.write_bytes(image_bytes)
     print(f"[_save_training_image] Wrote {len(image_bytes)} bytes to {save_path}")
@@ -2912,7 +2944,7 @@ def admin_get_stats(
     }
 
 
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 @app.get("/admin/training/samples/{sample_id}/image")
 def admin_get_training_sample_image(
@@ -2923,6 +2955,10 @@ def admin_get_training_sample_image(
     sample = db.query(models.TrainingSample).filter(models.TrainingSample.id == sample_id).first()
     if not sample or not sample.image_path:
         raise HTTPException(status_code=404, detail="Image not found")
+        
+    if sample.image_path.startswith("http"):
+        return RedirectResponse(url=sample.image_path)
+        
     img_path = TRAINING_SAMPLES_DIR / sample.image_path
     print(f"[admin_image] Serving: {img_path} (exists={img_path.exists()})")
     if not img_path.exists():
@@ -2940,15 +2976,20 @@ def admin_delete_training_sample(
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
     if sample.image_path:
-        img_file = TRAINING_SAMPLES_DIR / sample.image_path
-        if img_file.exists():
-            img_file.unlink()
+        if sample.image_path.startswith("http"):
+            # If using Supabase Storage, we don't try to delete the local file.
+            pass
+        else:
+            img_file = TRAINING_SAMPLES_DIR / sample.image_path
+            if img_file.exists():
+                img_file.unlink()
     db.delete(sample)
     db.commit()
     return {"status": "ok"}
 
 
 from fastapi.responses import StreamingResponse
+import requests
 
 @app.get("/admin/training/export")
 def admin_export_training_zip(
@@ -2965,10 +3006,19 @@ def admin_export_training_zip(
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for s in confirmed:
-            img_path = TRAINING_SAMPLES_DIR / s.image_path
-            if img_path.exists():
-                folder = s.confirmed_label.replace(" ", "_")
-                zf.write(img_path, f"{folder}/{s.id}.jpg")
+            if s.image_path.startswith("http"):
+                try:
+                    resp = requests.get(s.image_path)
+                    if resp.status_code == 200:
+                        folder = s.confirmed_label.replace(" ", "_")
+                        zf.writestr(f"{folder}/{s.id}.jpg", resp.content)
+                except Exception as e:
+                    print(f"[admin_export] Error downloading {s.image_path}: {e}")
+            else:
+                img_path = TRAINING_SAMPLES_DIR / s.image_path
+                if img_path.exists():
+                    folder = s.confirmed_label.replace(" ", "_")
+                    zf.write(img_path, f"{folder}/{s.id}.jpg")
     buf.seek(0)
     return StreamingResponse(
         buf,
