@@ -38,6 +38,14 @@ except Exception:
     NUMPY_AVAILABLE = False
 
 try:
+    # Mock cv2 and pyaudio because edge_impulse_linux imports them, which fails on Render native env
+    import sys
+    from unittest.mock import MagicMock
+    if 'cv2' not in sys.modules:
+        sys.modules['cv2'] = MagicMock()
+    if 'pyaudio' not in sys.modules:
+        sys.modules['pyaudio'] = MagicMock()
+        
     from edge_impulse_linux.runner import ImpulseRunner
     EI_AVAILABLE = True
 except Exception as e:
