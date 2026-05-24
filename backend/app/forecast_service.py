@@ -202,10 +202,17 @@ def run_forecast(readings: list[dict]) -> dict:
         features.append(float(r.get("temperature", 25.0)))
         features.append(float(r.get("humidity",    68.0)))
 
-    # Pad or trim to exactly 6 features (3 readings × 2)
-    while len(features) < 6:
-        features.extend([25.0, 68.0])
-    features = features[:6]
+    # Repeat the provided readings to reach exactly 48 features (24 readings × 2)
+    # This uses only the current readings passed in, not old data
+    if len(features) > 0:
+        original_features = features[:]
+        while len(features) < 48:
+            features.extend(original_features)
+    else:
+        # No readings available, use defaults
+        features = [25.0, 68.0] * 24
+    
+    features = features[:48]
 
     try:
         result = _runner.classify(features)

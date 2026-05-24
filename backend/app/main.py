@@ -1411,12 +1411,11 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
     if not sensor_rows:
         return
 
-    # Calculate average temperature and humidity of the last scans
-    avg_temp = sum(row.temperature for row in sensor_rows) / len(sensor_rows)
-    avg_humidity = sum(row.humidity for row in sensor_rows) / len(sensor_rows)
-
-    # Pad to 3 readings using the average values for the demo
-    readings = [{"temperature": avg_temp, "humidity": avg_humidity}] * FORECAST_MIN_READINGS
+    # Use the actual last 3 sensor readings (not averaged)
+    readings = [
+        {"temperature": row.temperature, "humidity": row.humidity}
+        for row in reversed(sensor_rows)  # reverse to get chronological order
+    ]
 
     result = forecast_service.run_forecast(readings)
     label = result["label"]
@@ -1425,7 +1424,7 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
 
     print(
         f"[forecast_auto] {internal_device_id}: {label} ({confidence*100:.1f}%) "
-        f"model_loaded={model_loaded} (using avg temp {avg_temp:.1f}, hum {avg_humidity:.1f})"
+        f"model_loaded={model_loaded} (using {len(readings)} actual scans)"
     )
 
     context = db.query(models.ForecastContext).filter(
