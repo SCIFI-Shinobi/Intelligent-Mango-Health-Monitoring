@@ -30,14 +30,10 @@ export default function ForecastCard({ forecast, loading }) {
         <div className="section-header">
           <span className="section-title">{t('forecast', 'title')}</span>
         </div>
-        <div className="forecast-grid skeleton">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="forecast-day-card skeleton-state">
-              <div className="skeleton-line skeleton-label"></div>
-              <div className="skeleton-line skeleton-heading skeleton-delay-1"></div>
-              <div className="skeleton-box forecast-pill-skeleton skeleton-delay-2"></div>
-            </div>
-          ))}
+        <div className="dashboard-empty-state" style={{ padding: '32px 20px' }}>
+          <i className="fa-solid fa-cloud-sun dashboard-empty-icon"></i>
+          <p className="dashboard-empty-title">{t('forecast', 'noData')}</p>
+          <p className="dashboard-empty-hint">{t('forecast', 'waitingForForecast')}</p>
         </div>
       </div>
     );

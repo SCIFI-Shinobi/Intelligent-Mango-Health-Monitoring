@@ -40,7 +40,10 @@ except Exception:
 try:
     from edge_impulse_linux.runner import ImpulseRunner
     EI_AVAILABLE = True
-except Exception:
+except Exception as e:
+    import traceback
+    traceback.print_exc()
+    print(f"[forecast_service] Failed to import edge_impulse_linux: {e}")
     ImpulseRunner = None  # type: ignore[assignment]
     EI_AVAILABLE = False
 

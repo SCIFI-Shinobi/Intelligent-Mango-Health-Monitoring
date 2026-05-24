@@ -40,25 +40,22 @@ export default function SensorCard({ name, value, unit, previousValue, icon, loa
   const numValue = typeof value === 'string' ? parseFloat(value) : value;
   const hasValue = numValue !== null && numValue !== undefined && !isNaN(numValue) && value !== '-';
   
-  // If no data ever received, show waiting skeleton state
+  // If no data ever received, show waiting empty state
   if (!hasValue && !lastScanTimestamp) {
     return (
-      <div className={`sensor-card sensor-card-${icon === 'precip' ? 'moisture' : icon} skeleton-state no-data`}>
+      <div className={`sensor-card sensor-card-${icon === 'precip' ? 'moisture' : icon}`}>
         <div className="card-header">
           <div className="sensor-icon-container">
             {getIcon()}
           </div>
           <span className="sensor-name">{name}</span>
         </div>
-        <div className="sensor-value">
-          <div className="skeleton-line skeleton-value-lg skeleton-delay-1"></div>
+        <div className="dashboard-empty-state" style={{ padding: '16px 12px', minHeight: '80px' }}>
+          <p className="dashboard-empty-title" style={{ fontSize: '13px' }}>—</p>
+          <p className="dashboard-empty-hint" style={{ fontSize: '12px' }}>
+            {lang === 'am' ? 'አዲስ ንባብ በመጠባበቅ ላይ' : 'Awaiting first reading'}
+          </p>
         </div>
-        <div className="progress-bar-container">
-          <div className="progress-bar">
-            <div className="skeleton-fill skeleton-fill-wide skeleton-delay-2"></div>
-          </div>
-        </div>
-        <div className="skeleton-line skeleton-meta-line skeleton-delay-3"></div>
       </div>
     );
   }

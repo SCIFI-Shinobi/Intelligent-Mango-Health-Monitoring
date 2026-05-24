@@ -20,7 +20,7 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
   const { lang, t } = useLanguage();
   const { settings } = useSettings();
 
-  if (loading || !data || data.length === 0) {
+  if (loading) {
     return (
       <div className="chart-container">
         <div className="section-header">
@@ -39,6 +39,26 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
             ))}
           </div>
           <div className="skeleton-line skeleton-meta-line skeleton-delay-2" style={{ marginTop: '10px' }}></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="chart-container">
+        <div className="section-header">
+          <span className="section-title">{t('chart', 'title')}</span>
+          <div className="chart-tabs">
+            <button className={`tab-btn ${currentRange === '24h' ? 'active' : ''}`} onClick={() => onRangeChange('24h')}>24h</button>
+            <button className={`tab-btn ${currentRange === '7d' ? 'active' : ''}`} onClick={() => onRangeChange('7d')}>7d</button>
+            <button className={`tab-btn ${currentRange === '30d' ? 'active' : ''}`} onClick={() => onRangeChange('30d')}>30d</button>
+          </div>
+        </div>
+        <div className="dashboard-empty-state" style={{ padding: '32px 20px' }}>
+          <i className="fa-solid fa-chart-line dashboard-empty-icon"></i>
+          <p className="dashboard-empty-title">{t('chart', 'noData')}</p>
+          <p className="dashboard-empty-hint">{t('chart', 'waitingForHistory')}</p>
         </div>
       </div>
     );
