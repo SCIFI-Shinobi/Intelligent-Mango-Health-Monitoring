@@ -73,8 +73,9 @@ def menu():
     print("1. Send Healthy Scan (Normal T/H)")
     print("2. Send Anthracnose Scan (High T/H)")
     print("3. Send Powdery Mildew Scan (Mod T/Mod H)")
-    print("4. Trigger Anthracnose Forecast (Sends 3 High T/H readings)")
-    print("5. Trigger Healthy Forecast (Sends 3 Normal T/H readings)")
+    print("4. Trigger Anthracnose Forecast (Sends 3 cool/wet readings)")
+    print("5. Trigger Healthy Forecast (Sends 3 normal readings)")
+    print("6. Trigger Powdery Mildew Forecast (Sends 3 warm/mod readings)")
     print("q. Quit")
     print("==================================================")
     choice = input("Select an option: ")
@@ -105,11 +106,11 @@ if __name__ == "__main__":
             )
         elif c == '4':
             trigger_reading(
-                "Healthy", # Even if healthy, the high temp/humidity will trigger a disease forecast
-                base_temp=32.0, 
-                base_hum=90.0, 
-                rec_en="", 
-                rec_am="",
+                "Anthracnose",
+                base_temp=16.5,  # Cool nights trigger anthracnose
+                base_hum=90.0,   # Very high humidity
+                rec_en="Apply copper-based fungicides immediately and ensure proper drainage.", 
+                rec_am="ወዲያውኑ መዳብ-ተኮር ፀረ-ፈንገስ መድሃኒቶችን ይጠቀሙ እና ትክክለኛ የውሃ ማፍሰሻን ያረጋግጡ።",
                 send_three=True
             )
         elif c == '5':
@@ -119,6 +120,15 @@ if __name__ == "__main__":
                 base_hum=60.0, 
                 rec_en="", 
                 rec_am="",
+                send_three=True
+            )
+        elif c == '6':
+            trigger_reading(
+                "Powdery Mildew",
+                base_temp=22.0,  # Warm daytime temps
+                base_hum=55.0,   # Moderate humidity
+                rec_en="Apply sulfur-based fungicides and prune dense canopy for airflow.", 
+                rec_am="በሰልፈር ላይ የተመሰረቱ የፈንገስ መድሐኒቶችን ይተግብሩ እና ጥቅጥቅ ያሉ ቅርንጫፎችን ለአየር ዝውውር ይቁረጡ።",
                 send_three=True
             )
         elif c == 'q':
