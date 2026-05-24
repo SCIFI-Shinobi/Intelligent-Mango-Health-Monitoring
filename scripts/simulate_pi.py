@@ -106,11 +106,11 @@ if __name__ == "__main__":
             )
         elif c == '4':
             trigger_reading(
-                "Anthracnose",
+                "Healthy",  # Disease type is just "Healthy" - model will forecast based on temp/humidity
                 base_temp=16.5,  # Cool nights trigger anthracnose
                 base_hum=90.0,   # Very high humidity
-                rec_en="Apply copper-based fungicides immediately and ensure proper drainage.", 
-                rec_am="ወዲያውኑ መዳብ-ተኮር ፀረ-ፈንገስ መድሃኒቶችን ይጠቀሙ እና ትክክለኛ የውሃ ማፍሰሻን ያረጋግጡ።",
+                rec_en="", 
+                rec_am="",
                 send_three=True
             )
         elif c == '5':
@@ -124,11 +124,11 @@ if __name__ == "__main__":
             )
         elif c == '6':
             trigger_reading(
-                "Powdery Mildew",
+                "Healthy",  # Disease type is just "Healthy" - model will forecast based on temp/humidity
                 base_temp=22.0,  # Warm daytime temps
                 base_hum=55.0,   # Moderate humidity
-                rec_en="Apply sulfur-based fungicides and prune dense canopy for airflow.", 
-                rec_am="በሰልፈር ላይ የተመሰረቱ የፈንገስ መድሐኒቶችን ይተግብሩ እና ጥቅጥቅ ያሉ ቅርንጫፎችን ለአየር ዝውውር ይቁረጡ።",
+                rec_en="", 
+                rec_am="",
                 send_three=True
             )
         elif c == 'q':
