@@ -1064,8 +1064,8 @@ async def ingest_device_payload(
     )
 
     # ── Auto-forecast from stored sensor history ────────────────────────────
-    # After every ingest, check if we have ≥ 24 sensor readings for this device.
-    # If yes, pull the last 24 and run the TFLite forecasting model.
+    # After every ingest, check if we have ≥ 3 sensor readings for this device.
+    # If yes, pull the last 3 and run the Edge Impulse forecasting model.
     _maybe_auto_forecast(db, internal_device_id=internal_device_id, server_now=server_now)
 
     db.commit()
@@ -1370,7 +1370,7 @@ def build_analysis_summary(
 # Auto-forecast helper (called from ingest)
 # ------------------------------------------------------------------
 
-FORECAST_MIN_READINGS = 24  # need at least 24 sensor rows to forecast
+FORECAST_MIN_READINGS = 3  # need at least 3 sensor rows to forecast
 
 
 def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: datetime) -> None:
@@ -1415,7 +1415,7 @@ def _maybe_auto_forecast(db: Session, *, internal_device_id: str, server_now: da
     avg_temp = sum(row.temperature for row in sensor_rows) / len(sensor_rows)
     avg_humidity = sum(row.humidity for row in sensor_rows) / len(sensor_rows)
 
-    # Pad to 24 readings using the average values for the demo
+    # Pad to 3 readings using the average values for the demo
     readings = [{"temperature": avg_temp, "humidity": avg_humidity}] * FORECAST_MIN_READINGS
 
     result = forecast_service.run_forecast(readings)
@@ -1493,13 +1493,13 @@ class _ForecastRequest(schemas.BaseModel):
 @app.post("/api/forecast")
 def run_forecast_endpoint(payload: _ForecastRequest):
     """
-    Run the TFLite forecasting model against a caller-supplied list of readings.
-    Requires exactly 24 {temperature, humidity} entries.
+    Run the forecasting model against a caller-supplied list of readings.
+    Requires exactly 3 {temperature, humidity} entries.
     """
-    if len(payload.readings) != 24:
+    if len(payload.readings) != 3:
         raise HTTPException(
             status_code=422,
-            detail=f"Exactly 24 readings are required, received {len(payload.readings)}.",
+            detail=f"Exactly 3 readings are required, received {len(payload.readings)}.",
         )
 
     readings = [
