@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     portaudio19-dev \
     libasound2-dev \
     build-essential \
+    libcurl4 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --retries 20 --timeout 1200 -r /tmp/requirements.txt

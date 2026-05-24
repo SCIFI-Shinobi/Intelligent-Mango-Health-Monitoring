@@ -46,7 +46,7 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
 
   if (!data || data.length === 0) {
     return (
-      <div className="chart-container">
+      <div className="chart-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <div className="section-header">
           <span className="section-title">{t('chart', 'title')}</span>
           <div className="chart-tabs">
@@ -55,7 +55,7 @@ export default function HistoricalChart({ data, loading, onRangeChange, currentR
             <button className={`tab-btn ${currentRange === '30d' ? 'active' : ''}`} onClick={() => onRangeChange('30d')}>30d</button>
           </div>
         </div>
-        <div className="dashboard-empty-state" style={{ padding: '32px 20px' }}>
+        <div className="dashboard-empty-state" style={{ flex: 1, minHeight: '350px', padding: '32px 20px', border: 'none', background: 'transparent' }}>
           <i className="fa-solid fa-chart-line dashboard-empty-icon"></i>
           <p className="dashboard-empty-title">{t('chart', 'noData')}</p>
           <p className="dashboard-empty-hint">{t('chart', 'waitingForHistory')}</p>
