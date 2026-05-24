@@ -47,6 +47,45 @@ try:
         sys.modules['pyaudio'] = MagicMock()
         
     from edge_impulse_linux.runner import ImpulseRunner
+
+    # The official SDK has an infinite loop bug if the runner crashes. We patch it here.
+    def patched_init(self, debug=False):
+        import os, tempfile, subprocess, time, socket
+        if not os.path.exists(self._model_path):
+            raise Exception("Model file does not exist: " + self._model_path)
+        if not os.access(self._model_path, os.X_OK):
+            raise Exception('Model file "' + self._model_path + '" is not executable')
+
+        self._debug = debug
+        self._tempdir = tempfile.mkdtemp()
+        socket_path = os.path.join(self._tempdir, "runner.sock")
+        cmd = [self._model_path, socket_path]
+        
+        self._runner = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        timeout_start = time.time()
+        # FIXED LOOP: `and` instead of `or`
+        while not os.path.exists(socket_path) and self._runner.poll() is None:
+            time.sleep(0.1)
+            if time.time() - timeout_start > 10.0:
+                self._runner.kill()
+                raise Exception("Timeout waiting for EIM socket")
+
+        if self._runner.poll() is not None:
+            stdout, stderr = self._runner.communicate()
+            raise Exception(f"Runner crashed (Exit: {self._runner.poll()}). STDERR: {stderr.decode('utf-8', errors='ignore')}")
+
+        self._client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._client.settimeout(getattr(self, '_timeout', 30))
+        self._client.connect(socket_path)
+
+        return self.hello()
+
+    ImpulseRunner.init = patched_init
     EI_AVAILABLE = True
 except Exception as e:
     import traceback
