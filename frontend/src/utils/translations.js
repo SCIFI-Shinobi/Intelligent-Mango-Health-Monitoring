@@ -258,9 +258,6 @@ const translations = {
     lastSeen: { en: 'Last seen', am: 'ለመጨረሻ ጊዜ የታየ' },
     esp32Config: { en: 'ESP32 Config.h', am: 'ESP32 Config.h' },
     noDevicesConnectedYet: { en: 'No devices connected yet', am: 'እስካሁን ምንም መሳሪያ አልተገናኘም' },
-    copy: { en: 'Copy', am: 'ቅዳ' },
-    regenerate: { en: 'Regenerate', am: 'እንደገና ፍጠር' },
-    remove: { en: 'Remove', am: 'አስወግድ' },
   },
 
   // ---- Analysis Page ----

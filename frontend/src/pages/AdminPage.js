@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback, useContext } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { getApiBaseUrl } from '../utils/apiBase';
 import { AuthContext } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
 const API = getApiBaseUrl();
-const DISEASE_OPTS = ['All', 'Healthy', 'Anthracnose', 'Powdery Mildew'];
 const LABEL_OPTS = ['Healthy', 'Anthracnose', 'Powdery Mildew'];
 const DEVICE_ONLINE_MS = 5 * 60 * 1000;
 
@@ -477,7 +476,7 @@ function SystemSettingsTab() {
   const { t } = useLanguage();
   const { token } = useContext(AuthContext);
   const { data: settingsData, loading, reload } = useAdminFetch('/admin/settings');
-  const { data: statsData, loading: loadingStats } = useAdminFetch('/admin/stats');
+  const { data: statsData } = useAdminFetch('/admin/stats');
   const [saving, setSaving] = useState(null);
 
   const updateSetting = async (key, value) => {
@@ -569,23 +568,10 @@ function SystemSettingsTab() {
 }
 
 // ── Main AdminPage ─────────────────────────────────────────────────────────────
-const TABS = [
-  { id: 'users',    label: 'Users',         icon: 'fa-users' },
-  { id: 'scans',    label: 'Scan History',   icon: 'fa-clipboard-list' },
-  { id: 'training', label: 'Training Data',  icon: 'fa-flask' },
-  { id: 'settings', label: 'System Settings', icon: 'fa-gears' },
-];
-
 export default function AdminPage() {
   const location = useLocation();
-  const navigate = useNavigate();
   const queryParams = new URLSearchParams(location.search);
   const activeTab = queryParams.get('tab') || 'users';
-
-  const setTab = (newTab) => {
-    queryParams.set('tab', newTab);
-    navigate({ search: queryParams.toString() });
-  };
 
   return (
     <div className="admin-page">

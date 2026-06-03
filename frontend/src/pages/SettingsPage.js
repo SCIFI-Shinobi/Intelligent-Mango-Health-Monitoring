@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useSettings } from '../context/SettingsContext';
-import { getApiBaseUrl } from '../utils/apiBase';
 
-const API_BASE_URL = getApiBaseUrl();
-const DEVICE_ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
 const TEMPERATURE_OPTIONS = [
   { value: 'celsius', labelKey: 'celsius', icon: 'C', accentClass: 'cool' },
   { value: 'fahrenheit', labelKey: 'fahrenheit', icon: 'F', accentClass: 'warm' }
@@ -13,22 +11,7 @@ const TIME_FORMAT_OPTIONS = [
   { value: 'relative', labelKey: 'relative', exampleKey: 'relativeExample', iconClass: 'fa-solid fa-clock-rotate-left', accentClass: 'fresh' },
   { value: 'absolute', labelKey: 'absolute', exampleKey: 'absoluteExample', iconClass: 'fa-solid fa-calendar-check', accentClass: 'calm' }
 ];
-const REFRESH_OPTIONS = [
-  { value: 1, label: '1m', iconClass: 'fa-solid fa-stopwatch' },
-  { value: 5, label: '5m', iconClass: 'fa-solid fa-clock' },
-  { value: 15, label: '15m', iconClass: 'fa-solid fa-rotate' },
-  { value: 30, label: '30m', iconClass: 'fa-solid fa-hourglass-half' },
-  { value: 60, label: '1h', iconClass: 'fa-solid fa-business-time' },
-  { value: 0, dynamicLabelKey: 'manual', iconClass: 'fa-solid fa-hand-pointer' }
-];
 
-function parseApiDate(value) {
-  if (!value) return null;
-
-  const normalized = typeof value === 'string' && !value.endsWith('Z') ? `${value}Z` : value;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
 
 function SectionIntro({ iconClass, title }) {
   return (
@@ -46,19 +29,10 @@ function SectionIntro({ iconClass, title }) {
 export default function SettingsPage() {
   const { lang, switchLang, t } = useLanguage();
   const { settings, updateSettings } = useSettings();
-  const token = localStorage.getItem('token');
-  const ts = (key) => t('settings', key);
-
   // Local state to hold changes until 'Save' is pressed
   const [localSettings, setLocalSettings] = useState(settings);
 
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState(null);
-
-  const headers = useMemo(() => ({
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  }), [token]);
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -71,18 +45,15 @@ export default function SettingsPage() {
 
   const handleSaveSettings = async () => {
     try {
-      setError(null);
       await updateSettings(localSettings);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
-      setError(e.message || ts('unknownError'));
+      console.error(e);
     }
   };
 
-  const selectedRefreshLabel = localSettings.autoRefreshInterval
-    ? `${ts('every')} ${localSettings.autoRefreshInterval}m`
-    : ts('manual');
+  const ts = (key) => t('settings', key);
 
   return (
     <div className="settings-page">
