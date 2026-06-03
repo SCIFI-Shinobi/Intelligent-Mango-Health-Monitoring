@@ -17,6 +17,8 @@ class LCD:
     def __init__(self, port=1, address=0x3F):
         self.enabled = False  # always set first before anything else
         self.address = address
+        self._error_count = 0
+        self._MAX_ERRORS = 5   # disable LCD after this many consecutive I2C failures
         try:
             self.bus = smbus.SMBus(port)
             self.init_lcd()
@@ -35,7 +37,7 @@ class LCD:
         time.sleep(0.0005)
 
     def lcd_byte(self, bits, mode):
-        if not self.enabled and mode != LCD_CMD:
+        if not self.enabled:
             return
         bits_high = mode | (bits & 0xF0) | LCD_BACKLIGHT
         bits_low  = mode | ((bits << 4) & 0xF0) | LCD_BACKLIGHT
@@ -44,8 +46,19 @@ class LCD:
             self.lcd_toggle_enable(bits_high)
             self.bus.write_byte(self.address, bits_low)
             self.lcd_toggle_enable(bits_low)
+            self._error_count = 0  # reset on success
         except Exception as e:
-            print(f"LCD write error: {e}")
+            self._error_count += 1
+            if self._error_count <= 1:
+                print(f"LCD write error: {e}")
+            if self._error_count >= self._MAX_ERRORS:
+                print(f"LCD I2C error threshold reached. Attempting re-init...")
+                time.sleep(0.5)
+                self._error_count = 0
+                try:
+                    self.init_lcd()
+                except Exception:
+                    pass
 
     def lcd_toggle_enable(self, bits):
         time.sleep(0.0005)

@@ -1,0 +1,17 @@
+[Unit]
+Description=MangoGuard Gateway Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/mangoguard
+ExecStart=/home/pi/mangoguard/venv/bin/python /home/pi/mangoguard/gateway_serial.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
