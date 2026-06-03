@@ -31,7 +31,7 @@
 | Feature | What the user sees |
 | :--- | :--- |
 | 📸 **Edge AI Detection** | Scan a leaf → get a **Anthracnose / Powdery Mildew / Healthy** result in seconds, entirely offline. Runs a quantized MobileNetV1 model on the Arduino Nano 33 BLE Sense. |
-| 🌡️ **Live Environmental Risk Engine** | Real-time temperature & humidity readings from the Raspberry Pi gateway, scored against agronomic thresholds to produce an instant **Low / Medium / High** risk rating. |
+| 🌡️ **Live Environmental Risk Engine** | Real-time temperature & humidity readings from the Arduino Nano (DHT22), forwarded to the Raspberry Pi gateway and scored against agronomic thresholds to produce an instant **Low / Medium / High** risk rating. |
 | 🔮 **5-Day Disease Risk Forecast** | The Pi gateway runs an Edge Impulse Linux SDK model on the last 24 h of sensor data to predict the upcoming day's risk — helping farmers act *before* an outbreak. |
 | 🌍 **Bilingual Dashboard (EN / አማርኛ)** | Every recommendation, alert and reading is available in both English and Amharic. Farmers see actionable treatment advice in their native language. |
 | 📧 **Configurable Email Alerts** | Disease detections above a user-defined confidence threshold trigger an instant branded email alert via Brevo. Forecast alerts fire a day ahead. |
@@ -45,12 +45,12 @@
 
 ```mermaid
 graph LR
-    A[🌿 Arduino Nano 33 BLE\nCamera + TinyML Model] -->|Serial / USB| B(📡 Raspberry Pi 4\nDHT22 Temp/Humidity)
-    B -->|Wi-Fi / JSON POST| C{☁️ FastAPI Backend\nRender Cloud}
-    C -->|SQLAlchemy ORM| D[(PostgreSQL\nSensor & Detection Data)]
-    C -->|Supabase SDK| E[(Supabase\nLeaf Image Storage)]
-    C -->|WebSocket broadcast| F[💻 React Dashboard\nVercel]
-    G[🌐 Browser Upload] -->|REST POST /cloud-scan| C
+  A[🌿 Arduino Nano 33 BLE\nCamera + TinyML Model + DHT22] -->|Serial / USB| B(📡 Raspberry Pi 4\nSerial receiver / Gateway)
+  B -->|Wi-Fi / JSON POST| C{☁️ FastAPI Backend\nRender Cloud}
+  C -->|SQLAlchemy ORM| D[(PostgreSQL\nSensor & Detection Data)]
+  C -->|Supabase SDK| E[(Supabase\nLeaf Image Storage)]
+  C -->|WebSocket broadcast| F[💻 React Dashboard\nVercel]
+  G[🌐 Browser Upload] -->|REST POST /cloud-scan| C
 ```
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for a full component breakdown and data-flow walkthrough.
@@ -65,7 +65,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for a full component breakdown and data
 | Arduino Nano 33 BLE Sense | Runs the TinyML leaf disease model |
 | OV7675 Camera Module | Image capture for edge inference |
 | Raspberry Pi 4 (Raspberry Pi OS 64-bit) | Gateway: sensor reading, forecasting, serial relay |
-| DHT22 Temperature/Humidity Sensor | Environmental data source |
+| DHT22 Temperature/Humidity Sensor | Environmental data source (connected to the Arduino Nano 33 BLE; readings forwarded to the Raspberry Pi gateway) |
 
 ### Software
 | Requirement | Version |

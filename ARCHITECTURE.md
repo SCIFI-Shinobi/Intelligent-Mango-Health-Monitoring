@@ -9,7 +9,7 @@ This document describes the technical components, their responsibilities, and th
 MangoGuard is a **three-tier IoT + cloud system**:
 
 1. **Edge Tier** — TinyML inference runs directly on an Arduino microcontroller in the field. No internet required.
-2. **Gateway Tier** — A Raspberry Pi collects environmental sensor data, relays Arduino results, and runs a local disease risk forecast model.
+2. **Gateway Tier** — A Raspberry Pi collects environmental sensor data forwarded from the Arduino Nano, relays Arduino results, and runs a local disease risk forecast model.
 3. **Cloud Tier** — A FastAPI backend persists all data, serves the REST + WebSocket API, and handles email alerting. A React frontend provides a real-time bilingual dashboard.
 
 ---
@@ -23,6 +23,7 @@ MangoGuard is a **three-tier IoT + cloud system**:
 | Image capture | OV7675 camera module captures leaf images on demand |
 | Edge inference | Quantized MobileNetV1 INT8 model classifies the image into: `Anthracnose`, `Powdery Mildew`, or `Healthy` |
 | Result output | Classification result + confidence score sent over USB serial to the Raspberry Pi |
+| Environmental sensing | Reads an attached DHT22 temperature & humidity sensor and forwards readings over USB serial to the Raspberry Pi |
 
 The model runs **entirely offline** — latency is under 2 seconds per inference.
 
@@ -33,7 +34,7 @@ The model runs **entirely offline** — latency is under 2 seconds per inference
 | Responsibility | Detail |
 | :--- | :--- |
 | Serial relay | Reads Arduino inference results over `/dev/ttyACM0` and forwards them to the backend REST API |
-| Environmental sensing | Reads DHT22 temperature & humidity at a configurable interval |
+| Environmental sensing | Receives DHT22 temperature & humidity readings forwarded from the Arduino Nano over USB serial |
 | Risk evaluation | Scores live sensor readings against agronomic thresholds to produce a real-time Low/Medium/High risk level |
 | Forecasting | Runs `forecasting-linux-aarch64-v11-impulse.eim` (Edge Impulse Linux SDK) on the last 24 h of sensor data to predict tomorrow's risk |
 | LCD display | Optionally drives an I²C LCD screen showing live readings (via `lcd_driver.py`) |
@@ -94,7 +95,7 @@ The model runs **entirely offline** — latency is under 2 seconds per inference
 │   → { disease_type, confidence } over USB serial                     │
 │                              ↓                                       │
 │  [Raspberry Pi 4 Gateway]                                            │
-│   Reads serial result + DHT22 sensor                                 │
+│   Reads serial result + receives DHT22 sensor readings forwarded from the Nano                                 │
 │   Evaluates environmental risk level                                 │
 │   Runs .eim forecast model on last 24h sensor window                 │
 │   → HTTP POST /ingest { sensor_data, inference_result, forecast }    │
