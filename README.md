@@ -247,8 +247,7 @@ Intelligent-Mango-Health-Monitoring/
 │   └── esp8266_gateway/      # Alternative ESP8266 gateway
 ├── scripts/
 │   └── simulate_pi.py        # Simulate gateway data for local dev
-├── docs/
-│   └── images/               # Screenshots and architecture diagrams
+
 ├── ARCHITECTURE.md
 ├── DEPLOYMENT.md
 ├── CONTRIBUTING.md

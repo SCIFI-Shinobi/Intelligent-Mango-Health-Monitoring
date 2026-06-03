@@ -67,7 +67,7 @@ python seed.py
 | :--- | :--- | :--- |
 | Bug fix | `fix/short-description` | `fix/websocket-reconnect` |
 | New feature | `feat/short-description` | `feat/amharic-pdf-report` |
-| Documentation | `docs/short-description` | `docs/deployment-guide` |
+| Documentation | `docs-short-description` | `docs-deployment-guide` |
 | Chore / tooling | `chore/short-description` | `chore/update-deps` |
 
 ---
