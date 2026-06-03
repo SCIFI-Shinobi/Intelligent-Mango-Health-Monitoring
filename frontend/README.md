@@ -1,70 +1,79 @@
-# Getting Started with Create React App
+# 🥭 MangoGuard — React Dashboard
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+The frontend for **MangoGuard**, a bilingual (English/Amharic) IoT dashboard for real-time mango disease monitoring and risk forecasting. Built with **React 19** and **Create React App**.
 
-## Available Scripts
+## Purpose & Capabilities
 
-In the project directory, you can run:
+| Page / Feature | What it does |
+| :--- | :--- |
+| **Live Dashboard** | Real-time temperature, humidity, and disease risk readings streamed via WebSocket from the FastAPI backend |
+| **Scan History** | Table of all past leaf scans with disease classification, confidence score, and timestamp |
+| **Cloud Scan** | Upload any leaf image from the browser for instant AI classification — no hardware needed |
+| **5-Day Forecast** | Visual risk calendar showing predicted disease risk levels for the next 5 days |
+| **Notifications** | In-app and email alert history for disease detections and forecast warnings |
+| **Language Toggle** | Full English ↔ Amharic (አማርኛ) UI switch — all recommendations and alerts are bilingual |
+| **Settings** | User profile, email alert preferences, and detection confidence threshold |
+| **Admin Panel** | (Admin users only) System settings, maintenance mode, global alert controls |
 
-### `npm start`
+## Environment Setup
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Copy the example env file:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+```bash
+cp .env.example .env
+```
 
-### `npm test`
+Edit `.env`:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```env
+# URL of the running FastAPI backend
+REACT_APP_API_BASE_URL=http://localhost:8000
+```
 
-### `npm run build`
+> For production deployments pointing at Render, set this to your Render backend URL:
+> `REACT_APP_API_BASE_URL=https://your-backend.onrender.com`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Available Commands
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```bash
+# Install dependencies
+npm install
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+# Start development server (http://localhost:3000)
+npm start
 
-### `npm run eject`
+# Run tests
+npm test
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+# Build for production
+npm run build
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Key Dependencies
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+| Package | Purpose |
+| :--- | :--- |
+| `react-router-dom` | Client-side routing between dashboard pages |
+| `chart.js` + `react-chartjs-2` | Sensor trend charts and forecast visualisations |
+| `react-icons` | Icon set used throughout the UI |
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Troubleshooting
 
-## Learn More
+| Issue | Fix |
+| :--- | :--- |
+| Dashboard shows no live data | Verify `REACT_APP_API_BASE_URL` points to a running backend instance |
+| WebSocket disconnects immediately | Ensure the backend is running and CORS is allowing your origin |
+| Amharic text not rendering correctly | The app uses system fonts — Noto Sans Ethiopic is recommended on the OS |
+| `npm install` fails on `node_modules` | Delete `node_modules/` and `package-lock.json`, then re-run `npm install` |
+| Blank page after `npm run build` | Make sure `REACT_APP_API_BASE_URL` is set before building; CRA bakes env vars at build time |
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Project Structure
 
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+```
+frontend/src/
+├── components/       # Reusable UI components (cards, charts, modals)
+├── context/          # React Context for language and auth state
+├── hooks/            # Custom hooks (useWebSocket, useSensorData, etc.)
+├── pages/            # Route-level page components
+└── utils/            # Helper functions and API client
+```

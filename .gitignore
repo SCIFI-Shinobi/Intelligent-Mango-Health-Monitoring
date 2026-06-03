@@ -7,27 +7,67 @@ Thumbs.db
 
 # Node
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Build output
 dist/
 build/
+.next/
+out/
 
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.Python
 .venv/
 venv/
+env/
 backend/wheelhouse/*.whl
 backend/wheelhouse/.complete
+training_samples/
+
+# Arduino / C++ build artifacts
+*.elf
+*.hex
+*.bin
+*.map
+build/
+
+# Edge Impulse model files (large binaries — tracked only when committed explicitly)
+# *.eim
+# *.tflite
 
 # IDE
 .idea/
 .vscode/
+*.swp
+*.swo
 
-# Env files
+# Env files — block real secrets
 .env
-.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Allow env templates — these MUST be committed
+!*.env.example
+!.env.example
 
 # Cache / Database
 *.sqlite
 *.db
+
+# Coverage & test output
+coverage/
+.nyc_output/
+htmlcov/
+.pytest_cache/
+
+# Docker volumes (if accidentally created locally)
+postgres_data/
