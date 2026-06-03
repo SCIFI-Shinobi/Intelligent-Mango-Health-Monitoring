@@ -260,7 +260,10 @@ static std::string riskToStr(RiskLevel r) {
 
 /* Auto-Scan Configuration ------------------------------------------------- */
 static unsigned long lastScanTime = 0;
-const unsigned long scanIntervalMs = 20000; // 20 seconds
+// Production deployment: scan once per hour so each upload represents one
+// hourly data point — matching the 24-hour window the Edge Impulse forecast
+// model was trained on. For bench testing, temporarily reduce this value.
+const unsigned long scanIntervalMs = 3600000UL; // 1 hour = 3,600,000 ms
 
 /* Peripheral objects ------------------------------------------------------ */
 DHT               dht(DHTPIN, DHTTYPE);
@@ -370,7 +373,7 @@ void setup()
         Serial.println("Offline Mode");
     }
 
-    Serial.println("Serial USB ready. Auto-scanning every 10 seconds or send 'scan' command.");
+    Serial.println("Serial USB ready. Auto-scanning every 1 hour. Send 'scan' for immediate scan.");
 }
 
 /**
@@ -411,7 +414,7 @@ void run_automated_scan(void) {
     int res = calculate_resize_dimensions(EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT, &resize_col_sz, &resize_row_sz, &do_resize);
     if (res) {
         ei_printf("ERR: Failed to calculate resize dimensions (%d)\r\n", res);
-        ei_camera_deinit();
+        // ei_camera_deinit();
         return;
     }
 
@@ -420,7 +423,7 @@ void run_automated_scan(void) {
     snapshot_mem = ei_malloc(resize_col_sz*resize_row_sz*2);
     if(snapshot_mem == NULL) {
         ei_printf("failed to create snapshot_mem\r\n");
-        ei_camera_deinit();
+        // ei_camera_deinit();
         return;
     }
     snapshot_buf = (uint8_t *)DWORD_ALIGN_PTR((uintptr_t)snapshot_mem);
@@ -428,7 +431,7 @@ void run_automated_scan(void) {
     if (ei_camera_capture(EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
         ei_printf("Failed to capture image\r\n");
         if (snapshot_mem) ei_free(snapshot_mem);
-        ei_camera_deinit();
+        // ei_camera_deinit();
         return;
     }
 
@@ -442,12 +445,12 @@ void run_automated_scan(void) {
     if (ei_error != EI_IMPULSE_OK) {
         ei_printf("Failed to run impulse (%d)\n", ei_error);
         if (snapshot_mem) ei_free(snapshot_mem);
-        ei_camera_deinit();
+        // ei_camera_deinit();
         return;
     }
 
     if (snapshot_mem) ei_free(snapshot_mem);
-    ei_camera_deinit();
+    // ei_camera_deinit();
 
     // Find highest confidence prediction
     float best_confidence = 0.0f;
