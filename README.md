@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/Frontend-React-61DAFB?style=for-the-badge&logo=react&logoColor=black" />
   <img src="https://img.shields.io/badge/Storage-Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" />
   <img src="https://img.shields.io/badge/Deploy-Render%20%2B%20Vercel-430098?style=for-the-badge&logo=vercel&logoColor=white" />
-  <img src="https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/License-GPLv3-22c55e?style=for-the-badge" />
 </p>
 
 **[🌐 Live Demo](https://mango-guard.vercel.app/) &nbsp;|&nbsp; [📐 Architecture](./ARCHITECTURE.md) &nbsp;|&nbsp; [🚀 Deployment](./DEPLOYMENT.md) &nbsp;|&nbsp; [🤝 Contributing](./CONTRIBUTING.md)**
@@ -259,7 +259,7 @@ Intelligent-Mango-Health-Monitoring/
 
 ## 📄 License
 
-This project is licensed under the **MIT License** — see [LICENSE](./LICENSE) for details.
+This project is licensed under the **GNU General Public License v3.0** — see [LICENSE](./LICENSE) for details.
 
 <br>
 
